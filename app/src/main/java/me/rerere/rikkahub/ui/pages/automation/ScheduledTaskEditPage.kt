@@ -1,33 +1,43 @@
 // Adapted from xiaoyuili/Yuihub, AGPL-3.0.
 package me.rerere.rikkahub.ui.pages.automation
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -45,15 +55,27 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import me.rerere.hugeicons.HugeIcons
-import me.rerere.hugeicons.stroke.ArrowDown01
+import me.rerere.hugeicons.stroke.ArrowLeft01
+import me.rerere.hugeicons.stroke.ArrowRight01
+import me.rerere.hugeicons.stroke.BubbleChat
 import me.rerere.hugeicons.stroke.Calendar03
+import me.rerere.hugeicons.stroke.Cancel01
 import me.rerere.hugeicons.stroke.Clock01
+import me.rerere.hugeicons.stroke.Notification01
+import me.rerere.hugeicons.stroke.Refresh01
 import me.rerere.hugeicons.stroke.Repeat
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.db.entity.ScheduledTaskMode
@@ -61,21 +83,17 @@ import me.rerere.rikkahub.data.repository.ConversationRepository
 import me.rerere.rikkahub.data.model.Conversation
 import me.rerere.ai.core.MessageRole
 import me.rerere.rikkahub.data.db.entity.ScheduleType
-import me.rerere.rikkahub.data.db.entity.ScheduledTaskEntity
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.datastore.getCurrentAssistant
 import me.rerere.rikkahub.data.model.Assistant
-import me.rerere.ai.provider.Model
 import me.rerere.ai.provider.ModelType
-import me.rerere.rikkahub.ui.components.nav.BackButton
 import me.rerere.rikkahub.ui.components.ai.AssistantPickerSheet
-import me.rerere.rikkahub.ui.components.ai.ModelSelector
-import me.rerere.rikkahub.ui.components.ui.FormItem
+import me.rerere.rikkahub.ui.components.ai.ModelListSheet
+import me.rerere.rikkahub.ui.components.ai.rememberModelListState
 import me.rerere.rikkahub.ui.components.ui.UIAvatar
 import me.rerere.rikkahub.ui.context.LocalNavController
 import me.rerere.rikkahub.ui.theme.CustomColors
 import me.rerere.rikkahub.utils.SystemPermissions
-import me.rerere.rikkahub.utils.plus
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
 import java.util.Calendar
@@ -84,7 +102,7 @@ import kotlin.uuid.Uuid
 /**
  * 定时任务编辑页（新建 / 修改共用）。
  *
- * 结构：基本信息（名称、提示词、助手）→ 调度（类型 + 时间/间隔）→ 保存。
+ * 紧凑表单：名称与提示词 → 执行设置 → 时间安排 → 通知，底部固定保存。
  * 时间选择用 M3 的 TimePicker / DatePicker 弹窗，与系统观感一致。
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -163,7 +181,80 @@ fun ScheduledTaskEditPage(
     val selectedAssistant: Assistant = settings.assistants.find { it.id == assistantId }
         ?: settings.getCurrentAssistant()
 
+    val canChooseAssistant = defaultAssistantId == null
+    val assistantName = selectedAssistant.name.ifBlank {
+        stringResource(R.string.assistant_page_default_assistant)
+    }
+    val modelListState = rememberModelListState(
+        modelId = modelOverrideId?.let { runCatching { Uuid.parse(it) }.getOrNull() },
+        providers = settings.providers,
+        type = ModelType.CHAT,
+    )
+
+    val canSave = !saving &&
+        existing?.activeRunId == null &&
+        name.isNotBlank() &&
+        (mode == "REGENERATE" || prompt.isNotBlank()) &&
+        (mode == "NEW_CHAT" || targetConversationId != null) &&
+        (mode != "REGENERATE" || targetUserMessageId != null) &&
+        (taskId == null || existing != null) &&
+        settings.assistants.any { it.id == assistantId } &&
+        (scheduleType != ScheduleType.INTERVAL || intervalValid) &&
+        (scheduleType != ScheduleType.WEEKLY || weekdaysMask != 0)
+
+    fun saveTask() {
+        // 防重复提交：保存期间按钮禁用，避免连点创建多条任务
+        if (saving) return
+        vm.error.value = null
+        saving = true
+        if (existing == null) {
+            vm.create(
+                name = name.trim(),
+                prompt = prompt.trim(),
+                assistantId = assistantId,
+                scheduleType = scheduleType,
+                triggerAt = triggerAt,
+                intervalMinutes = intervalMinutes,
+                timeOfDayMinutes = timeOfDayMinutes,
+                weekdaysMask = weekdaysMask,
+                startDate = if (scheduleType == ScheduleType.DAILY || scheduleType == ScheduleType.WEEKLY) startDate else null,
+                endDate = if (scheduleType == ScheduleType.DAILY || scheduleType == ScheduleType.WEEKLY) endDate else null,
+                enabled = enabled,
+                mode = mode, targetConversationId = if (mode == "NEW_CHAT") null else targetConversationId,
+                targetUserMessageId = if (mode == "REGENERATE") targetUserMessageId else null,
+                modelOverrideId = modelOverrideId, notify = notify, showPreview = showPreview,
+                onDone = {
+                    // 保存成功后回到任务列表，而不是停留在编辑页
+                    navController.popBackStack()
+                },
+            )
+        } else {
+            vm.update(
+                existing.copy(
+                    name = name.trim(),
+                    prompt = prompt.trim(),
+                    assistantId = assistantId.toString(),
+                    scheduleType = scheduleType.name,
+                    triggerAt = triggerAt,
+                    intervalMinutes = intervalMinutes,
+                    timeOfDayMinutes = timeOfDayMinutes,
+                    weekdaysMask = weekdaysMask,
+                    startDate = if (scheduleType == ScheduleType.DAILY || scheduleType == ScheduleType.WEEKLY) startDate else null,
+                    endDate = if (scheduleType == ScheduleType.DAILY || scheduleType == ScheduleType.WEEKLY) endDate else null,
+                    enabled = enabled,
+                    mode = mode, targetConversationId = if (mode == "NEW_CHAT") null else targetConversationId,
+                    targetUserMessageId = if (mode == "REGENERATE") targetUserMessageId else null,
+                    modelOverrideId = modelOverrideId, notify = notify, showPreview = showPreview,
+                ),
+                onDone = {
+                    navController.popBackStack()
+                },
+            )
+        }
+    }
+
     Scaffold(
+        modifier = Modifier.imePadding(),
         topBar = {
             TopAppBar(
                 title = {
@@ -174,413 +265,338 @@ fun ScheduledTaskEditPage(
                         )
                     )
                 },
-                navigationIcon = { BackButton() },
+                navigationIcon = {
+                    IconButton(onClick = { navController.popBackStack() }) {
+                        Icon(HugeIcons.ArrowLeft01, contentDescription = stringResource(R.string.back))
+                    }
+                },
                 colors = CustomColors.topBarColors,
             )
+        },
+        bottomBar = {
+            Surface(color = CustomColors.topBarColors.containerColor) {
+                Column {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    Button(
+                        onClick = ::saveTask,
+                        enabled = canSave,
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color.Transparent,
+                            contentColor = MaterialTheme.colorScheme.onPrimary,
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .navigationBarsPadding()
+                            .padding(horizontal = 16.dp, vertical = 12.dp)
+                            .heightIn(min = 52.dp)
+                            .background(
+                                brush = Brush.horizontalGradient(
+                                    listOf(
+                                        MaterialTheme.colorScheme.primary,
+                                        lerp(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.onSurface, 0.08f),
+                                    )
+                                ),
+                                shape = RoundedCornerShape(10.dp),
+                                alpha = if (canSave) 1f else 0f,
+                            ),
+                    ) {
+                        Text("保存任务", style = MaterialTheme.typography.titleSmall)
+                    }
+                }
+            }
         },
         containerColor = CustomColors.topBarColors.containerColor,
     ) { innerPadding ->
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .imePadding(),
-            contentPadding = innerPadding + PaddingValues(
-                start = 16.dp,
-                end = 16.dp,
-                top = 8.dp,
-                bottom = 32.dp,
-            ),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+                .padding(innerPadding)
+                .consumeWindowInsets(innerPadding),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(24.dp),
         ) {
             item {
-                Text("执行内容", style = MaterialTheme.typography.titleSmall)
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    ScheduledTaskMode.entries.forEach { value ->
-                        FilterChip(selected = mode == value.name, onClick = { mode = value.name }, label = { Text(taskModeText(value.name)) })
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(stringResource(R.string.automation_edit_name), style = MaterialTheme.typography.bodyMedium)
+                        OutlinedTextField(
+                            value = name,
+                            onValueChange = { name = it },
+                            placeholder = { Text(stringResource(R.string.automation_edit_name_hint)) },
+                            singleLine = true,
+                            shape = RoundedCornerShape(8.dp),
+                            trailingIcon = {
+                                if (name.isNotEmpty()) {
+                                    IconButton(onClick = { name = "" }) {
+                                        Box(
+                                            modifier = Modifier.size(20.dp).background(
+                                                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.32f),
+                                                RoundedCornerShape(50),
+                                            ),
+                                            contentAlignment = Alignment.Center,
+                                        ) {
+                                            Icon(
+                                                HugeIcons.Cancel01,
+                                                contentDescription = "清除任务名称",
+                                                modifier = Modifier.size(14.dp),
+                                                tint = MaterialTheme.colorScheme.surface,
+                                            )
+                                        }
+                                    }
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
                     }
-                }
-                if (mode != "NEW_CHAT") {
-                    TextButton(onClick = { picker = "conversation" }) {
-                        Text("目标会话：${conversations.find { it.id.toString() == targetConversationId }?.title ?: "请选择"}")
-                    }
-                    if (mode == "REGENERATE") {
-                        TextButton(onClick = { picker = "message" }, enabled = targetConversation != null) {
-                            Text("用户消息：${targetConversation?.currentMessages?.find { it.id.toString() == targetUserMessageId }?.toText()?.take(60) ?: "请选择"}")
+                    if (mode != "REGENERATE") {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(stringResource(R.string.automation_edit_prompt), style = MaterialTheme.typography.bodyMedium)
+                            OutlinedTextField(
+                                value = prompt,
+                                onValueChange = { prompt = it },
+                                placeholder = { Text(stringResource(R.string.automation_edit_prompt_hint)) },
+                                minLines = 3,
+                                maxLines = 8,
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.fillMaxWidth(),
+                            )
                         }
-                        Text("复制截至所选用户消息的上下文，在新会话生成。", style = MaterialTheme.typography.bodySmall)
                     }
-                }
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                    Text("本次模型", modifier = Modifier.weight(1f))
-                    ModelSelector(
-                        modelId = modelOverrideId?.let { runCatching { Uuid.parse(it) }.getOrNull() },
-                        providers = settings.providers,
-                        type = ModelType.CHAT,
-                        allowClear = true,
-                        onSelect = { model: Model ->
-                            modelOverrideId = model.takeIf { it.modelId.isNotBlank() }?.id?.toString()
-                        },
-                    )
                 }
             }
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedTextField(
-                        value = name,
-                        onValueChange = { name = it },
-                        label = { Text(stringResource(R.string.automation_edit_name)) },
-                        placeholder = { Text(stringResource(R.string.automation_edit_name_hint)) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
+                    Text("执行设置", style = MaterialTheme.typography.titleMedium)
+                    TaskSegmentedChoices(
+                        labels = ScheduledTaskMode.entries.map { taskModeText(it.name) },
+                        icons = listOf(HugeIcons.BubbleChat, HugeIcons.BubbleChat, HugeIcons.Refresh01),
+                        selectedIndex = ScheduledTaskMode.entries.indexOfFirst { it.name == mode },
+                        onSelected = { mode = ScheduledTaskMode.entries[it].name },
                     )
-
-                    if (mode != "REGENERATE") OutlinedTextField(
-                        value = prompt,
-                        onValueChange = { prompt = it },
-                        label = { Text(stringResource(R.string.automation_edit_prompt)) },
-                        placeholder = { Text(stringResource(R.string.automation_edit_prompt_hint)) },
-                        minLines = 3,
-                        maxLines = 8,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
-            }
-
-            item {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        text = stringResource(R.string.automation_edit_assistant),
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    // 从助手页进入时助手范围固定；从总任务页进入时新建和编辑都可切换助手。
-                    val canChooseAssistant = defaultAssistantId == null
-                    Surface(
-                        onClick = { if (canChooseAssistant) showAssistantPicker = !showAssistantPicker },
-                        shape = RoundedCornerShape(16.dp),
-                        color = CustomColors.cardColorsOnSurfaceContainer.containerColor,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        ) {
-                            UIAvatar(
-                                name = selectedAssistant.name.ifBlank {
-                                    stringResource(R.string.assistant_page_default_assistant)
-                                },
-                                value = selectedAssistant.avatar,
-                                modifier = Modifier.size(36.dp),
+                    Column {
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.65f))
+                        if (mode != "NEW_CHAT") {
+                            TaskSettingRow(
+                                label = "目标会话",
+                                value = conversations.find { it.id.toString() == targetConversationId }
+                                    ?.title?.ifBlank { "未命名会话" } ?: "请选择",
+                                onClick = { picker = "conversation" },
                             )
-                            Text(
-                                text = selectedAssistant.name.ifBlank {
-                                    stringResource(R.string.assistant_page_default_assistant)
-                                },
-                                style = MaterialTheme.typography.titleSmall,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f),
-                            )
-                            if (canChooseAssistant) {
-                                Icon(
-                                    imageVector = HugeIcons.ArrowDown01,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            if (targetConversationId == null) {
+                                Text(
+                                    "请选择目标会话后保存",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(vertical = 8.dp),
+                                )
+                            }
+                            if (mode == "REGENERATE") {
+                                TaskSettingRow(
+                                    label = "用户消息",
+                                    value = targetConversation?.currentMessages
+                                        ?.find { it.id.toString() == targetUserMessageId }
+                                        ?.toText()?.take(60)?.ifBlank { "附件消息" } ?: "请选择",
+                                    enabled = targetConversation != null,
+                                    onClick = { picker = "message" },
+                                )
+                                Text(
+                                    "复制截至所选用户消息的上下文，在新会话生成。",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(vertical = 8.dp),
                                 )
                             }
                         }
-                    }
-                    if (canChooseAssistant && showAssistantPicker) {
-                        AssistantPickerSheet(
-                            settings = settings,
-                            currentAssistant = selectedAssistant,
-                            onAssistantSelected = { assistant ->
-                                assistantId = assistant.id
-                                targetConversationId = null
-                                targetUserMessageId = null
-                                showAssistantPicker = false
+                        TaskSettingRow(
+                            label = stringResource(R.string.automation_edit_assistant),
+                            value = assistantName,
+                            onClick = if (canChooseAssistant) ({ showAssistantPicker = true }) else null,
+                            valueIcon = {
+                                UIAvatar(name = assistantName, value = selectedAssistant.avatar, modifier = Modifier.size(32.dp))
                             },
-                            onDismiss = { showAssistantPicker = false },
+                        )
+                        TaskSettingRow(
+                            label = "本次模型",
+                            value = modelListState.currentModel?.displayName
+                                ?: if (modelOverrideId == null) "跟随助手" else "模型不可用",
+                            onClick = { modelListState.open() },
+                            onClear = if (modelOverrideId != null) ({ modelOverrideId = null }) else null,
                         )
                     }
                 }
             }
-
             item {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text(
-                        text = "时间安排",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("时间安排", style = MaterialTheme.typography.titleMedium)
+                    TaskSegmentedChoices(
+                        labels = ScheduleType.entries.map { scheduleTypeLabel(it) },
+                        icons = listOf(HugeIcons.Calendar03, HugeIcons.Clock01, HugeIcons.Repeat, HugeIcons.Calendar03),
+                        selectedIndex = ScheduleType.entries.indexOf(scheduleType),
+                        onSelected = { index ->
+                            val type = ScheduleType.entries[index]
+                            if (type == ScheduleType.WEEKLY && scheduleType != ScheduleType.WEEKLY && existing?.scheduleType != ScheduleType.WEEKLY.name) {
+                                weekdaysMask = 0x1f
+                            }
+                            scheduleType = type
+                        },
                     )
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        ScheduleType.entries.forEach { type ->
-                            FilterChip(
-                                selected = scheduleType == type,
-                                onClick = {
-                                    if (type == ScheduleType.WEEKLY && scheduleType != ScheduleType.WEEKLY && existing?.scheduleType != ScheduleType.WEEKLY.name) weekdaysMask = 0x1f
-                                    scheduleType = type
-                                },
-                                label = { Text(scheduleTypeLabel(type)) },
-                                leadingIcon = {
-                                    Icon(
-                                        imageVector = when (type) {
-                                            ScheduleType.ONCE -> HugeIcons.Calendar03
-                                            ScheduleType.DAILY -> HugeIcons.Clock01
-                                            ScheduleType.INTERVAL -> HugeIcons.Repeat
-                                            ScheduleType.WEEKLY -> HugeIcons.Calendar03
-                                        },
-                                        contentDescription = null,
-                                        modifier = Modifier.size(16.dp),
-                                    )
-                                },
-                            )
-                        }
-                    }
-
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.65f))
                     when (scheduleType) {
                         ScheduleType.ONCE -> {
-                            // 日期 + 时间两行
-                            Surface(
-                                onClick = { dateTarget = "once"; showDatePicker = true },
-                                shape = RoundedCornerShape(14.dp),
-                                color = CustomColors.cardColorsOnSurfaceContainer.containerColor,
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 14.dp, vertical = 12.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Icon(
-                                        imageVector = HugeIcons.Calendar03,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(18.dp),
-                                        tint = MaterialTheme.colorScheme.primary,
-                                    )
-                                    Spacer(modifier = Modifier.width(10.dp))
-                                    Text(
-                                        text = java.text.SimpleDateFormat(
-                                            "yyyy-MM-dd",
-                                            locale
-                                        ).format(java.util.Date(triggerAt)),
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        modifier = Modifier.weight(1f),
-                                    )
-                                }
-                            }
-                            Surface(
-                                onClick = { showTimePicker = true },
-                                shape = RoundedCornerShape(14.dp),
-                                color = CustomColors.cardColorsOnSurfaceContainer.containerColor,
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 14.dp, vertical = 12.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Icon(
-                                        imageVector = HugeIcons.Clock01,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(18.dp),
-                                        tint = MaterialTheme.colorScheme.primary,
-                                    )
-                                    Spacer(modifier = Modifier.width(10.dp))
-                                    Text(
-                                        text = java.text.SimpleDateFormat(
-                                            "HH:mm",
-                                            locale
-                                        ).format(java.util.Date(triggerAt)),
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        modifier = Modifier.weight(1f),
-                                    )
-                                }
+                            Column {
+                                TaskSettingRow(
+                                    label = "执行日期",
+                                    value = java.text.SimpleDateFormat("yyyy-MM-dd", locale).format(java.util.Date(triggerAt)),
+                                    onClick = { dateTarget = "once"; showDatePicker = true },
+                                    icon = HugeIcons.Calendar03,
+                                )
+                                TaskSettingRow(
+                                    label = "执行时间",
+                                    value = java.text.SimpleDateFormat("HH:mm", locale).format(java.util.Date(triggerAt)),
+                                    onClick = { showTimePicker = true },
+                                    icon = HugeIcons.Clock01,
+                                    emphasizeValue = true,
+                                )
                             }
                         }
-
                         ScheduleType.DAILY -> {
-                            Surface(
+                            TaskSettingRow(
+                                label = stringResource(R.string.automation_edit_daily_at),
+                                value = "%02d:%02d".format(
+                                    ScheduledTasksVM.minutesToHour(timeOfDayMinutes),
+                                    ScheduledTasksVM.minutesToMinute(timeOfDayMinutes),
+                                ),
                                 onClick = { showTimePicker = true },
-                                shape = RoundedCornerShape(14.dp),
-                                color = CustomColors.cardColorsOnSurfaceContainer.containerColor,
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 14.dp, vertical = 12.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Icon(
-                                        imageVector = HugeIcons.Clock01,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(18.dp),
-                                        tint = MaterialTheme.colorScheme.primary,
-                                    )
-                                    Spacer(modifier = Modifier.width(10.dp))
-                                    Text(
-                                        text = stringResource(R.string.automation_edit_daily_at),
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                    Spacer(modifier = Modifier.weight(1f))
-                                    Text(
-                                        text = "%02d:%02d".format(
-                                            ScheduledTasksVM.minutesToHour(timeOfDayMinutes),
-                                            ScheduledTasksVM.minutesToMinute(timeOfDayMinutes),
-                                        ),
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.primary,
-                                    )
-                                }
-                            }
+                                icon = HugeIcons.Clock01,
+                                emphasizeValue = true,
+                            )
                         }
-
                         ScheduleType.WEEKLY -> {
-                            TextButton(onClick = { weekdaysMask = 0x1f }) { Text("工作日") }
-                            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                listOf("一", "二", "三", "四", "五", "六", "日").forEachIndexed { index, label ->
-                                    FilterChip(selected = weekdaysMask and (1 shl index) != 0,
-                                        onClick = { weekdaysMask = weekdaysMask xor (1 shl index) }, label = { Text(label) })
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("执行日期", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                                    TextButton(onClick = { weekdaysMask = 0x1f }) { Text("工作日") }
                                 }
-                            }
-                            Surface(onClick = { showTimePicker = true }, shape = RoundedCornerShape(14.dp),
-                                color = CustomColors.cardColorsOnSurfaceContainer.containerColor, modifier = Modifier.fillMaxWidth()) {
-                                Text("执行时间  %02d:%02d".format(ScheduledTasksVM.minutesToHour(timeOfDayMinutes),
-                                    ScheduledTasksVM.minutesToMinute(timeOfDayMinutes)), modifier = Modifier.padding(14.dp))
-                            }
-                            if (weekdaysMask == 0) Text("请至少选择一天", color = MaterialTheme.colorScheme.error)
-                        }
-
-                        ScheduleType.INTERVAL -> {
-                            FormItem(
-                                label = { Text(stringResource(R.string.automation_edit_interval)) },
-                            ) {
-                                FlowRow(
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
                                 ) {
-                                    listOf(30, 60, 180, 360, 720, 1440).forEach { minutes ->
+                                    listOf("一", "二", "三", "四", "五", "六", "日").forEachIndexed { index, label ->
                                         FilterChip(
-                                            selected = intervalMinutes == minutes,
-                                            onClick = { intervalMinutes = minutes; intervalInput = minutes.toString() },
-                                            label = { Text(intervalLabel(minutes)) },
+                                            selected = weekdaysMask and (1 shl index) != 0,
+                                            onClick = { weekdaysMask = weekdaysMask xor (1 shl index) },
+                                            label = { Text(label) },
                                         )
                                     }
                                 }
+                                if (weekdaysMask == 0) {
+                                    Text("请至少选择一天", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                                }
+                                TaskSettingRow(
+                                    label = "执行时间",
+                                    value = "%02d:%02d".format(
+                                        ScheduledTasksVM.minutesToHour(timeOfDayMinutes),
+                                        ScheduledTasksVM.minutesToMinute(timeOfDayMinutes),
+                                    ),
+                                    onClick = { showTimePicker = true },
+                                    icon = HugeIcons.Clock01,
+                                    emphasizeValue = true,
+                                )
                             }
-                            OutlinedTextField(
-                                value = intervalInput,
-                                onValueChange = { input ->
-                                    intervalInput = input
-                                    input.toIntOrNull()?.let { intervalMinutes = it }
-                                },
-                                isError = !intervalValid,
-                                supportingText = { if (!intervalValid) Text("请输入至少 15 分钟的整数") },
-                                label = { Text(stringResource(R.string.automation_edit_interval_custom)) },
-                                suffix = { Text(stringResource(R.string.automation_edit_minutes)) },
-                                singleLine = true,
-                                modifier = Modifier.fillMaxWidth(),
-                            )
+                        }
+                        ScheduleType.INTERVAL -> {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                listOf(30, 60, 180, 360, 720, 1440).chunked(3).forEach { presets ->
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        presets.forEach { minutes ->
+                                            FilterChip(
+                                                selected = intervalMinutes == minutes,
+                                                onClick = { intervalMinutes = minutes; intervalInput = minutes.toString() },
+                                                label = { Text(intervalLabel(minutes)) },
+                                                modifier = Modifier.weight(1f),
+                                            )
+                                        }
+                                    }
+                                }
+                                OutlinedTextField(
+                                    value = intervalInput,
+                                    onValueChange = { input ->
+                                        intervalInput = input
+                                        input.toIntOrNull()?.let { intervalMinutes = it }
+                                    },
+                                    isError = !intervalValid,
+                                    supportingText = { if (!intervalValid) Text("请输入至少 15 分钟的整数") },
+                                    label = { Text(stringResource(R.string.automation_edit_interval_custom)) },
+                                    suffix = { Text(stringResource(R.string.automation_edit_minutes)) },
+                                    singleLine = true,
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            }
                         }
                     }
                     if (scheduleType == ScheduleType.DAILY || scheduleType == ScheduleType.WEEKLY) {
-                        listOf("start" to startDate, "end" to endDate).forEach { (target, date) ->
-                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                                TextButton(onClick = { dateTarget = target; showDatePicker = true }, modifier = Modifier.weight(1f)) {
-                                    Text("${if (target == "start") "开始日期" else "结束日期"}：${date ?: "不限"}")
-                                }
-                                if (date != null) TextButton(onClick = { if (target == "start") startDate = null else endDate = null }) {
-                                    Text("清除")
-                                }
-                            }
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            TaskDateRangeField(
+                                label = "开始日期",
+                                date = startDate,
+                                onClick = { dateTarget = "start"; showDatePicker = true },
+                                onClear = { startDate = null },
+                                modifier = Modifier.weight(1f),
+                            )
+                            TaskDateRangeField(
+                                label = "结束日期",
+                                date = endDate,
+                                onClick = { dateTarget = "end"; showDatePicker = true },
+                                onClear = { endDate = null },
+                                modifier = Modifier.weight(1f),
+                            )
                         }
                     }
                 }
             }
-
-            if (existing == null && !enabled) item {
-                Text("未授权精确闹钟，保存后暂不自动执行；可在任务列表立即执行或授权后启用。",
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            if (existing?.activeRunId != null) item { Text("当前任务正在执行，取消后才能修改内容。", color = MaterialTheme.colorScheme.error) }
             item {
-                TextButton(onClick = { picker = "notification" }, modifier = Modifier.fillMaxWidth()) {
-                    Text("通知提醒", modifier = Modifier.weight(1f))
-                    Text(when { !notify -> "不通知"; showPreview -> "显示内容"; else -> "仅显示状态" })
-                    Icon(HugeIcons.ArrowDown01, contentDescription = null, modifier = Modifier.padding(start = 8.dp).size(18.dp))
-                }
+                TaskSettingRow(
+                    label = "通知提醒",
+                    value = when { !notify -> "不通知"; showPreview -> "显示内容"; else -> "仅显示状态" },
+                    onClick = { picker = "notification" },
+                    icon = HugeIcons.Notification01,
+                )
+            }
+            if (existing == null && !enabled) item {
+                Text(
+                    "未授权精确闹钟，保存后暂不自动执行；可在任务列表立即执行或授权后启用。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (existing?.activeRunId != null) item {
+                Text("当前任务正在执行，取消后才能修改内容。", color = MaterialTheme.colorScheme.error)
             }
             error?.let { message -> item { Text(message, color = MaterialTheme.colorScheme.error) } }
-            item {
-                Button(
-                    onClick = {
-                        // 防重复提交：保存期间按钮禁用，避免连点创建多条任务
-                        if (saving) return@Button
-                        vm.error.value = null
-                        saving = true
-                        if (existing == null) {
-                            vm.create(
-                                name = name.trim(),
-                                prompt = prompt.trim(),
-                                assistantId = assistantId,
-                                scheduleType = scheduleType,
-                                triggerAt = triggerAt,
-                                intervalMinutes = intervalMinutes,
-                                timeOfDayMinutes = timeOfDayMinutes,
-                                weekdaysMask = weekdaysMask,
-                                startDate = if (scheduleType == ScheduleType.DAILY || scheduleType == ScheduleType.WEEKLY) startDate else null,
-                                endDate = if (scheduleType == ScheduleType.DAILY || scheduleType == ScheduleType.WEEKLY) endDate else null,
-                                enabled = enabled,
-                                mode = mode, targetConversationId = if (mode == "NEW_CHAT") null else targetConversationId,
-                                targetUserMessageId = if (mode == "REGENERATE") targetUserMessageId else null,
-                                modelOverrideId = modelOverrideId, notify = notify, showPreview = showPreview,
-                                onDone = {
-                                    // 保存成功后回到任务列表，而不是停留在编辑页
-                                    navController.popBackStack()
-                                },
-                            )
-                        } else {
-                            vm.update(
-                                existing.copy(
-                                    name = name.trim(),
-                                    prompt = prompt.trim(),
-                                    assistantId = assistantId.toString(),
-                                    scheduleType = scheduleType.name,
-                                    triggerAt = triggerAt,
-                                    intervalMinutes = intervalMinutes,
-                                    timeOfDayMinutes = timeOfDayMinutes,
-                                    weekdaysMask = weekdaysMask,
-                                    startDate = if (scheduleType == ScheduleType.DAILY || scheduleType == ScheduleType.WEEKLY) startDate else null,
-                                    endDate = if (scheduleType == ScheduleType.DAILY || scheduleType == ScheduleType.WEEKLY) endDate else null,
-                                    enabled = enabled,
-                                    mode = mode, targetConversationId = if (mode == "NEW_CHAT") null else targetConversationId,
-                                    targetUserMessageId = if (mode == "REGENERATE") targetUserMessageId else null,
-                                    modelOverrideId = modelOverrideId, notify = notify, showPreview = showPreview,
-                                ),
-                                onDone = {
-                                    navController.popBackStack()
-                                },
-                            )
-                        }
-                    },
-                    enabled = !saving && existing?.activeRunId == null && name.isNotBlank() && (mode == "REGENERATE" || prompt.isNotBlank()) && (mode == "NEW_CHAT" || targetConversationId != null) && (mode != "REGENERATE" || targetUserMessageId != null) && (taskId == null || existing != null) && settings.assistants.any { it.id == assistantId } && (scheduleType != ScheduleType.INTERVAL || intervalValid) && (scheduleType != ScheduleType.WEEKLY || weekdaysMask != 0),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text(stringResource(R.string.automation_edit_save))
-                }
-            }
         }
     }
+
+    if (canChooseAssistant && showAssistantPicker) {
+        AssistantPickerSheet(
+            settings = settings,
+            currentAssistant = selectedAssistant,
+            onAssistantSelected = { assistant ->
+                assistantId = assistant.id
+                targetConversationId = null
+                targetUserMessageId = null
+                showAssistantPicker = false
+            },
+            onDismiss = { showAssistantPicker = false },
+        )
+    }
+    ModelListSheet(
+        state = modelListState,
+        onSelect = { model ->
+            modelOverrideId = model.takeIf { it.modelId.isNotBlank() }?.id?.toString()
+        },
+    )
 
     if (picker != null) {
         val choices = when (picker) {
@@ -692,6 +708,177 @@ fun ScheduledTaskEditPage(
             },
         ) {
             DatePicker(state = dateState)
+        }
+    }
+}
+
+/** Equal-width choices remain on one line; long translations or large fonts can scroll. */
+@Composable
+private fun TaskSegmentedChoices(
+    labels: List<String>,
+    icons: List<ImageVector>,
+    selectedIndex: Int,
+    onSelected: (Int) -> Unit,
+) {
+    val density = LocalDensity.current
+    val textMeasurer = rememberTextMeasurer()
+    val textStyle = MaterialTheme.typography.bodyMedium
+    val widestLabel = labels.maxOf { label ->
+        textMeasurer.measure(AnnotatedString(label), style = textStyle, softWrap = false, maxLines = 1).size.width
+    }
+    // 16dp horizontal padding + 20dp icon + 8dp icon/label gap.
+    val minimumItemWidth = with(density) { widestLabel.toDp() + 44.dp }.coerceAtLeast(48.dp)
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+        val rowWidth = maxWidth.coerceAtLeast(minimumItemWidth * labels.size)
+        val scrollState = rememberScrollState()
+        val viewportWidth = with(density) { maxWidth.roundToPx() }
+        val itemWidth = with(density) { rowWidth.toPx() } / labels.size
+        LaunchedEffect(selectedIndex, rowWidth, maxWidth, scrollState.maxValue) {
+            if (selectedIndex in labels.indices) {
+                val itemStart = (itemWidth * selectedIndex).toInt()
+                val itemEnd = (itemWidth * (selectedIndex + 1)).toInt()
+                val target = when {
+                    itemStart < scrollState.value -> itemStart
+                    itemEnd > scrollState.value + viewportWidth -> itemEnd - viewportWidth
+                    else -> scrollState.value
+                }
+                scrollState.scrollTo(target.coerceIn(0, scrollState.maxValue))
+            }
+        }
+        Box(modifier = Modifier.horizontalScroll(scrollState)) {
+            SingleChoiceSegmentedButtonRow(modifier = Modifier.width(rowWidth)) {
+                labels.forEachIndexed { index, label ->
+                    SegmentedButton(
+                        selected = selectedIndex == index,
+                        onClick = { onSelected(index) },
+                        shape = SegmentedButtonDefaults.itemShape(index, labels.size, RoundedCornerShape(8.dp)),
+                        icon = { Icon(icons[index], contentDescription = null, modifier = Modifier.size(20.dp)) },
+                        colors = SegmentedButtonDefaults.colors(
+                            activeContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.28f),
+                            activeContentColor = MaterialTheme.colorScheme.primary,
+                            activeBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.65f),
+                            inactiveContainerColor = Color.Transparent,
+                            inactiveContentColor = MaterialTheme.colorScheme.onSurface,
+                            inactiveBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.65f),
+                        ),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp),
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text(label, style = textStyle, maxLines = 1, softWrap = false)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TaskSettingRow(
+    label: String,
+    value: String,
+    onClick: (() -> Unit)?,
+    enabled: Boolean = true,
+    icon: ImageVector? = null,
+    emphasizeValue: Boolean = false,
+    valueIcon: (@Composable () -> Unit)? = null,
+    onClear: (() -> Unit)? = null,
+) {
+    Column {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 56.dp)
+                .clickable(enabled = enabled && onClick != null) { onClick?.invoke() }
+                .padding(vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            if (icon != null) {
+                Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurface)
+            }
+            Text(
+                label,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.9f),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(if (valueIcon == null) 0.4f else 0.28f),
+            )
+            Row(
+                modifier = Modifier.weight(if (valueIcon == null) 0.6f else 0.72f),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+            ) {
+                valueIcon?.invoke()
+                Text(
+                    value,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = when {
+                        !enabled -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                        emphasizeValue -> MaterialTheme.colorScheme.primary
+                        else -> MaterialTheme.colorScheme.onSurface
+                    },
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = valueIcon != null),
+                )
+                if (onClick != null) {
+                    Icon(
+                        HugeIcons.ArrowRight01,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            if (onClear != null) {
+                IconButton(onClick = onClear, enabled = enabled) {
+                    Icon(HugeIcons.Cancel01, contentDescription = "清除$label", modifier = Modifier.size(18.dp))
+                }
+            }
+        }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.65f))
+    }
+}
+
+@Composable
+private fun TaskDateRangeField(
+    label: String,
+    date: String?,
+    onClick: () -> Unit,
+    onClear: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        onClick = onClick,
+        modifier = modifier,
+        shape = RoundedCornerShape(8.dp),
+        color = CustomColors.topBarColors.containerColor,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.65f)),
+    ) {
+        Column {
+            Text(
+                label,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 12.dp),
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp)
+                    .padding(start = 12.dp, end = if (date == null) 12.dp else 0.dp, bottom = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(date ?: "不限", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                if (date != null) {
+                    IconButton(onClick = onClear) {
+                        Icon(HugeIcons.Cancel01, contentDescription = "清除$label", modifier = Modifier.size(18.dp))
+                    }
+                } else {
+                    Icon(HugeIcons.ArrowRight01, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
         }
     }
 }

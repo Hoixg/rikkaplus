@@ -45,6 +45,8 @@ import me.rerere.rikkahub.data.ai.limits.ToolRuntimeLimits
 import me.rerere.rikkahub.data.ai.tools.HardlineCommandGuard
 import me.rerere.rikkahub.data.ai.tools.prepareToolApproval
 import me.rerere.rikkahub.data.ai.tools.executeToolWithApproval
+import me.rerere.rikkahub.data.ai.tools.SCHEDULED_TASK_TOOL_NAME
+import me.rerere.rikkahub.data.ai.tools.prepareScheduledTaskApproval
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.findModelById
 import me.rerere.rikkahub.data.datastore.findRequestProvider
@@ -214,7 +216,8 @@ class GenerationLoop(
                             )
                         }
                         tool.approvalState is ToolApprovalState.Auto -> {
-                            prepareToolApproval(tool, toolDef).also {
+                            (if (tool.toolName == SCHEDULED_TASK_TOOL_NAME) prepareScheduledTaskApproval(tool, toolDef)
+                            else prepareToolApproval(tool, toolDef)).also {
                                 if (it.isPending) hasPendingApproval = true
                             }
                         }

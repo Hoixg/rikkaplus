@@ -46,8 +46,10 @@ class ChatToolFactory(
         model: Model,
         workspaceCwd: String? = null,
         getMessages: () -> List<UIMessage> = { emptyList() },
+        scheduledExecution: Boolean = false,
     ): List<Tool> = buildList {
-        addAll(createScheduledTaskTools(scheduledTaskRepository, assistant.id))
+        addAll(createScheduledTaskTools(scheduledTaskRepository, assistant.id, conversationRepository,
+            getSettings = { settingsStore.settingsFlow.value }, scheduledExecution = scheduledExecution, getMessages = getMessages))
         if (assistant.enableMemory) {
             val memoryAssistantId = if (assistant.useGlobalMemory) {
                 MemoryRepository.GLOBAL_MEMORY_ID

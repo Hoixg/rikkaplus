@@ -43,6 +43,9 @@ class ConversationRepository(
     suspend fun hasFileReference(fileUrl: String): Boolean =
         messageNodeDAO.hasFileReference(JsonInstant.encodeToString(fileUrl))
 
+    suspend fun getScheduledApprovalConversationIds(): List<Uuid> =
+        messageNodeDAO.getScheduledApprovalConversationIds().mapNotNull { runCatching { Uuid.parse(it) }.getOrNull() }
+
     suspend fun getRecentConversations(assistantId: Uuid, limit: Int = 10): List<Conversation> {
         return conversationDAO.getRecentConversationsOfAssistant(
             assistantId = assistantId.toString(),

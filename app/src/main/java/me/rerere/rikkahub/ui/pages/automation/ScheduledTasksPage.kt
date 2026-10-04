@@ -76,7 +76,7 @@ import org.koin.core.parameter.parametersOf
 /**
  * 定时任务（自动化）列表页。
  *
- * 卡片展示任务名、调度描述、最近运行状态；开关控制启用；卡片菜单可编辑/删除。
+ * 卡片展示任务名、调度描述、最近运行状态；开关控制启用；卡片点击编辑，菜单提供执行和删除操作。
  * [assistantId] 非空时为「某助手的任务」视图：只列出该助手的任务，新建时默认选中它。
  */
 @Composable
@@ -390,7 +390,6 @@ private fun ScheduledTaskCard(
                 Box {
                     TextButton(onClick = { menu = true }) { Text("操作") }
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                        DropdownMenuItem(text = { Text("编辑") }, onClick = { menu = false; onEdit() })
                         DropdownMenuItem(text = { Text("立即执行") }, onClick = { menu = false; onRunNow() })
                         DropdownMenuItem(text = { Text("运行历史") }, onClick = { menu = false; onHistory() })
                         DropdownMenuItem(text = { Text("取消当前执行") }, enabled = task.activeRunId != null, onClick = { menu = false; onCancel() })

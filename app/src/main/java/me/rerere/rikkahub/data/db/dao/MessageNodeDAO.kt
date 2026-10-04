@@ -16,6 +16,10 @@ interface MessageNodeDAO {
     @Query("SELECT EXISTS(SELECT 1 FROM message_node WHERE instr(messages, :encodedFileUrl) > 0)")
     suspend fun hasFileReference(encodedFileUrl: String): Boolean
 
+    // Candidate scan only; the service checks actual selected messages and approval state.
+    @Query("SELECT DISTINCT conversation_id FROM message_node WHERE instr(messages, 'scheduled_task') > 0 AND instr(messages, 'pending') > 0")
+    suspend fun getScheduledApprovalConversationIds(): List<String>
+
     @Query("SELECT * FROM message_node WHERE conversation_id = :conversationId ORDER BY node_index ASC")
     suspend fun getNodesOfConversation(conversationId: String): List<MessageNodeEntity>
 

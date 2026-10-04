@@ -98,6 +98,10 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
     onToolApproval: ((toolCallId: String, approved: Boolean, reason: String, editedPrompt: String?) -> Unit)? = null,
     onToolAnswer: ((toolCallId: String, answer: String) -> Unit)? = null,
 ) {
+    if (me.rerere.rikkahub.data.ai.tools.isScheduledApproval(tool)) {
+        ScheduledTaskApprovalStep(tool, onToolApproval)
+        return
+    }
     if (tool.toolName == IMAGE_GENERATION_TOOL_NAME) {
         ImageGenerationToolStep(tool, loading, onToolApproval)
         return

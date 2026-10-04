@@ -3,6 +3,8 @@ package me.rerere.rikkahub.data.ai.tools
 
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
@@ -14,10 +16,17 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import me.rerere.ai.core.InputSchema
 import me.rerere.ai.core.Tool
+import me.rerere.ai.core.MessageRole
 import me.rerere.ai.ui.UIMessagePart
+import me.rerere.ai.ui.UIMessage
 import me.rerere.rikkahub.data.db.entity.ScheduleType
 import me.rerere.rikkahub.data.db.entity.ScheduledTaskEntity
 import me.rerere.rikkahub.data.repository.ScheduledTaskRepository
+import me.rerere.rikkahub.data.repository.ConversationRepository
+import me.rerere.rikkahub.data.repository.ScheduledTaskSchedule
+import me.rerere.rikkahub.data.datastore.Settings
+import me.rerere.rikkahub.data.datastore.findModelById
+import me.rerere.rikkahub.data.model.Conversation
 import me.rerere.rikkahub.utils.JsonInstantPretty
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -38,22 +47,28 @@ const val SCHEDULED_TASK_TOOL_NAME = "scheduled_task"
  *   ONCE 用 trigger_at（"yyyy-MM-dd HH:mm"）。
  * - 写操作走 ScheduledTaskRepository，精确闹钟调度自动同步。
  *
- * 工具的 systemPrompt 会把「没有任务时也要知道可以建」以及字段约定告诉模型，
- * 避免它因为列表为空就以为功能不可用。
+ * 普通检查请求立即执行，只有明确的定时管理请求才可申请写操作。
  */
 fun createScheduledTaskTools(
     repository: ScheduledTaskRepository,
     assistantId: Uuid,
+    conversationRepository: ConversationRepository? = null,
+    getSettings: () -> Settings = { Settings() },
+    scheduledExecution: Boolean = false,
+    getMessages: () -> List<UIMessage> = { emptyList() },
 ): List<Tool> = listOf(
     Tool(
         name = SCHEDULED_TASK_TOOL_NAME,
         description = """
             Manage scheduled tasks that belong to THIS assistant only (tasks of other assistants are not accessible).
-            `action`: list | create | update | delete | set_enabled | run_now | history | cancel_run.
+            `action`: list | get | options | create | update | delete | set_enabled | run_now | history | cancel_run.
+            Use get to read complete settings; options returns configured models and this assistant's conversations, plus user messages when target_conversation_id is supplied. Use id when renaming a task.
+            Only use write actions when the human explicitly requests scheduling or task management. Ordinary requests such as "help me check" / "帮我检查某件事" mean do the work now, not create a schedule. An empty list is not an instruction to create a task.
             Schedule types: DAILY (`time_of_day` "HH:mm"), WEEKLY (`time_of_day` and `weekdays` 1=Mon..7=Sun), INTERVAL (`interval_minutes` >= 15), ONCE (`trigger_at` "yyyy-MM-dd HH:mm").
             DAILY and WEEKLY support optional inclusive `start_date` and `end_date` (yyyy-MM-dd). Null clears a date bound. Creating an enabled task requires exact-alarm permission; `enabled=false` saves a draft.
             create needs `name` + `prompt` (+ one schedule spec); update only needs the fields to change.
-            Execution modes: NEW_CHAT (default), FOLLOW_UP (target_conversation_id), REGENERATE (target_conversation_id and target_user_message_id; copies context to a new chat). Optional model_override_id applies only to the run. notify/show_preview default true. run_now does not change the schedule and requires approval. Busy conversations wait until idle.
+            Execution modes: NEW_CHAT (default), FOLLOW_UP (target_conversation_id), REGENERATE (target_conversation_id and target_user_message_id; copies context to a new chat; prompt may be empty). Null clears optional IDs. Optional model_override_id applies only to the run. notify/show_preview default true. create/update/run_now require separate human approval within 30 seconds; timeout means denied. Never retry a denied/timed-out request or recreate it under another name. run_now does not change the schedule. Busy conversations wait until idle.
+            ${if (scheduledExecution) "This is an execution of an EXISTING scheduled task. Complete its content now. Only list/get/options/history are allowed. Never create, change, delete, enable, cancel, or trigger scheduled tasks." else ""}
         """.trimIndent(),
         parameters = {
             InputSchema.Obj(
@@ -63,14 +78,8 @@ fun createScheduledTaskTools(
                         put(
                             "enum",
                             buildJsonArray {
-                                add("list")
-                                add("create")
-                                add("update")
-                                add("delete")
-                                add("set_enabled")
-                                add("run_now")
-                                add("history")
-                                add("cancel_run")
+                                (if (scheduledExecution) scheduledReadActions else scheduledReadActions +
+                                    setOf("create", "update", "delete", "set_enabled", "run_now", "cancel_run")).forEach { add(it) }
                             },
                         )
                         put("description", "Operation to perform")
@@ -126,7 +135,7 @@ fun createScheduledTaskTools(
                     })
                     put("enabled", buildJsonObject {
                         put("type", "boolean")
-                        put("description", "For create/set_enabled: whether the task is active; create defaults to true")
+                        put("description", "For create/update/set_enabled: whether the task is active; create defaults to true")
                     })
                 },
                 required = listOf("action"),
@@ -135,29 +144,78 @@ fun createScheduledTaskTools(
         systemPrompt = { _, _ ->
             """
             You can manage this assistant's scheduled tasks with `$SCHEDULED_TASK_TOOL_NAME`
-            (list / create / update / delete / set_enabled / run_now / history / cancel_run). Only this assistant's tasks are visible and editable.
+            (list / get / options / create / update / delete / set_enabled / run_now / history / cancel_run). Only this assistant's tasks are visible and editable.
+            "Help me check/research/do something" / "帮我检查某件事" means execute that work now. Do not infer a scheduled task from those words, task content, past messages, or an empty task list. Create a task only when the human explicitly requests a future or recurring schedule. A stored task prompt describes the work of one run; it is not permission to create another task.
+            create/update/run_now each need human approval within 30 seconds. After denial or timeout, explain that nothing was performed; do not automatically retry, change the name, or issue another approval request without new human instructions.
+            ${if (scheduledExecution) "You are executing an already configured scheduled task, not responding to a new human scheduling request. Complete this run's work. Task management and triggering other tasks are prohibited; only read actions are available." else ""}
             """.trimIndent()
         },
-        needsApproval = { it.jsonObject["action"]?.jsonPrimitive?.contentOrNull == "run_now" },
+        prepareArguments = { args ->
+            val obj = args.jsonObject
+            val action = scheduledAction(obj)
+            checkScheduledActionAllowed(action, scheduledExecution)
+            if (action !in scheduledApprovalActions) obj else {
+                require(!hasDeniedScheduledRequestInTurn(getMessages())) { "本轮定时任务请求已被拒绝，不自动重试；请等待新的用户指令" }
+                val tasks = repository.getTasksForAssistant(assistantId.toString())
+                val before = if (action == "create") null else findTask(obj, tasks) ?: error("No matching task found")
+                val after = if (action == "run_now") before!! else buildTaskChange(obj, assistantId, before)
+                require(action != "update" || taskConfiguration(after) != taskConfiguration(before!!)) { "没有需要修改的字段" }
+                require(tasks.none { it.id != after.id && it.name == after.name }) { "该助手已有同名任务" }
+                if (action != "run_now") {
+                    require(before?.activeRunId == null) { "请先取消当前执行，再修改任务" }
+                    ScheduledTaskSchedule.validate(after, System.currentTimeMillis(), before == null ||
+                        (after.enabled && (after.triggerAt != before.triggerAt || after.scheduleType != before.scheduleType || !before.enabled)))
+                    require(!after.enabled || before?.enabled == true || repository.hasExactAlarmPermission()) { "请先允许精确闹钟，或保存为停用任务" }
+                }
+                val settings = getSettings()
+                validateTaskTargets(after, conversationRepository, settings)
+                val beforeSnapshot = before?.let { approvalTaskConfiguration(it, conversationRepository, settings) }
+                val afterSnapshot = approvalTaskConfiguration(after, conversationRepository, settings)
+                buildJsonObject {
+                    obj.filterKeys { it != SCHEDULED_PREPARED_ARGUMENT }.forEach { (key, value) -> put(key, value) }
+                    put("id", after.id)
+                    put(SCHEDULED_PREPARED_ARGUMENT, buildJsonObject {
+                        put("request_id", Uuid.random().toString())
+                        put("expected_revision", before?.revision)
+                        put("before", beforeSnapshot ?: JsonNull)
+                        put("after", afterSnapshot)
+                    })
+                }
+            }
+        },
+        needsApproval = { scheduledAction(it) in scheduledApprovalActions },
         execute = { args ->
             val obj = args.jsonObject
-            val action = obj["action"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty()
+            val action = scheduledAction(obj)
+            checkScheduledActionAllowed(action, scheduledExecution)
             val tasks = repository.getTasksForAssistant(assistantId.toString())
             when (action) {
                 "list" -> listOf(UIMessagePart.Text(renderTasks(tasks, repository.hasExactAlarmPermission())))
-
-                "create" -> createTask(repository, assistantId, obj, tasks)
-
-                "update" -> updateTask(repository, obj, tasks)
+                "get" -> listOf(UIMessagePart.Text(findTask(obj, tasks)?.let { taskConfiguration(it).toString() } ?: "No matching task found"))
+                "options" -> listOf(UIMessagePart.Text(taskOptions(obj, assistantId, conversationRepository, getSettings()).toString()))
+                "create", "update", "run_now" -> {
+                    val prepared = obj[SCHEDULED_PREPARED_ARGUMENT]?.jsonObject ?: error("审批配置缺失，请重新请求")
+                    val task = taskFromConfiguration(prepared.getValue("after").jsonObject)
+                    require(task.assistantId == assistantId.toString()) { "No matching task found" }
+                    validateTaskTargets(task, conversationRepository, getSettings())
+                    val revision = prepared["expected_revision"]?.jsonPrimitive?.contentOrNull
+                    require(action == "create" || !revision.isNullOrBlank()) { "审批版本缺失，请重新请求" }
+                    if (action == "run_now") {
+                        val result = repository.runNow(task.id, revision, prepared.getValue("request_id").jsonPrimitive.content)
+                        listOf(UIMessagePart.Text("Run ${result.activeRunId ?: result.lastRunId}: ${result.lastRunStatus}"))
+                    } else {
+                        repository.upsert(task, expectedRevision = revision, approvedCreate = action == "create")
+                        listOf(UIMessagePart.Text("${if (action == "create") "Created" else "Updated"} task '${task.name}' (id=${task.id}, ${describe(task)})"))
+                    }
+                }
 
                 "delete" -> deleteTask(repository, obj, tasks)
 
                 "set_enabled" -> setEnabled(repository, obj, tasks)
-                "run_now", "history", "cancel_run" -> {
+                "history", "cancel_run" -> {
                     val target = findTask(obj, tasks)
                     if (target == null) listOf(UIMessagePart.Text("No matching task found")) else {
                         val text = when (action) {
-                            "run_now" -> repository.runNow(target.id).let { "Run ${it.activeRunId}: ${it.lastRunStatus}" }
                             "cancel_run" -> { repository.cancelRun(target.id); "Cancelled current run" }
                             else -> buildJsonArray {
                                 repository.history(target.id).forEach { run -> add(buildJsonObject {
@@ -176,81 +234,96 @@ fun createScheduledTaskTools(
     ),
 )
 
-private suspend fun createTask(
-    repository: ScheduledTaskRepository,
-    assistantId: Uuid,
-    obj: JsonObject,
-    existing: List<ScheduledTaskEntity>,
-): List<UIMessagePart> {
-    val name = obj["name"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty()
-    require(name.isNotEmpty()) { "name is required for action=create" }
-    val prompt = obj["prompt"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty()
-    require(prompt.isNotEmpty() || obj["mode"]?.jsonPrimitive?.contentOrNull == "REGENERATE") { "prompt is required for action=create" }
-    require(existing.none { it.name == name }) {
-        "A task named '$name' already exists. Use action=update to modify it."
-    }
-
-    val schedule = parseSchedule(obj)
-    val now = System.currentTimeMillis()
-    val task = ScheduledTaskEntity(
-        id = Uuid.random().toString(),
-        name = name,
-        prompt = prompt,
-        assistantId = assistantId.toString(),
-        scheduleType = schedule.type.name,
-        triggerAt = schedule.triggerAt,
-        intervalMinutes = schedule.intervalMinutes,
-        timeOfDayMinutes = schedule.timeOfDayMinutes,
-        weekdaysMask = schedule.weekdaysMask,
-        startDate = schedule.startDate,
-        endDate = schedule.endDate,
-        enabled = obj["enabled"]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull()
-            ?: if ("enabled" in obj) throw IllegalArgumentException("enabled must be true or false") else true,
-        revision = Uuid.random().toString(),
-        createdAt = now,
-        updatedAt = now,
-    )
-    repository.upsert(applyExecutionFields(task, obj))
-    return listOf(UIMessagePart.Text("Created task '${task.name}' (id=${task.id}, ${describe(task)})"))
+internal fun checkScheduledActionAllowed(action: String, scheduledExecution: Boolean) {
+    require(!scheduledExecution || action in scheduledReadActions) { "定时任务执行期间禁止变更或触发定时任务" }
 }
 
-private suspend fun updateTask(
-    repository: ScheduledTaskRepository,
-    obj: JsonObject,
-    tasks: List<ScheduledTaskEntity>,
-): List<UIMessagePart> {
-    val target = findTask(obj, tasks) ?: return listOf(UIMessagePart.Text("No matching task found"))
+internal fun buildTaskChange(obj: JsonObject, assistantId: Uuid, before: ScheduledTaskEntity? = null,
+    now: Long = System.currentTimeMillis()): ScheduledTaskEntity {
+    val base = before ?: ScheduledTaskEntity(id = Uuid.random().toString(), name = "", prompt = "",
+        assistantId = assistantId.toString(), createdAt = now, updatedAt = now, revision = Uuid.random().toString())
+    fun text(key: String, old: String): String = if (key !in obj) old else
+        obj[key]?.jsonPrimitive?.contentOrNull?.trim() ?: error("$key must be a string")
+    val schedule = parseSchedule(obj, before)
+    val changed = base.copy(name = text("name", base.name), prompt = text("prompt", base.prompt),
+        scheduleType = schedule.type.name, triggerAt = schedule.triggerAt, intervalMinutes = schedule.intervalMinutes,
+        timeOfDayMinutes = schedule.timeOfDayMinutes, weekdaysMask = schedule.weekdaysMask,
+        startDate = schedule.startDate, endDate = schedule.endDate)
+    return applyExecutionFields(changed, obj)
+}
 
-    var updated = target
-    obj["name"]?.jsonPrimitive?.contentOrNull?.trim()?.takeIf { it.isNotEmpty() }?.let { newName ->
-        require(tasks.none { it.id != target.id && it.name == newName }) {
-            "A task named '$newName' already exists."
-        }
-        updated = updated.copy(name = newName)
-    }
-    obj["prompt"]?.jsonPrimitive?.contentOrNull?.trim()?.takeIf { it.isNotEmpty() }?.let { newPrompt ->
-        updated = updated.copy(prompt = newPrompt)
-    }
-    // schedule 字段按需覆盖：给了任意一项就整体解析一次（parseSchedule 会用现有值兜底未给的项）
-    if (obj.keys.any { it in SCHEDULE_KEYS }) {
-        val schedule = parseSchedule(obj, fallback = target)
-        updated = updated.copy(
-            scheduleType = schedule.type.name,
-            triggerAt = schedule.triggerAt,
-            intervalMinutes = schedule.intervalMinutes,
-            timeOfDayMinutes = schedule.timeOfDayMinutes,
-            weekdaysMask = schedule.weekdaysMask,
-            startDate = schedule.startDate,
-            endDate = schedule.endDate,
-        )
-    }
+/** Raw, round-trippable configuration; no runtime ownership fields or provider credentials. */
+internal fun taskConfiguration(task: ScheduledTaskEntity): JsonObject = buildJsonObject {
+    put("id", task.id); put("assistant_id", task.assistantId); put("name", task.name); put("prompt", task.prompt)
+    put("schedule_type", task.scheduleType); put("trigger_at_ms", task.triggerAt)
+    put("interval_minutes", task.intervalMinutes); put("time_of_day_minutes", task.timeOfDayMinutes)
+    put("time_of_day", "%02d:%02d".format(Locale.ROOT, task.timeOfDayMinutes / 60, task.timeOfDayMinutes % 60))
+    put("weekdays", buildJsonArray { (1..7).filter { task.weekdaysMask and (1 shl (it - 1)) != 0 }.forEach { add(it) } })
+    if (task.scheduleType == "ONCE") put("trigger_at", SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.ROOT).format(Date(task.triggerAt)))
+    put("weekdays_mask", task.weekdaysMask); put("start_date", task.startDate); put("end_date", task.endDate)
+    put("mode", task.mode); put("target_conversation_id", task.targetConversationId)
+    put("target_user_message_id", task.targetUserMessageId); put("model_override_id", task.modelOverrideId)
+    put("enabled", task.enabled); put("notify", task.notify); put("show_preview", task.showPreview)
+    put("created_at", task.createdAt); put("revision", task.revision); put("schedule", describe(task))
+}
 
-    updated = applyExecutionFields(updated, obj)
-    if (updated == target) {
-        return listOf(UIMessagePart.Text("Nothing to update: no recognized fields were provided."))
+internal fun taskFromConfiguration(obj: JsonObject): ScheduledTaskEntity {
+    fun text(key: String) = obj.getValue(key).jsonPrimitive.content
+    fun optional(key: String) = obj[key]?.jsonPrimitive?.contentOrNull
+    return ScheduledTaskEntity(id = text("id"), name = text("name"), prompt = text("prompt"),
+        assistantId = text("assistant_id"), scheduleType = text("schedule_type"),
+        triggerAt = obj.getValue("trigger_at_ms").jsonPrimitive.longOrNull ?: error("Invalid trigger"),
+        intervalMinutes = obj.getValue("interval_minutes").jsonPrimitive.intOrNull ?: error("Invalid interval"),
+        timeOfDayMinutes = obj.getValue("time_of_day_minutes").jsonPrimitive.intOrNull ?: error("Invalid time"),
+        weekdaysMask = obj.getValue("weekdays_mask").jsonPrimitive.intOrNull ?: error("Invalid weekdays"),
+        startDate = optional("start_date"), endDate = optional("end_date"),
+        mode = text("mode"), targetConversationId = optional("target_conversation_id"),
+        targetUserMessageId = optional("target_user_message_id"), modelOverrideId = optional("model_override_id"),
+        enabled = text("enabled").toBooleanStrict(), notify = text("notify").toBooleanStrict(),
+        showPreview = text("show_preview").toBooleanStrict(), createdAt = text("created_at").toLong(),
+        updatedAt = System.currentTimeMillis(), revision = text("revision"))
+}
+
+private suspend fun validateTaskTargets(task: ScheduledTaskEntity, conversations: ConversationRepository?, settings: Settings) {
+    val conversation = if (task.mode == "NEW_CHAT") null else
+        task.targetConversationId?.let { conversations?.getConversationById(Uuid.parse(it)) }
+    validateTaskTargetSelection(task, conversation, settings)
+}
+
+private suspend fun approvalTaskConfiguration(task: ScheduledTaskEntity, conversations: ConversationRepository?, settings: Settings): JsonObject {
+    val target = task.targetConversationId?.let { Uuid.parse(it) }?.let { conversations?.getConversationById(it) }
+    return buildJsonObject {
+        taskConfiguration(task).forEach { (key, value) -> put(key, value) }
+        put("target_conversation_title", target?.title)
+        put("model_name", task.modelOverrideId?.let { settings.findModelById(Uuid.parse(it))?.displayName })
     }
-    repository.upsert(updated.copy(updatedAt = System.currentTimeMillis()))
-    return listOf(UIMessagePart.Text("Updated task '${updated.name}' (id=${updated.id}, ${describe(updated)})"))
+}
+
+internal fun validateTaskTargetSelection(task: ScheduledTaskEntity, conversation: Conversation?, settings: Settings) {
+    task.modelOverrideId?.let { require(settings.findModelById(Uuid.parse(it)) != null) { "任务模型已删除或未配置" } }
+    if (task.mode == "NEW_CHAT") return
+    require(conversation != null && conversation.id.toString() == task.targetConversationId) { "目标会话已删除" }
+    require(conversation.assistantId.toString() == task.assistantId) { "目标会话不属于任务助手" }
+    if (task.mode == "REGENERATE") require(conversation.currentMessages.any {
+        it.id.toString() == task.targetUserMessageId && it.role == MessageRole.USER
+    }) { "目标用户消息已删除或分支已改变" }
+}
+
+private suspend fun taskOptions(obj: JsonObject, assistantId: Uuid, conversations: ConversationRepository?, settings: Settings): JsonObject {
+    val targetId = obj["target_conversation_id"]?.jsonPrimitive?.contentOrNull
+    val target = targetId?.let { conversations?.getConversationById(Uuid.parse(it)) ?: error("目标会话已删除") }
+    require(target == null || target.assistantId == assistantId) { "目标会话不属于当前助手" }
+    return buildJsonObject {
+        put("models", buildJsonArray { settings.providers.forEach { provider -> provider.models.forEach { model ->
+            add(buildJsonObject { put("id", model.id.toString()); put("name", model.displayName); put("provider", provider.name) })
+        } } })
+        put("conversations", buildJsonArray { conversations?.getRecentConversations(assistantId, 30)?.forEach { conversation ->
+            add(buildJsonObject { put("id", conversation.id.toString()); put("title", conversation.title) })
+        } })
+        put("user_messages", buildJsonArray { target?.currentMessages?.filter { it.role == MessageRole.USER }?.forEach { message ->
+            add(buildJsonObject { put("id", message.id.toString()); put("preview", message.toText().take(300)) })
+        } })
+    }
 }
 
 private suspend fun deleteTask(
@@ -299,8 +372,6 @@ internal data class ParsedSchedule(
     val startDate: String?,
     val endDate: String?,
 )
-
-private val SCHEDULE_KEYS = setOf("schedule_type", "time_of_day", "interval_minutes", "trigger_at", "weekdays", "start_date", "end_date")
 
 /**
  * 解析调度参数。[fallback] 为更新场景下的原任务（未给的字段沿用原值）；
@@ -408,22 +479,15 @@ private fun describeRange(task: ScheduledTaskEntity) = listOfNotNull(
 
 private fun renderTasks(tasks: List<ScheduledTaskEntity>, exactAlarmAllowed: Boolean): String {
     if (tasks.isEmpty()) {
-        return "No scheduled tasks for this assistant yet. Use action=create to add one." +
-            if (exactAlarmAllowed) "" else " Exact-alarm permission is missing; create with enabled=false until the user grants it."
+        return "No scheduled tasks for this assistant."
     }
     // id 用原始 JSON 数组输出，避免模型把 id 抄错
     val lines = tasks.map { task ->
         buildJsonObject {
-            put("id", task.id)
-            put("name", task.name)
-            put("prompt", task.prompt)
-            put("mode", task.mode); put("target_conversation_id", task.targetConversationId)
-            put("target_user_message_id", task.targetUserMessageId); put("model_override_id", task.modelOverrideId)
-            put("notify", task.notify); put("show_preview", task.showPreview)
-            put("schedule", describe(task))
-            put("enabled", task.enabled)
+            taskConfiguration(task).forEach { (key, value) -> put(key, value) }
             put("delivery", if (task.enabled && !exactAlarmAllowed) "waiting_for_exact_alarm_permission" else if (task.enabled) "scheduled" else "disabled")
             put("last_run_status", task.lastRunStatus.ifBlank { "NEVER" })
+            task.nextRunAt?.let { put("next_run_at", it) }
         }
     }
     return buildString {
@@ -445,5 +509,5 @@ internal fun applyExecutionFields(task: ScheduledTaskEntity, obj: JsonObject): S
     return task.copy(mode = mode,
         targetConversationId = if (mode == "NEW_CHAT") null else conversation,
         targetUserMessageId = if (mode != "REGENERATE") null else id("target_user_message_id", if (conversation == task.targetConversationId) task.targetUserMessageId else null),
-        modelOverrideId = id("model_override_id", task.modelOverrideId), notify = flag("notify", task.notify), showPreview = flag("show_preview", task.showPreview))
+        modelOverrideId = id("model_override_id", task.modelOverrideId), enabled = flag("enabled", task.enabled), notify = flag("notify", task.notify), showPreview = flag("show_preview", task.showPreview))
 }

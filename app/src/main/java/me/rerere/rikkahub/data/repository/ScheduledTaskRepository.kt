@@ -100,10 +100,15 @@ class ScheduledTaskRepository(
         }
     }
 
-    suspend fun upsert(task: ScheduledTaskEntity) {
+    suspend fun upsert(task: ScheduledTaskEntity, expectedRevision: String? = null, approvedCreate: Boolean = false) {
         initialize()
         mutation.withLock {
             val old = dao.getById(task.id)
+            if (approvedCreate && old != null) {
+                require(old.revision == task.revision) { "任务配置已变化，请重新请求审批" }
+                return@withLock // Same approved create was already committed before interruption.
+            }
+            require(expectedRevision == null || old?.revision == expectedRevision) { "任务配置已变化，请重新请求审批" }
             val now = clock()
             fun configuration(t: ScheduledTaskEntity) = listOf(t.name.trim(), t.prompt.trim(), t.assistantId, t.mode,
                 t.targetConversationId, t.targetUserMessageId, t.modelOverrideId, t.notify, t.showPreview,
@@ -124,7 +129,7 @@ class ScheduledTaskRepository(
                 mode = task.mode, targetConversationId = task.targetConversationId,
                 targetUserMessageId = task.targetUserMessageId, modelOverrideId = task.modelOverrideId,
                 notify = task.notify, showPreview = task.showPreview,
-                enabled = task.enabled, updatedAt = now, revision = Uuid.random().toString())
+                enabled = task.enabled, updatedAt = now, revision = if (approvedCreate) task.revision else Uuid.random().toString())
             val updated = base.copy(nextRunAt = if (!base.enabled) null else if (changedSchedule) ScheduledTaskSchedule.next(base, now) else old?.nextRunAt)
             dao.upsert(updated)
             if (old != null) ScheduledTaskScheduler.cancelPending(context, old)
@@ -146,13 +151,18 @@ class ScheduledTaskRepository(
         upsert(task.copy(enabled = enabled, updatedAt = updatedAt))
     }
 
-    suspend fun runNow(id: String): ScheduledTaskEntity {
+    suspend fun runNow(id: String, expectedRevision: String? = null, requestId: String? = null): ScheduledTaskEntity {
         initialize()
         val task = mutation.withLock {
             database.withTransaction {
                 val current = dao.getById(id) ?: error("任务已删除")
+                requestId?.let { token -> runs.get(token)?.let { previous ->
+                    require(previous.taskId == id) { "执行请求不属于该任务" }
+                    return@withTransaction current.copy(activeRunId = previous.id, lastRunStatus = previous.status)
+                } }
+                require(expectedRevision == null || current.revision == expectedRevision) { "任务配置已变化，请重新请求审批" }
                 if (current.activeRunId != null) return@withTransaction current
-                queueLocked(current, Uuid.random().toString(), clock(), true)
+                queueLocked(current, requestId ?: Uuid.random().toString(), clock(), true)
             }
         }
         refreshResumeAlarm()

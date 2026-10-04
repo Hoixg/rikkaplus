@@ -4,6 +4,15 @@ import kotlinx.serialization.json.*
 import me.rerere.rikkahub.data.db.entity.ScheduledTaskEntity
 import org.junit.Assert.*
 import org.junit.Test
+import kotlin.uuid.Uuid
+import me.rerere.ai.core.MessageRole
+import me.rerere.ai.provider.Model
+import me.rerere.ai.provider.ProviderSetting
+import me.rerere.ai.ui.UIMessage
+import me.rerere.ai.ui.UIMessagePart
+import me.rerere.rikkahub.data.datastore.Settings
+import me.rerere.rikkahub.data.model.Conversation
+import me.rerere.rikkahub.data.repository.ScheduledTaskSchedule
 
 class ScheduledTaskToolsTest {
     private fun args(json: String) = Json.parseToJsonElement(json).jsonObject
@@ -78,6 +87,61 @@ class ScheduledTaskToolsTest {
         val newChat = applyExecutionFields(original, args("""{"mode":"NEW_CHAT","model_override_id":null,"show_preview":false}"""))
         assertNull(newChat.targetConversationId); assertNull(newChat.targetUserMessageId); assertFalse(newChat.showPreview)
         assertThrows(IllegalArgumentException::class.java) { applyExecutionFields(original, args("""{"mode":"INVALID"}""")) }
+    }
+
+    @Test fun editingNameEnabledPromptAndClearingBoundsPreservesOtherSettings() {
+        val original = task().copy(scheduleType = "WEEKLY", weekdaysMask = 5,
+            startDate = "2026-10-05", endDate = "2026-10-31", notify = false)
+        val changed = buildTaskChange(args("""{"name":"Renamed","enabled":false,"start_date":null,"prompt":"Changed"}"""), Uuid.random(), original)
+        assertEquals("Renamed", changed.name)
+        assertEquals("Changed", changed.prompt)
+        assertFalse(changed.enabled)
+        assertNull(changed.startDate)
+        assertEquals(original.endDate, changed.endDate)
+        assertEquals(original.weekdaysMask, changed.weekdaysMask)
+        assertFalse(changed.notify)
+        assertEquals(original.id, changed.id)
+    }
+
+    @Test fun emptyPromptIsSupportedOnlyForRegeneration() {
+        val original = task().copy(enabled = false, mode = "REGENERATE", targetConversationId = "conversation", targetUserMessageId = "message")
+        val changed = buildTaskChange(args("""{"prompt":""}"""), Uuid.random(), original)
+        assertEquals("", changed.prompt)
+        ScheduledTaskSchedule.validate(changed, 0, false)
+        assertThrows(IllegalArgumentException::class.java) {
+            ScheduledTaskSchedule.validate(changed.copy(mode = "FOLLOW_UP"), 0, false)
+        }
+    }
+
+    @Test fun fullConfigurationRoundTripsAllEditableSettings() {
+        val original = task().copy(mode = "REGENERATE", scheduleType = "WEEKLY", weekdaysMask = 5,
+            startDate = "2026-10-05", endDate = "2026-10-31", enabled = false, notify = false,
+            showPreview = false, targetConversationId = "conversation", targetUserMessageId = "message", modelOverrideId = "model")
+        assertEquals(taskConfiguration(original), taskConfiguration(taskFromConfiguration(taskConfiguration(original))))
+    }
+
+    @Test fun scheduledExecutionRejectsEveryMutationAndAllowsReads() {
+        for (action in listOf("create", "update", "delete", "set_enabled", "cancel_run", "run_now")) {
+            assertThrows(IllegalArgumentException::class.java) { checkScheduledActionAllowed(action, true) }
+            checkScheduledActionAllowed(action, false)
+        }
+        for (action in scheduledReadActions) checkScheduledActionAllowed(action, true)
+    }
+
+    @Test fun targetsRequireOwnedConversationSelectedUserMessageAndConfiguredModel() {
+        val assistantId = Uuid.random()
+        val user = UIMessage(role = MessageRole.USER, parts = listOf(UIMessagePart.Text("Check this")))
+        val reply = UIMessage(role = MessageRole.ASSISTANT, parts = listOf(UIMessagePart.Text("Reply")))
+        val conversation = Conversation.ofId(Uuid.random(), assistantId).updateCurrentMessages(listOf(user, reply))
+        val model = Model(modelId = "test", displayName = "Test")
+        val settings = Settings(providers = listOf(ProviderSetting.OpenAI(models = listOf(model))))
+        val valid = task().copy(assistantId = assistantId.toString(), mode = "REGENERATE",
+            targetConversationId = conversation.id.toString(), targetUserMessageId = user.id.toString(), modelOverrideId = model.id.toString())
+        validateTaskTargetSelection(valid, conversation, settings)
+        assertThrows(IllegalArgumentException::class.java) { validateTaskTargetSelection(valid, null, settings) }
+        assertThrows(IllegalArgumentException::class.java) { validateTaskTargetSelection(valid.copy(assistantId = Uuid.random().toString()), conversation, settings) }
+        assertThrows(IllegalArgumentException::class.java) { validateTaskTargetSelection(valid.copy(targetUserMessageId = reply.id.toString()), conversation, settings) }
+        assertThrows(IllegalArgumentException::class.java) { validateTaskTargetSelection(valid, conversation, Settings()) }
     }
 
 }

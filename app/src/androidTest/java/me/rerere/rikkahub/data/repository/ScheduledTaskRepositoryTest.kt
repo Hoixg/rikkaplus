@@ -64,6 +64,31 @@ class ScheduledTaskRepositoryTest {
         assertNull(repository.getById(task.id))
         assertNull(alarm(task.id))
     }
+
+    @Test fun approvalSnapshotCannotOverwriteAnEditedOrDeletedTask() = runBlocking {
+        val original = create()
+        repository.upsert(original.copy(prompt = "Manual edit"))
+        assertTrue(runCatching { repository.upsert(original.copy(prompt = "AI edit"), expectedRevision = original.revision) }.isFailure)
+        assertEquals("Manual edit", repository.getById(original.id)!!.prompt)
+        assertTrue(runCatching { repository.runNow(original.id, original.revision, "stale-run") }.isFailure)
+        repository.delete(repository.getById(original.id)!!)
+        assertTrue(runCatching { repository.upsert(original, expectedRevision = original.revision) }.isFailure)
+        assertNull(repository.getById(original.id))
+    }
+
+    @Test fun approvedCreateAndManualRunAreIdempotentAcrossRecovery() = runBlocking {
+        val original = task()
+        repository.upsert(original, approvedCreate = true)
+        val first = repository.getById(original.id)!!
+        repository.upsert(original, approvedCreate = true)
+        assertEquals(first, repository.getById(original.id))
+        val run = repository.runNow(original.id, first.revision, "approved-request")
+        repository.finish(run, ScheduledTaskRunStatus.SUCCESS)
+        val replay = repository.runNow(original.id, first.revision, "approved-request")
+        assertEquals("SUCCESS", replay.lastRunStatus)
+        assertNull(repository.getById(original.id)!!.activeRunId)
+        assertEquals(1, repository.history(original.id).size)
+    }
     @Test fun startupCancelsLegacyManualRequests() = runBlocking {
         val task = create()
         val request = OneTimeWorkRequestBuilder<me.rerere.rikkahub.worker.ScheduledTaskWorker>()
