@@ -44,7 +44,14 @@ data class GeneratedImage(
 
 private fun GenMediaEntity.toGeneratedImage(filesManager: FilesManager): GeneratedImage {
     val imagesDir = filesManager.getImagesDir()
-    val fullPath = File(imagesDir, this.path.removePrefix("images/")).absolutePath
+    val name = this.path.removePrefix("images/")
+    val file = File(imagesDir, name)
+    // 旧版本直接把含 "/" 的模型名拼进文件名，图片实际落在子目录里，而记录只存了最后一段
+    val fullPath = if (file.exists() || '/' !in modelId) {
+        file.absolutePath
+    } else {
+        File(imagesDir, "${createAt}_${modelId.substringBeforeLast('/')}/$name").absolutePath
+    }
 
     return GeneratedImage(
         id = this.id,
