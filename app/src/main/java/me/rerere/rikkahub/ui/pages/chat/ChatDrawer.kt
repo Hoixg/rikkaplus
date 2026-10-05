@@ -64,9 +64,7 @@ import me.rerere.hugeicons.stroke.InLove
 import me.rerere.hugeicons.stroke.LanguageCircle
 import me.rerere.hugeicons.stroke.MagicWand01
 import me.rerere.hugeicons.stroke.PencilEdit01
-import me.rerere.hugeicons.stroke.Search01
 import me.rerere.hugeicons.stroke.Settings03
-import me.rerere.hugeicons.stroke.TransactionHistory
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.Screen
 import me.rerere.rikkahub.data.datastore.Settings
@@ -238,8 +236,6 @@ fun ChatDrawerContent(
                     )
                 }
             }
-
-            DrawerActions(navController = navController)
 
             FolderBar(
                 folders = folders,
@@ -685,71 +681,6 @@ fun ChatDrawerContent(
                         )
                     }
                 }
-            }
-        }
-    }
-}
-
-@Composable
-private fun DrawerActions(navController: Navigator) {
-    Column {
-        // 搜索入口
-        Surface(
-            onClick = { navController.navigate(Screen.MessageSearch) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 4.dp),
-            shape = MaterialTheme.shapes.medium,
-            color = MaterialTheme.colorScheme.surfaceContainerLow,
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Icon(
-                    imageVector = HugeIcons.Search01,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp),
-                    tint = MaterialTheme.colorScheme.onSurface,
-                )
-                Text(
-                    text = stringResource(R.string.chat_page_search_chats),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-            }
-        }
-
-        // 历史记录入口
-        Surface(
-            onClick = { navController.navigate(Screen.History) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 4.dp),
-            shape = MaterialTheme.shapes.medium,
-            color = MaterialTheme.colorScheme.surfaceContainerLow,
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Icon(
-                    imageVector = HugeIcons.TransactionHistory,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp),
-                    tint = MaterialTheme.colorScheme.onSurface,
-                )
-                Text(
-                    text = stringResource(R.string.chat_page_history),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
             }
         }
     }

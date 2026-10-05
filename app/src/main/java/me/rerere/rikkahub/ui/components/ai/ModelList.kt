@@ -747,13 +747,6 @@ private fun ModelSectionHeader(
                     color = MaterialTheme.colorScheme.primary,
                 )
             } else {
-                Icon(
-                    imageVector = if (collapsed) HugeIcons.ArrowRight01 else HugeIcons.ArrowDown01,
-                    contentDescription = null,
-                    modifier = Modifier.size(16.dp),
-                    tint = MaterialTheme.colorScheme.primary,
-                )
-
                 Surface(
                     onClick = { onProviderClick(providerSetting) },
                     color = Color.Transparent,
@@ -771,6 +764,13 @@ private fun ModelSectionHeader(
                     providerSetting = providerSetting,
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.primary,
+                )
+
+                Icon(
+                    imageVector = if (collapsed) HugeIcons.ArrowRight01 else HugeIcons.ArrowDown01,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                    tint = MaterialTheme.colorScheme.primary,
                 )
             }
         }
