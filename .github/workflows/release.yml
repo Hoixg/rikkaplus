@@ -3,6 +3,7 @@ name: Release APKs
 on:
   push:
     tags:
+      - '2.5.*'
       - '2.6.*'
 
 permissions:
