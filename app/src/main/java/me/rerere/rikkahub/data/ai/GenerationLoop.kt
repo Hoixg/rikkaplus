@@ -8,6 +8,8 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withTimeoutOrNull
+import me.rerere.rikkahub.data.ai.tools.executeToolsInOrder
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flow
@@ -94,6 +96,7 @@ class GenerationLoop(
         memories: List<AssistantMemory>? = null,
         tools: List<Tool> = emptyList(),
         maxSteps: Int = ToolRuntimeLimits.maxToolSteps,
+        maxToolCalls: Int? = null,
         processingStatus: MutableStateFlow<String?> = MutableStateFlow(null),
         conversationSystemPrompt: String? = null,
         compactionContext: String? = null,
@@ -102,11 +105,13 @@ class GenerationLoop(
         conversationLorebookIds: Set<Uuid> = emptySet(),
         workspaceCwd: String? = null,
         shouldYieldAfterToolResults: () -> Boolean = { false },
+        resetTurnTracker: Boolean = true,
     ): Flow<GenerationChunk> = flow {
         val provider = model.findRequestProvider(settings.providers) ?: error("Provider not found")
         val providerImpl = providerManager.getProviderByType(provider)
         val turnStartedAtMs = android.os.SystemClock.elapsedRealtime()
-        AgentTurnTracker.reset()
+        if (resetTurnTracker) AgentTurnTracker.reset()
+        val remainingToolCalls = java.util.concurrent.atomic.AtomicInteger(maxToolCalls ?: Int.MAX_VALUE)
 
         var messages: List<UIMessage> = messages
 
@@ -259,50 +264,19 @@ class GenerationLoop(
             }
 
             // Handle tools (execute approved tools, handle denied tools)
-            val executedTools = arrayListOf<UIMessagePart.Tool>()
-            var budgetExhausted = false
-            toolsToProcess.forEach { tool ->
-                if (tool.isExecuted) {
-                    executedTools += tool
-                    return@forEach
-                }
-                when (tool.approvalState) {
-                    is ToolApprovalState.Denied -> {
-                        // Tool was denied by user
-                        val reason = (tool.approvalState as ToolApprovalState.Denied).reason
-                        executedTools += tool.copy(
-                            output = listOf(
-                                UIMessagePart.Text(
-                                    json.encodeToString(
-                                        buildJsonObject {
-                                            put(
-                                                "error",
-                                                JsonPrimitive("Tool execution denied by user. Reason: ${reason.ifBlank { "No reason provided" }}")
-                                            )
-                                        }
-                                    )
-                                )
-                            )
-                        )
+            val budgetExhausted = AtomicBoolean(false)
+            val executedTools = executeToolsInOrder(toolsToProcess, { it.toolName }) { tool ->
+                if (budgetExhausted.get()) return@executeToolsInOrder null
+                val executedTools = arrayListOf<UIMessagePart.Tool>()
+                run single@ {
+                    if (tool.isExecuted) {
+                        executedTools += tool
+                        return@single
                     }
-
-                    is ToolApprovalState.Answered -> {
-                        // Tool was answered by user (e.g., ask_user tool)
-                        val answer = (tool.approvalState as ToolApprovalState.Answered).answer
-                        executedTools += tool.copy(
-                            output = listOf(
-                                UIMessagePart.Text(answer)
-                            )
-                        )
-                    }
-
-                    is ToolApprovalState.Pending -> {
-                        // Should not reach here, but just in case
-                    }
-
-                    else -> {
-                        // Auto or Approved - execute the tool
-                        HardlineCommandGuard.checkTool(tool.toolName, tool.input)?.let { reason ->
+                    when (tool.approvalState) {
+                        is ToolApprovalState.Denied -> {
+                            // Tool was denied by user
+                            val reason = (tool.approvalState as ToolApprovalState.Denied).reason
                             executedTools += tool.copy(
                                 output = listOf(
                                     UIMessagePart.Text(
@@ -310,93 +284,132 @@ class GenerationLoop(
                                             buildJsonObject {
                                                 put(
                                                     "error",
-                                                    JsonPrimitive(
-                                                        "blocked by safety floor (hardline): $reason. " +
-                                                            "This command cannot run via the agent under any circumstances."
-                                                    )
+                                                    JsonPrimitive("Tool execution denied by user. Reason: ${reason.ifBlank { "No reason provided" }}")
                                                 )
                                             }
                                         )
                                     )
                                 )
                             )
-                            return@forEach
                         }
-                        val remainingBudgetMs = remainingTurnBudgetMs(
-                            startedAtMs = turnStartedAtMs,
-                            budgetMs = ToolRuntimeLimits.turnBudgetMs,
-                        )
-                        if (remainingBudgetMs <= 0L) {
-                            budgetExhausted = true
+
+                        is ToolApprovalState.Answered -> {
+                            // Tool was answered by user (e.g., ask_user tool)
+                            val answer = (tool.approvalState as ToolApprovalState.Answered).answer
                             executedTools += tool.copy(
                                 output = listOf(
-                                    UIMessagePart.Text(
-                                        json.encodeToString(
-                                            buildJsonObject {
-                                                put(
-                                                    "error",
-                                                    JsonPrimitive("turn_budget_exceeded")
-                                                )
-                                            }
-                                        )
-                                    )
+                                    UIMessagePart.Text(answer)
                                 )
                             )
-                            break
                         }
-                        runCatching {
-                            val toolDef = tools.find { toolDef -> toolDef.name == tool.toolName }
-                                ?: error("Tool ${tool.toolName} not found")
-                            val args = runCatching {
-                                json.parseToJsonElement(tool.input.ifBlank { "{}" })
-                            }.getOrElse {
-                                error("Invalid tool arguments JSON for ${tool.toolName}: ${it.message}")
+
+                        is ToolApprovalState.Pending -> {
+                            // Should not reach here, but just in case
+                        }
+
+                        else -> {
+                            // Auto or Approved - execute the tool
+                            if (maxToolCalls != null && remainingToolCalls.getAndDecrement() <= 0) {
+                                executedTools += tool.copy(output = listOf(UIMessagePart.Text("{\"error\":\"tool_call_limit_exceeded\"}")))
+                                return@single
                             }
-                            Log.i(TAG, "generateText: executing tool ${toolDef.name} with args: $args")
-                            val result = withTimeoutOrNull(remainingBudgetMs) {
-                                executeToolWithApproval(tool, toolDef, args)
-                            } ?: listOf(
-                                UIMessagePart.Text(
-                                    json.encodeToString(
-                                        buildJsonObject {
-                                            put("error", JsonPrimitive("tool_timeout"))
-                                            put(
-                                                "timeout_ms",
-                                                JsonPrimitive(remainingBudgetMs.toString())
+                            HardlineCommandGuard.checkTool(tool.toolName, tool.input)?.let { reason ->
+                                executedTools += tool.copy(
+                                    output = listOf(
+                                        UIMessagePart.Text(
+                                            json.encodeToString(
+                                                buildJsonObject {
+                                                    put(
+                                                        "error",
+                                                        JsonPrimitive(
+                                                            "blocked by safety floor (hardline): $reason. " +
+                                                                "This command cannot run via the agent under any circumstances."
+                                                        )
+                                                    )
+                                                }
                                             )
-                                        }
+                                        )
                                     )
                                 )
+                                return@single
+                            }
+                            val remainingBudgetMs = remainingTurnBudgetMs(
+                                startedAtMs = turnStartedAtMs,
+                                budgetMs = ToolRuntimeLimits.turnBudgetMs,
                             )
-                            val hasShellAccess = tools.any { it.name == "workspace_shell" }
-                            executedTools += tool.copy(
-                                output = maybeTruncateToolOutput(tool.toolCallId, result, hasShellAccess)
-                            )
-                        }.onFailure {
-                            // 取消必须向上传播，否则停止生成会被误报为工具执行错误
-                            if (it is CancellationException) throw it
-                            it.printStackTrace()
-                            executedTools += tool.copy(
-                                output = listOf(
+                            if (remainingBudgetMs <= 0L) {
+                                budgetExhausted.set(true)
+                                executedTools += tool.copy(
+                                    output = listOf(
+                                        UIMessagePart.Text(
+                                            json.encodeToString(
+                                                buildJsonObject {
+                                                    put(
+                                                        "error",
+                                                        JsonPrimitive("turn_budget_exceeded")
+                                                    )
+                                                }
+                                            )
+                                        )
+                                    )
+                                )
+                                return@single
+                            }
+                            runCatching {
+                                val toolDef = tools.find { toolDef -> toolDef.name == tool.toolName }
+                                    ?: error("Tool ${tool.toolName} not found")
+                                val args = runCatching {
+                                    json.parseToJsonElement(tool.input.ifBlank { "{}" })
+                                }.getOrElse {
+                                    error("Invalid tool arguments JSON for ${tool.toolName}: ${it.message}")
+                                }
+                                Log.i(TAG, "generateText: executing tool ${toolDef.name} with args: $args")
+                                val result = withTimeoutOrNull(remainingBudgetMs) {
+                                    executeToolWithApproval(tool, toolDef, args)
+                                } ?: listOf(
                                     UIMessagePart.Text(
                                         json.encodeToString(
                                             buildJsonObject {
+                                                put("error", JsonPrimitive("tool_timeout"))
                                                 put(
-                                                    "error",
-                                                    JsonPrimitive(buildString {
-                                                        append("[${it.javaClass.name}] ${it.message}")
-                                                        append("\n${it.stackTraceToString()}")
-                                                    })
+                                                    "timeout_ms",
+                                                    JsonPrimitive(remainingBudgetMs.toString())
                                                 )
                                             }
                                         )
                                     )
                                 )
-                            )
+                                val hasShellAccess = tools.any { it.name == "workspace_shell" }
+                                executedTools += tool.copy(
+                                    output = maybeTruncateToolOutput(tool.toolCallId, result, hasShellAccess)
+                                )
+                            }.onFailure {
+                                // 取消必须向上传播，否则停止生成会被误报为工具执行错误
+                                if (it is CancellationException) throw it
+                                it.printStackTrace()
+                                executedTools += tool.copy(
+                                    output = listOf(
+                                        UIMessagePart.Text(
+                                            json.encodeToString(
+                                                buildJsonObject {
+                                                    put(
+                                                        "error",
+                                                        JsonPrimitive(buildString {
+                                                            append("[${it.javaClass.name}] ${it.message}")
+                                                            append("\n${it.stackTraceToString()}")
+                                                        })
+                                                    )
+                                                }
+                                            )
+                                        )
+                                    )
+                                )
+                            }
                         }
                     }
                 }
-            }
+                executedTools.firstOrNull()
+            }.filterNotNull()
 
             if (executedTools.isEmpty()) {
                 // No results to add (all tools were pending)
@@ -438,7 +451,7 @@ class GenerationLoop(
                 Log.w(TAG, "generateText: turn budget exhausted after tool execution")
                 break
             }
-            if (budgetExhausted) {
+            if (budgetExhausted.get()) {
                 Log.w(TAG, "generateText: turn budget reached before queued tools")
                 break
             }

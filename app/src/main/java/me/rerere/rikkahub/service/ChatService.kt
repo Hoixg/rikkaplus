@@ -52,6 +52,11 @@ import me.rerere.rikkahub.data.ai.GenerationChunk
 import me.rerere.rikkahub.data.ai.GenerationLoop
 import me.rerere.rikkahub.data.ai.TranslationHandler
 import me.rerere.rikkahub.data.ai.mcp.McpManager
+import me.rerere.rikkahub.data.ai.tools.*
+import me.rerere.rikkahub.data.ai.limits.ToolRuntimeLimits
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.currentCoroutineContext
 import me.rerere.rikkahub.data.ai.tools.ChatToolFactory
 import me.rerere.rikkahub.data.ai.tools.InvalidMcpServerNamesException
 import me.rerere.rikkahub.data.ai.tools.shouldUseExternalWebSearch
@@ -191,6 +196,7 @@ private val outputTransformers by lazy {
 
 class ChatService(
     private val scheduledTaskRepository: ScheduledTaskRepository,
+    val subagentManager: SubagentManager,
     private val context: Application,
     private val appScope: AppScope,
     private val appEventBus: AppEventBus,
@@ -207,6 +213,83 @@ class ChatService(
     private val workspaceRepository: WorkspaceRepository,
     private val folderRepository: FolderRepository,
 ) {
+    private val unavailableConversations = java.util.concurrent.ConcurrentHashMap.newKeySet<Uuid>()
+    private val deletedConversations = java.util.concurrent.ConcurrentHashMap.newKeySet<Uuid>()
+    private val stoppingConversations = java.util.concurrent.ConcurrentHashMap.newKeySet<Uuid>()
+
+    private fun requireWritableConversation(conversation: Conversation) {
+        check(conversation.id !in unavailableConversations && conversation.id !in deletedConversations) { "Conversation is being removed or moved" }
+        conversation.parentConversationId?.let { parentId ->
+            check(parentId !in unavailableConversations && parentId !in deletedConversations && parentId !in stoppingConversations) {
+                "Parent conversation is stopping, being removed or moved"
+            }
+        }
+    }
+
+    private val subagentRunner by lazy {
+        SubagentRunner(context, generationLoop, chatToolFactory, templateTransformer, sessionManager,
+            conversationRepo, memoryRepository, workspaceRepository, subagentManager, ::saveConversation)
+    }
+
+    private fun childAgentTools(settings: Settings, assistant: Assistant, model: Model, conversation: Conversation, scheduled: Boolean): List<me.rerere.ai.core.Tool> {
+        if (!assistant.enableSubagents || ModelAbility.TOOL !in model.abilities || conversation.parentConversationId != null) return emptyList()
+        fun parseId(raw: String) = runCatching { Uuid.parse(raw) }.getOrNull()
+        return listOf(
+            createSubagentTool { description, prompt, async, timeoutMs, maxToolCalls ->
+                val config = SubagentExecutionConfig(
+                    settings, assistant, model, conversation,
+                    timeoutMs = minOf(timeoutMs ?: Long.MAX_VALUE, ToolRuntimeLimits.turnBudgetMs).coerceAtLeast(1),
+                    maxSteps = minOf(32L, (maxToolCalls?.toLong()?.plus(1) ?: 32L)).toInt(),
+                    maxToolCalls = maxToolCalls,
+                    scheduledExecution = scheduled,
+                )
+                subagentManager.spawn(config, description, prompt, async, subagentRunner::run)
+            },
+            createFollowupAgentTool { raw, message ->
+                parseId(raw)?.let { subagentManager.followup(conversation.id, it, message) }
+                    ?: SubagentManager.errorJson(AGENT_SESSION_NOT_FOUND, "Invalid child session ID")
+            },
+            createPollAgentTool { raw -> parseId(raw)?.let { subagentManager.poll(conversation.id, it) }
+                ?: SubagentManager.errorJson("AGENT_TASK_NOT_FOUND", "Invalid task ID") },
+            createCancelAgentTool { raw -> parseId(raw)?.let { subagentManager.cancel(conversation.id, it) }
+                ?: SubagentManager.errorJson("AGENT_TASK_NOT_FOUND", "Invalid task ID") },
+            createListAgentsTool { subagentManager.list(conversation.id) },
+        )
+    }
+
+    /** Stop writers before deleting rows; child finalizers cannot resurrect deleted conversations. */
+    suspend fun deleteConversationTree(conversation: Conversation) = withContext(NonCancellable) {
+        unavailableConversations.add(conversation.id)
+        if (conversation.parentConversationId != null) subagentManager.forgetChild(conversation.id)
+        stopGeneration(conversation.id)
+        subagentManager.stopParent(conversation.id, forget = true)
+        conversationRepo.getSubconversationsOfParentOnce(conversation.id).forEach { child ->
+            unavailableConversations.add(child.id)
+            subagentManager.forgetChild(child.id)
+            stopGeneration(child.id)
+            deleteStoppedConversation(child)
+            java.io.File(context.filesDir, "tool_outputs/${child.id}.md").delete()
+        }
+        deleteStoppedConversation(conversation)
+        if (conversation.parentConversationId != null) java.io.File(context.filesDir, "tool_outputs/${conversation.id}.md").delete()
+    }
+
+    private suspend fun deleteStoppedConversation(conversation: Conversation) {
+        // Serialize with any late title/translation save that was already in flight.
+        sessionManager.withSession(conversation.id) { session ->
+            session.withPersistenceLock {
+                deletedConversations.add(conversation.id)
+                conversationRepo.deleteConversation(conversation)
+            }
+        }
+    }
+
+    suspend fun deleteConversationsOfAssistant(assistantId: Uuid) {
+        conversationRepo.getConversationsOfAssistant(assistantId).first().forEach { deleteConversationTree(it) }
+        // Older/restored backups may contain orphaned children.
+        conversationRepo.deleteConversationOfAssistant(assistantId)
+    }
+
     private val scheduledCompletions = java.util.concurrent.ConcurrentHashMap<Uuid, CompletableDeferred<String>>()
     private val scheduledFailures = java.util.concurrent.ConcurrentHashMap<Uuid, Throwable>()
     private val scheduledWorkerConversations = java.util.concurrent.ConcurrentHashMap.newKeySet<Uuid>()
@@ -237,6 +320,7 @@ class ChatService(
                     session.cancelJobs()
                 }
             }
+            subagentManager.stopParent(id)
             jobs.forEach { it.join() }
             if (session.getJob() == null) finishInterruptedPendingTools(id)
         } finally {
@@ -255,6 +339,9 @@ class ChatService(
             val session = sessionManager.getOrCreate(id)
             session.initialize { conversationRepo.getConversationById(id) ?: error("目标会话已删除") }
             require(session.state.value.assistantId == assistant.id) { "目标会话不属于任务助手" }
+            requireWritableConversation(session.state.value)
+            require(session.state.value.parentConversationId == null) { "定时任务不能使用子会话" }
+            if (id in stoppingConversations) return null
             if (scheduledTaskRepository.getActiveByConversation(id.toString()) != null) return null
             if (!session.reserveForScheduledTask(scheduledReservations, finishingScheduled + cancellingScheduled)) return null
             session.state.value
@@ -405,11 +492,23 @@ class ChatService(
     val generationDoneFlow: SharedFlow<Uuid> = _generationDoneFlow.asSharedFlow()
 
     fun cleanup() = runCatching {
+        subagentManager.cleanup()
         scheduledApprovals.cancelAll()
         sessionManager.cleanup()
     }
 
     private fun onSessionGenerationFinished(session: ConversationSession, cause: Throwable?) {
+        if (session.state.value.parentConversationId != null) {
+            if (cause != null) session.messageQueue.pause()
+            if (session.state.value.currentMessages.any { message ->
+                    message.parts.any { it is UIMessagePart.Tool && it.isPending }
+                }) {
+                session.messageQueue.failReplyWaiters(context.getString(R.string.chat_page_voice_tool_approval))
+            }
+            dispatchNextQueuedMessage(session.id)
+            appScope.launch { appEventBus.emit(AppEvent.ChatTurnFinished(session.id)) }
+            return
+        }
         val completedConversation = session.state.value
         val scheduledFailure = scheduledFailures.remove(session.id) ?: cause
         scheduledWorkerConversations.remove(session.id)
@@ -601,6 +700,7 @@ class ChatService(
         if (content.isEmptyInputMessage()) return
         val session = sessionManager.getOrCreate(conversationId)
         synchronized(session) {
+            requireWritableConversation(session.state.value)
             if (session.messageQueue.state.value.messages.isEmpty()) session.messageQueue.resume()
             session.messageQueue.enqueue(content, answer)
             dispatchNextQueuedMessage(conversationId)
@@ -612,6 +712,7 @@ class ChatService(
         val session = sessionManager.getOrCreate(conversationId)
         val reply = CompletableDeferred<String?>()
         synchronized(session) {
+            requireWritableConversation(session.state.value)
             check(text.isNotBlank()) { context.getString(R.string.chat_page_voice_empty) }
             check(!session.messageQueue.state.value.paused || session.messageQueue.state.value.messages.isEmpty()) {
                 context.getString(R.string.chat_page_voice_resume_queue)
@@ -629,6 +730,8 @@ class ChatService(
     private fun dispatchNextQueuedMessage(conversationId: Uuid): Job? {
         val session = sessionManager.get(conversationId) ?: return null
         synchronized(session) {
+            if (conversationId in unavailableConversations || conversationId in stoppingConversations ||
+                session.state.value.parentConversationId?.let { it in unavailableConversations || it in stoppingConversations || it in deletedConversations } == true) return null
             // A pending tool approval is still part of the current turn.
             if (conversationId in cancellingScheduled || conversationId in scheduledReservations || conversationId in finishingScheduled || session.getJob() != null || session.state.value.currentMessages.any { message ->
                     message.parts.any { it is UIMessagePart.Tool && it.isPending }
@@ -653,6 +756,8 @@ class ChatService(
             var submittedInputId: Uuid? = null
             var inputPersisted = false
             try {
+                session.initialize { conversationRepo.getConversationById(conversationId) ?: session.state.value }
+                requireWritableConversation(session.state.value)
                 finishInterruptedPendingTools(conversationId)
 
                 val currentConversation = session.state.value
@@ -771,6 +876,7 @@ class ChatService(
         regenerateAssistantMsg: Boolean = true
     ) = synchronized(sessionManager.getOrCreate(conversationId)) {
         val session = sessionManager.getOrCreate(conversationId)
+        requireWritableConversation(session.state.value)
         val previousJob = session.getJob()
 
         val job = launchGenerationJob(
@@ -779,6 +885,8 @@ class ChatService(
         ) {
             try {
                 previousJob?.join()
+                session.initialize { conversationRepo.getConversationById(conversationId) ?: session.state.value }
+                requireWritableConversation(session.state.value)
                 val conversation = session.state.value
 
                 if (message.role == MessageRole.USER) {
@@ -823,6 +931,7 @@ class ChatService(
         editedPrompt: String? = null,
     ) = synchronized(sessionManager.getOrCreate(conversationId)) {
         val session = sessionManager.getOrCreate(conversationId)
+        requireWritableConversation(session.state.value)
         val previousJob = session.getJob()
         val decisionAt = System.currentTimeMillis()
 
@@ -838,6 +947,8 @@ class ChatService(
         ) {
             try {
                 afterPreviousGeneration(previousJob) {
+                    session.initialize { conversationRepo.getConversationById(conversationId) ?: session.state.value }
+                    requireWritableConversation(session.state.value)
                     val conversation = session.state.value
                     // Ignore double taps and stale approvals for completed or inactive tools.
                     if (conversation.currentMessages.none { message ->
@@ -899,8 +1010,13 @@ class ChatService(
         val task = scheduledTaskRepository.getActiveByConversation(conversationId.toString())
         task?.activeRunId?.let { scheduledRunOwners[conversationId] = it }
         if (task == null) handleMessageCompleteUnbounded(conversationId, messageRange)
-        else kotlinx.coroutines.withTimeout(scheduledTaskRepository.remainingGenerationMs(task)) {
-            handleMessageCompleteUnbounded(conversationId, messageRange)
+        else try {
+            kotlinx.coroutines.withTimeout(scheduledTaskRepository.remainingGenerationMs(task)) {
+                handleMessageCompleteUnbounded(conversationId, messageRange)
+                subagentManager.awaitChildren(conversationId)
+            }
+        } finally {
+            withContext(NonCancellable) { subagentManager.stopParent(conversationId) }
         }
     }
 
@@ -910,6 +1026,9 @@ class ChatService(
     ) {
         val scheduledTask = scheduledTaskRepository.getActiveByConversation(conversationId.toString())
         val initialConversation = getConversationFlow(conversationId).value
+        currentCoroutineContext().ensureActive()
+        requireWritableConversation(initialConversation)
+        subagentManager.resumeParent(conversationId)
         val settings = settingsStore.settingsFlow.first()
         val assistant = settings.getAssistantById(initialConversation.assistantId)
             ?: if (scheduledTask != null) error("任务所属助手已删除") else settings.getCurrentAssistant()
@@ -958,6 +1077,7 @@ class ChatService(
                     workspaceCwd = conversation.workspaceCwd,
                     getMessages = { getConversationFlow(conversationId).value.currentMessages },
                     scheduledExecution = scheduledTask != null,
+                    subagentTools = childAgentTools(settings, assistant, requestModel, conversation, scheduledTask != null),
                 )
             } catch (error: InvalidMcpServerNamesException) {
                 if (scheduledTask != null) scheduledFailures[conversationId] = error
@@ -1562,8 +1682,8 @@ class ChatService(
         if (conversation.id != conversationId) return
         val session = sessionManager.getOrCreate(conversationId)
         checkFilesDelete(conversation, session.state.value)
-        session.updateConversation(conversation)
-        observeScheduledApprovals(conversation)
+        val updated = session.updateFromGeneration(conversation)
+        observeScheduledApprovals(updated)
     }
 
     fun updateConversationState(conversationId: Uuid, update: (Conversation) -> Conversation) {
@@ -1593,13 +1713,41 @@ class ChatService(
         )
     }
 
+    suspend fun updateConversationChatModel(conversationId: Uuid, modelId: Uuid) {
+        sessionManager.withSession(conversationId) { session ->
+            session.initialize { conversationRepo.getConversationById(conversationId) ?: error("Conversation not found") }
+            session.withPersistenceLock {
+                session.updateMetadata(
+                    update = { conversation ->
+                        requireWritableConversation(conversation)
+                        check(conversation.parentConversationId != null) { "Only child chats can change their inherited model" }
+                        conversation.copy(modelOverrideId = modelId)
+                    },
+                    persist = { conversationRepo.updateConversationModelOverride(conversationId, modelId) },
+                )
+            }
+        }
+    }
+
     suspend fun moveConversationToAssistant(conversationId: Uuid, assistantId: Uuid) {
-        updateConversationMetadata(
-            conversationId = conversationId,
-            // 文件夹属于助手，移动后清除原助手的文件夹归属。
-            update = { it.copy(assistantId = assistantId, folderId = null) },
-            persist = { conversationRepo.updateConversationAssistant(conversationId, it.assistantId) },
-        )
+        val persisted = conversationRepo.getConversationById(conversationId) ?: return
+        requireWritableConversation(persisted)
+        unavailableConversations.add(conversationId)
+        try {
+            stopGeneration(conversationId)
+            subagentManager.stopParent(conversationId, forget = true)
+            conversationRepo.getSubconversationsOfParentOnce(conversationId).forEach { child ->
+                sessionManager.get(child.id)?.let { it.updateConversation(it.state.value.copy(assistantId = assistantId, folderId = null)) }
+            }
+            updateConversationMetadata(
+                conversationId = conversationId,
+                // 文件夹属于助手，移动后清除原助手的文件夹归属。
+                update = { it.copy(assistantId = assistantId, folderId = null) },
+                persist = { conversationRepo.moveConversationTreeToAssistant(conversationId, it.assistantId) },
+            )
+        } finally {
+            unavailableConversations.remove(conversationId)
+        }
     }
 
     /**
@@ -1658,12 +1806,13 @@ class ChatService(
     suspend fun saveConversation(conversationId: Uuid, conversation: Conversation) {
         val session = sessionManager.getOrCreate(conversationId)
         session.withPersistenceLock {
+            if (conversationId in deletedConversations) return@withPersistenceLock
             val exists = conversationRepo.existsConversationById(conversation.id)
             if (!exists && conversation.title.isBlank() && conversation.messageNodes.isEmpty()) {
                 return@withPersistenceLock // 新会话且为空时不保存
             }
 
-            val updatedConversation = conversation.copy()
+            val updatedConversation = session.preserveChildModelOverride(conversation)
             updateConversation(conversationId, updatedConversation)
 
             if (!exists) {
@@ -1752,6 +1901,7 @@ class ChatService(
         if (parts.isEmptyInputMessage()) return
 
         val currentConversation = getConversationFlow(conversationId).value
+        requireWritableConversation(currentConversation)
         val settings = settingsStore.settingsFlow.first()
         val assistant = settings.getAssistantById(currentConversation.assistantId)
             ?: settings.getCurrentAssistant()
@@ -1821,6 +1971,7 @@ class ChatService(
         selectIndex: Int
     ) {
         val currentConversation = getConversationFlow(conversationId).value
+        requireWritableConversation(currentConversation)
         val targetNode = currentConversation.messageNodes.firstOrNull { it.id == nodeId }
             ?: throw IllegalStateException("Message node not found")
 
@@ -1849,6 +2000,7 @@ class ChatService(
         failIfMissing: Boolean = true,
     ) {
         val currentConversation = getConversationFlow(conversationId).value
+        requireWritableConversation(currentConversation)
         val updatedConversation = buildConversationAfterMessageDelete(currentConversation, messageId)
 
         if (updatedConversation == null) {
@@ -1936,14 +2088,26 @@ class ChatService(
     }
 
     // 停止当前会话生成任务（不清理会话缓存）
-    suspend fun stopGeneration(conversationId: Uuid) {
-        val session = sessionManager.get(conversationId) ?: return
-        val jobs = synchronized(session) {
-            session.messageQueue.pause()
-            session.cancelJobs()
+    suspend fun stopGeneration(conversationId: Uuid): Unit = withContext(NonCancellable) {
+        stoppingConversations.add(conversationId)
+        val session = sessionManager.get(conversationId)
+        try {
+            val jobs = session?.let { synchronized(it) {
+                session.messageQueue.pause()
+                session.cancelJobs()
+            } }.orEmpty()
+            subagentManager.stopParent(conversationId)
+            subagentManager.stopChild(conversationId)
+            jobs.forEach { it.join() }
+            if (session != null) finishInterruptedPendingTools(conversationId)
+            // User turns in child chats are ordinary session jobs, separate from tool handles.
+            val children = conversationRepo.getSubconversationsOfParentOnce(conversationId).map { it.id } +
+                sessionManager.snapshot().filter { it.state.value.parentConversationId == conversationId }.map { it.id }
+            children.distinct().forEach { childId -> stopGeneration(childId) }
+            scheduledTaskRepository.requestDispatch()
+        } finally {
+            session?.messageQueue?.pause()
+            stoppingConversations.remove(conversationId)
         }
-        jobs.forEach { it.join() }
-        finishInterruptedPendingTools(conversationId)
-        scheduledTaskRepository.requestDispatch()
     }
 }

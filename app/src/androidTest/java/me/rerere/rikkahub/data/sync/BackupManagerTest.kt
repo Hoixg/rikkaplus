@@ -112,6 +112,29 @@ class BackupManagerTest {
         assertEquals("live", probe(liveDatabase))
     }
 
+    @Test fun backupRestorePreservesParentChildLinksAndEntireTrace() = runBlocking {
+        val parentId = kotlin.uuid.Uuid.random().toString()
+        val childId = kotlin.uuid.Uuid.random().toString()
+        val dao = liveDatabase.conversationDao()
+        dao.insert(me.rerere.rikkahub.data.db.entity.ConversationEntity(parentId, "assistant", "Parent", "[]", 1, 2, "[]", false))
+        dao.insert(me.rerere.rikkahub.data.db.entity.ConversationEntity(childId, "assistant", "Child", "[]", 3, 4, "[]", false,
+            parentConversationId = parentId, workspaceCwd = "/workspace/subagents", modelOverrideId = "model"))
+        val trace = """[{"role":"user","parts":[{"type":"text","text":"task"}]}]"""
+        liveDatabase.openHelper.writableDatabase.execSQL("INSERT INTO message_node(id,conversation_id,node_index,messages,select_index) VALUES(?,?,0,?,0)",
+            arrayOf("child-node", childId, trace))
+        val archive = manager.createBackup(includeDatabase = true, includeFiles = false)
+        manager.stageRestore(archive, includeDatabase = true, includeFiles = false)
+        liveDatabase.close()
+        BackupManager.applyPendingRestore(context, JsonInstant)
+        liveDatabase = AppDatabaseFactory.create(context)
+        val restored = liveDatabase.conversationDao().getConversationById(childId)!!
+        assertEquals(parentId, restored.parentConversationId)
+        assertEquals("/workspace/subagents", restored.workspaceCwd); assertEquals("model", restored.modelOverrideId)
+        liveDatabase.openHelper.readableDatabase.query("SELECT messages FROM message_node WHERE conversation_id=?", arrayOf(childId)).use {
+            assertTrue(it.moveToFirst()); assertEquals(trace, it.getString(0))
+        }
+    }
+
     private fun probe(database: AppDatabase): String = database.openHelper.readableDatabase
         .query("SELECT text FROM backup_probe").use { check(it.moveToFirst()); it.getString(0) }
 

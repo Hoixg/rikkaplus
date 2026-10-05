@@ -1104,7 +1104,9 @@
   <string name="setting_page_preferences">偏好设置</string>
   <string name="setting_page_preferences_desc">主题、通知、界面和常规设置</string>
   <string name="setting_page_preferences_theme">主题</string>
-  <string name="setting_page_preferences_theme_desc">动态配色、主题、AMOLED深色模式</string>
+  <string name="setting_page_preferences_theme_desc">配色、AMOLED 暗色模式、上下文圆环动画</string>
+  <string name="setting_page_context_ring_animation">上下文圆环动画</string>
+  <string name="setting_page_context_ring_animation_desc">为上下文占用圆环显示流光渐变和数值过渡，关闭后显示静态渐变</string>
   <string name="setting_page_preferences_notification">通知</string>
   <string name="setting_page_preferences_notification_desc">更新提醒、消息生成通知</string>
   <string name="setting_page_preferences_general">常规</string>
@@ -1490,7 +1492,7 @@
   <string name="chart_series">系列</string>
   <string name="chart_series_name">系列 %1$d</string>
   <string name="assistant_page_local_tools_image_generation_title">图像生成</string>
-  <string name="assistant_page_local_tools_image_generation_desc">允许 AI 根据讨论申请生图或改图，使用图像生成页选中的模型，每次调用都需要审批。</string>
+  <string name="assistant_page_local_tools_image_generation_desc">允许 AI 在你明确要求生图或改图时提交申请，使用图像生成页选中的模型，每次调用都需要审批。</string>
   <string name="chat_image_generation_pending">图像生成 · 待审批</string>
   <string name="chat_image_generation_preparing">正在准备生图申请</string>
   <string name="chat_image_generation_running">正在生成图片</string>
@@ -1509,9 +1511,9 @@
   <string name="chat_image_generation_approve">批准并生成</string>
   <string name="chat_image_generation_model_missing">生图模型或提供商已不可用，请检查图像生成页选择的模型。</string>
   <string name="chat_image_generation_unsupported">此提供商尚不支持生图或改图，请选择使用 OpenAI 兼容生图接口的模型。</string>
-  <string name="chat_image_generation_reference_missing">参考图已不可用，请重新提交生图申请。</string>
+  <string name="chat_image_generation_reference_missing">本次请求无法执行：参考图已不可用或发生变化。不会自动重试；请恢复或重新选择参考图，并明确要求再次尝试。</string>
   <string name="chat_image_generation_no_result">生图模型未返回完整图片。</string>
-  <string name="chat_image_generation_configuration_changed">已审批的生图模型配置发生变化，请重新提交申请审批。</string>
+  <string name="chat_image_generation_configuration_changed">本次请求无法执行：已审批的生图模型配置发生变化。不会自动重试；请检查模型设置，并明确要求再次尝试。</string>
   <string name="chat_image_generation_cancelled">已取消生图申请</string>
   <string name="chat_image_generation_approved_waiting">生图申请已批准 · 等待执行</string>
   <string name="about_page_downloads">下载</string>

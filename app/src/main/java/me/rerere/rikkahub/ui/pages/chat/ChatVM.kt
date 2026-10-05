@@ -30,7 +30,7 @@ import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.datastore.getCurrentAssistant
-import me.rerere.rikkahub.data.datastore.getCurrentChatModel
+import me.rerere.rikkahub.data.datastore.getAssistantById
 import me.rerere.rikkahub.data.files.FilesManager
 import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.data.model.Avatar
@@ -111,8 +111,8 @@ class ChatVM(
         settingsStore.settingsFlow.stateIn(viewModelScope, SharingStarted.Eagerly, Settings.dummy())
 
     // 网络搜索(每个助手独立)
-    val enableWebSearch = settings.map {
-        it.getCurrentAssistant().enableWebSearch
+    val enableWebSearch = combine(settings, conversation) { settings, conversation ->
+        (settings.getAssistantById(conversation.assistantId) ?: settings.getCurrentAssistant()).enableWebSearch
     }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
     // 当前模型
@@ -171,6 +171,10 @@ class ChatVM(
     }
 
     // 设置聊天模型
+    fun setConversationChatModel(model: Model) {
+        viewModelScope.launch { chatService.updateConversationChatModel(_conversationId, model.id) }
+    }
+
     fun setChatModel(assistant: Assistant, model: Model) {
         viewModelScope.launch {
             settingsStore.update { settings ->
@@ -285,7 +289,7 @@ class ChatVM(
 
     fun deleteConversation(conversation: Conversation): Job =
         viewModelScope.launch {
-            conversationRepo.deleteConversation(conversation)
+            chatService.deleteConversationTree(conversation)
         }
 
     fun updatePinnedStatus(conversation: Conversation) {

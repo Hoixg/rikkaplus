@@ -95,6 +95,16 @@ fun SettingPreferencesThemePage(vm: SettingVM = koinViewModel()) {
                             )
                         },
                     )
+                    item(
+                        headlineContent = { Text(stringResource(R.string.setting_page_context_ring_animation)) },
+                        supportingContent = { Text(stringResource(R.string.setting_page_context_ring_animation_desc)) },
+                        trailingContent = {
+                            Switch(
+                                checked = settings.enableContextUsageRingAnimation,
+                                onCheckedChange = { vm.updateSettings(settings.copy(enableContextUsageRingAnimation = it)) },
+                            )
+                        },
+                    )
                 }
             }
         }

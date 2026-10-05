@@ -280,6 +280,7 @@ class RouteActivity : ComponentActivity() {
 
         val backStack = rememberNavBackStack(startScreen)
         SideEffect {
+            redirectLegacySubagentPersonas(backStack)
             navStack = backStack
             while (pendingIntents.isNotEmpty()) {
                 handleIntent(pendingIntents.removeFirst())
@@ -416,6 +417,12 @@ class RouteActivity : ComponentActivity() {
                             entry<Screen.SettingPermissions> {
                                 me.rerere.rikkahub.ui.pages.setting.SettingPermissionsPage()
                             }
+                            entry<Screen.SubagentPersonas> {
+                                LaunchedEffect(backStack) {
+                                    redirectLegacySubagentPersonas(backStack)
+                                }
+                            }
+
                             entry<Screen.Setting> {
                                 SettingPage()
                             }
@@ -666,6 +673,10 @@ sealed interface Screen : NavKey {
     @Serializable
     data object SettingPermissions : Screen
 
+    // Retained only so navigation can decode saved back stacks from versions with the persona page.
+    @Serializable
+    data object SubagentPersonas : Screen
+
     @Serializable
     data object Setting : Screen
 
@@ -775,4 +786,13 @@ sealed interface Screen : NavKey {
 
     @Serializable
     data object Stats : Screen
+}
+
+/** Rewrites the removed persona destination without changing any other saved back stack entry. */
+internal fun redirectLegacySubagentPersonas(backStack: MutableList<NavKey>) {
+    backStack.indices.forEach { index ->
+        if (backStack[index] == Screen.SubagentPersonas) {
+            backStack[index] = Screen.Setting
+        }
+    }
 }

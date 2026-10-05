@@ -34,7 +34,7 @@ import java.util.Locale
 import java.time.LocalDate
 import kotlin.uuid.Uuid
 
-/** scheduled_task 工具的 name，子代理过滤与 persona 白名单按名引用 */
+/** scheduled_task 工具的 name，子代理执行限制按名引用 */
 const val SCHEDULED_TASK_TOOL_NAME = "scheduled_task"
 
 /**
@@ -304,6 +304,7 @@ internal fun validateTaskTargetSelection(task: ScheduledTaskEntity, conversation
     if (task.mode == "NEW_CHAT") return
     require(conversation != null && conversation.id.toString() == task.targetConversationId) { "目标会话已删除" }
     require(conversation.assistantId.toString() == task.assistantId) { "目标会话不属于任务助手" }
+    require(conversation.parentConversationId == null) { "子代理会话仅供查看，不能作为定时任务目标" }
     if (task.mode == "REGENERATE") require(conversation.currentMessages.any {
         it.id.toString() == task.targetUserMessageId && it.role == MessageRole.USER
     }) { "目标用户消息已删除或分支已改变" }
@@ -313,6 +314,7 @@ private suspend fun taskOptions(obj: JsonObject, assistantId: Uuid, conversation
     val targetId = obj["target_conversation_id"]?.jsonPrimitive?.contentOrNull
     val target = targetId?.let { conversations?.getConversationById(Uuid.parse(it)) ?: error("目标会话已删除") }
     require(target == null || target.assistantId == assistantId) { "目标会话不属于当前助手" }
+    require(target?.parentConversationId == null) { "子代理会话仅供查看，不能作为定时任务目标" }
     return buildJsonObject {
         put("models", buildJsonArray { settings.providers.forEach { provider -> provider.models.forEach { model ->
             add(buildJsonObject { put("id", model.id.toString()); put("name", model.displayName); put("provider", provider.name) })

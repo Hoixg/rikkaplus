@@ -56,6 +56,17 @@ class ConversationSession(
         initialized = true
     }
 
+    /** Model selection is metadata; stale message snapshots must retain the user's latest choice. */
+    @Synchronized
+    internal fun preserveChildModelOverride(snapshot: Conversation): Conversation =
+        if (snapshot.parentConversationId != null && snapshot.parentConversationId == state.value.parentConversationId) {
+            snapshot.copy(modelOverrideId = state.value.modelOverrideId)
+        } else snapshot
+
+    @Synchronized
+    internal fun updateFromGeneration(snapshot: Conversation): Conversation =
+        preserveChildModelOverride(snapshot).also(::updateConversation)
+
     // 元数据先应用到最新内存状态；落库只更新对应列，不能用旧消息快照覆盖流式输出。
     internal suspend fun updateMetadata(
         update: (Conversation) -> Conversation,
@@ -83,9 +94,9 @@ class ConversationSession(
                 },
                 updateAt = Instant.now(),
             )
-            updateConversation(conversation)
-            save(conversation)
-            conversation
+            val finalized = updateFromGeneration(conversation)
+            save(finalized)
+            finalized
         }
 
     // 从队列取出到写入会话历史之间，附件仍需作为有效引用保留。
@@ -141,6 +152,19 @@ class ConversationSession(
     }
 
     fun getJob(): Job? = _generationJob.value
+
+    internal fun hasPendingToolApprovals(): Boolean = state.value.currentMessages.any { message ->
+        message.parts.any { it is me.rerere.ai.ui.UIMessagePart.Tool && it.isPending }
+    }
+
+    /** Reserve before loading child history so a tool follow-up cannot overwrite a user turn. */
+    @Synchronized
+    internal fun tryStartSubagent(job: Job): Boolean {
+        if (!job.isActive || getJob() != null || submittingMessage != null || messageQueue.state.value.messages.isNotEmpty() ||
+            hasPendingToolApprovals()) return false
+        setJob(job, cancelPrevious = false)
+        return true
+    }
 
     @Synchronized
     fun cancelJobs(): List<Job> = activeJobs.toList().also { jobs ->

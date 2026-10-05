@@ -118,6 +118,7 @@ class SettingsStore(
 
         // UI设置
         val DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color")
+        val CONTEXT_USAGE_RING_ANIMATION = booleanPreferencesKey("context_usage_ring_animation")
         val THEME_ID = stringPreferencesKey("theme_id")
         val CUSTOM_THEMES = stringPreferencesKey("custom_themes")
         val DISPLAY_SETTING = stringPreferencesKey("display_setting")
@@ -181,6 +182,7 @@ class SettingsStore(
         val MODE_INJECTIONS = stringPreferencesKey("mode_injections")
         val LOREBOOKS = stringPreferencesKey("lorebooks")
         val QUICK_MESSAGES = stringPreferencesKey("quick_messages")
+        private val LEGACY_SUBAGENT_PERSONAS = stringPreferencesKey("subagent_personas")
 
         // 备份提醒
         val BACKUP_REMINDER_CONFIG = stringPreferencesKey("backup_reminder_config")
@@ -197,9 +199,10 @@ class SettingsStore(
             persistSettings(context.settingsStore, settings)
         }
 
-        private suspend fun persistSettings(dataStore: DataStore<Preferences>, settings: Settings) {
+        internal suspend fun persistSettings(dataStore: DataStore<Preferences>, settings: Settings) {
             dataStore.edit { preferences ->
                 preferences[DYNAMIC_COLOR] = settings.dynamicColor
+                preferences[CONTEXT_USAGE_RING_ANIMATION] = settings.enableContextUsageRingAnimation
                 preferences[THEME_ID] = settings.themeId
                 preferences[CUSTOM_THEMES] = JsonInstant.encodeToString(settings.customThemes)
                 preferences.remove(KEEP_AWAKE_ENABLED)
@@ -255,6 +258,7 @@ class SettingsStore(
                 preferences[MODE_INJECTIONS] = JsonInstant.encodeToString(settings.modeInjections)
                 preferences[LOREBOOKS] = JsonInstant.encodeToString(settings.lorebooks)
                 preferences[QUICK_MESSAGES] = JsonInstant.encodeToString(settings.quickMessages)
+                preferences.remove(LEGACY_SUBAGENT_PERSONAS)
                 preferences[BACKUP_REMINDER_CONFIG] = JsonInstant.encodeToString(settings.backupReminderConfig)
                 preferences[LAUNCH_COUNT] = settings.launchCount
                 preferences[SPONSOR_ALERT_DISMISSED_AT] = settings.sponsorAlertDismissedAt
@@ -313,6 +317,7 @@ class SettingsStore(
                 providers = JsonInstant.decodeFromString(preferences[PROVIDERS] ?: "[]"),
                 assistants = JsonInstant.decodeFromString(preferences[ASSISTANTS] ?: "[]"),
                 dynamicColor = preferences[DYNAMIC_COLOR] != false,
+                enableContextUsageRingAnimation = preferences[CONTEXT_USAGE_RING_ANIMATION] ?: true,
                 themeId = preferences[THEME_ID] ?: PresetThemes[0].id,
                 customThemes = preferences[CUSTOM_THEMES]?.let {
                     JsonInstant.decodeFromString(it)
@@ -474,6 +479,7 @@ class SettingsStore(
         settingsFlow.value = settings
         dataStore.edit { preferences ->
             preferences[DYNAMIC_COLOR] = settings.dynamicColor
+            preferences[CONTEXT_USAGE_RING_ANIMATION] = settings.enableContextUsageRingAnimation
             preferences[THEME_ID] = settings.themeId
             preferences[CUSTOM_THEMES] = JsonInstant.encodeToString(settings.customThemes)
             preferences.remove(KEEP_AWAKE_ENABLED)
@@ -641,6 +647,7 @@ data class Settings(
     @Transient
     val init: Boolean = false,
     val dynamicColor: Boolean = true,
+    val enableContextUsageRingAnimation: Boolean = true,
     val themeId: String = PresetThemes[0].id,
     val customThemes: List<CustomTheme> = emptyList(),
     val developerMode: Boolean = false,

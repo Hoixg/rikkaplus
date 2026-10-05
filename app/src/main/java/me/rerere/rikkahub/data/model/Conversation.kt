@@ -33,6 +33,7 @@ data class Conversation(
     val workspaceCwd: String? = null,
     // 所属文件夹（助手内分组），null 表示未归入任何文件夹
     val folderId: Uuid? = null,
+    val parentConversationId: Uuid? = null,
     // Internal checkpoints; the latest valid consolidated checkpoint replaces the request prefix.
     val compressionSummaries: List<CompressionSummary> = emptyList(),
     val modelOverrideId: Uuid? = null,

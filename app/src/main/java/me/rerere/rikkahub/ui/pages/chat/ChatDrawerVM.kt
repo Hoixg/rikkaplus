@@ -49,6 +49,17 @@ class ChatDrawerVM(
     private val _selectedFolderId = MutableStateFlow<Uuid?>(null)
     val selectedFolderId: StateFlow<Uuid?> = _selectedFolderId.asStateFlow()
 
+    private val _expandedSubagentIds = MutableStateFlow<Set<Uuid>>(emptySet())
+    val expandedSubagentIds: StateFlow<Set<Uuid>> = _expandedSubagentIds.asStateFlow()
+
+    fun toggleSubagentExpanded(conversationId: Uuid) {
+        _expandedSubagentIds.value = if (conversationId in _expandedSubagentIds.value) {
+            _expandedSubagentIds.value - conversationId
+        } else {
+            _expandedSubagentIds.value + conversationId
+        }
+    }
+
     // 当前助手的文件夹列表（Room Flow，增删改自动刷新）
     val folders: StateFlow<List<Folder>> = assistantIdFlow
         .flatMapLatest { folderRepo.getFoldersOfAssistant(it) }
@@ -129,6 +140,7 @@ class ChatDrawerVM(
         viewModelScope.launch {
             assistantIdFlow.collect {
                 _selectedFolderId.value = null
+                _expandedSubagentIds.value = emptySet()
             }
         }
     }

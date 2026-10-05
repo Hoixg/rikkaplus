@@ -47,7 +47,9 @@ class ChatToolFactory(
         workspaceCwd: String? = null,
         getMessages: () -> List<UIMessage> = { emptyList() },
         scheduledExecution: Boolean = false,
+        subagentTools: List<Tool> = emptyList(),
     ): List<Tool> = buildList {
+        if (assistant.enableSubagents && ModelAbility.TOOL in model.abilities) addAll(subagentTools)
         addAll(createScheduledTaskTools(scheduledTaskRepository, assistant.id, conversationRepository,
             getSettings = { settingsStore.settingsFlow.value }, scheduledExecution = scheduledExecution, getMessages = getMessages))
         if (assistant.enableMemory) {

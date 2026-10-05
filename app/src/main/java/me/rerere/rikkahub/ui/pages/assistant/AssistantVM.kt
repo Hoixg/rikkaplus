@@ -20,6 +20,7 @@ class AssistantVM(
     private val memoryRepository: MemoryRepository,
     private val conversationRepo: ConversationRepository,
     private val filesManager: FilesManager,
+    private val chatService: me.rerere.rikkahub.service.ChatService,
 ) : ViewModel() {
     val settings: StateFlow<Settings> = settingsStore.settingsFlow
         .stateIn(viewModelScope, SharingStarted.Eagerly, Settings.dummy())
@@ -52,7 +53,7 @@ class AssistantVM(
                 )
             )
             memoryRepository.deleteMemoriesOfAssistant(assistant.id.toString())
-            conversationRepo.deleteConversationOfAssistant(assistant.id)
+            chatService.deleteConversationsOfAssistant(assistant.id)
         }
     }
 

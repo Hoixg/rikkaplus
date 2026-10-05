@@ -36,14 +36,14 @@ class HistoryVM(
 
     fun deleteConversation(conversation: Conversation) {
         viewModelScope.launch {
-            conversationRepo.deleteConversation(conversation)
+            chatService.deleteConversationTree(conversation)
         }
     }
 
     fun deleteAllConversations() {
         val assistant = assistant.value ?: return
         viewModelScope.launch {
-            conversationRepo.deleteConversationOfAssistant(assistant.id)
+            chatService.deleteConversationsOfAssistant(assistant.id)
         }
     }
 

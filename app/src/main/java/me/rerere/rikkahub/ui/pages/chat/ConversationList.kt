@@ -52,6 +52,7 @@ import androidx.paging.compose.LazyPagingItems
 import androidx.paging.compose.itemKey
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.model.Conversation
+import me.rerere.rikkahub.service.SubagentTask
 import me.rerere.rikkahub.ui.theme.extendColors
 import me.rerere.rikkahub.utils.mirrorForRtl
 import me.rerere.rikkahub.utils.toLocalString
@@ -79,9 +80,14 @@ fun ColumnScope.ConversationList(
     conversations: LazyPagingItems<ConversationListItem>,
     conversationJobs: Collection<Uuid>,
     listState: LazyListState,
+    subagentTasks: Map<Uuid, SubagentTask> = emptyMap(),
+    runningSessionIds: Collection<Uuid> = emptyList(),
+    expandedSubagentIds: Set<Uuid> = emptySet(),
+    onToggleSubagentExpand: (Uuid) -> Unit = {},
     modifier: Modifier = Modifier,
     onClick: (Conversation) -> Unit = {},
     onDelete: (Conversation) -> Unit = {},
+    onRequestDeleteChild: (Conversation) -> Unit = {},
     onRegenerateTitle: (Conversation) -> Unit = {},
     onPin: (Conversation) -> Unit = {},
     onMoveToAssistant: (Conversation) -> Unit = {},
@@ -92,7 +98,7 @@ fun ColumnScope.ConversationList(
     LaunchedEffect(current.id, conversations.itemCount, hasScrolledToCurrent) {
         if (hasScrolledToCurrent) return@LaunchedEffect
         val currentIndex = conversations.itemSnapshotList.items.indexOfFirst {
-            (it as? ConversationListItem.Item)?.conversation?.id == current.id
+            (it as? ConversationListItem.Item)?.conversation?.id == (current.parentConversationId ?: current.id)
         }
         if (currentIndex >= 0) {
             val isVisible = listState.layoutInfo.visibleItemsInfo.any { it.index == currentIndex }
@@ -154,10 +160,16 @@ fun ColumnScope.ConversationList(
                 is ConversationListItem.Item -> {
                     ConversationItem(
                         conversation = item.conversation,
-                        selected = item.conversation.id == current.id,
+                        selected = item.conversation.id == current.id || item.conversation.id == current.parentConversationId,
                         loading = item.conversation.id in conversationJobs,
+                        currentId = current.id,
+                        subagentTasks = subagentTasks,
+                        runningSessionIds = runningSessionIds,
+                        subagentExpanded = item.conversation.id in expandedSubagentIds,
+                        onToggleSubagentExpand = { onToggleSubagentExpand(item.conversation.id) },
                         onClick = onClick,
                         onDelete = onDelete,
+                        onRequestDeleteChild = onRequestDeleteChild,
                         onRegenerateTitle = onRegenerateTitle,
                         onPin = onPin,
                         onMoveToAssistant = onMoveToAssistant,
@@ -227,8 +239,14 @@ private fun ConversationItem(
     conversation: Conversation,
     selected: Boolean,
     loading: Boolean,
+    currentId: Uuid,
+    subagentTasks: Map<Uuid, SubagentTask>,
+    runningSessionIds: Collection<Uuid>,
+    subagentExpanded: Boolean,
+    onToggleSubagentExpand: () -> Unit,
     modifier: Modifier = Modifier,
     onDelete: (Conversation) -> Unit = {},
+    onRequestDeleteChild: (Conversation) -> Unit = {},
     onRegenerateTitle: (Conversation) -> Unit = {},
     onPin: (Conversation) -> Unit = {},
     onMoveToAssistant: (Conversation) -> Unit = {},
@@ -245,128 +263,149 @@ private fun ConversationItem(
     var showDropdownMenu by remember {
         mutableStateOf(false)
     }
-    Box(
-        modifier = modifier
-            .clip(RoundedCornerShape(50f))
-            .combinedClickable(
-                interactionSource = interactionSource,
-                indication = LocalIndication.current,
-                onClick = { onClick(conversation) },
-                onLongClick = {
-                    // Also clear chat input focus when the drawer is permanently visible.
-                    focusManager.clearFocus(force = true)
-                    showDropdownMenu = true
-                }
-            )
-            .background(backgroundColor),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = conversation.title.ifBlank { stringResource(id = R.string.chat_page_new_message) },
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Spacer(Modifier.weight(1f))
-
-            // 置顶图标
-            AnimatedVisibility(conversation.isPinned) {
-                Icon(
-                    imageVector = HugeIcons.Pin,
-                    contentDescription = "Pinned",
-                    modifier = Modifier.size(12.dp),
-                    tint = MaterialTheme.colorScheme.primary
-                )
-            }
-            AnimatedVisibility(loading) {
-                Box(
-                    modifier = Modifier
-                        .clip(CircleShape)
-                        .background(MaterialTheme.extendColors.green6)
-                        .size(4.dp)
-                        .semantics {
-                            contentDescription = "Loading"
+    val children = rememberSubagentChildren(conversation.id)
+    SubagentConversationContent(
+        parentId = conversation.id,
+        currentId = currentId,
+        children = children,
+        tasks = subagentTasks,
+        sessionJobIds = runningSessionIds,
+        expanded = subagentExpanded,
+        modifier = modifier,
+        onToggle = onToggleSubagentExpand,
+        onChildClick = onClick,
+        onRequestDeleteChild = onRequestDeleteChild,
+        parentRow = { expanded, hasChildren, onToggle ->
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(50f))
+                    .combinedClickable(
+                        interactionSource = interactionSource,
+                        indication = LocalIndication.current,
+                        onClick = { onClick(conversation) },
+                        onLongClick = {
+                            // Also clear chat input focus when the drawer is permanently visible.
+                            focusManager.clearFocus(force = true)
+                            showDropdownMenu = true
                         }
-                )
-            }
-            DropdownMenu(
-                expanded = showDropdownMenu,
-                onDismissRequest = { showDropdownMenu = false },
+                    )
+                    .background(backgroundColor),
             ) {
-                DropdownMenuItem(
-                    text = {
-                        Text(
-                            if (conversation.isPinned) stringResource(R.string.unpin_chat) else stringResource(R.string.pin_chat)
-                        )
-                    },
-                    onClick = {
-                        onPin(conversation)
-                        showDropdownMenu = false
-                    },
-                    leadingIcon = {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = conversation.title.ifBlank { stringResource(id = R.string.chat_page_new_message) },
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+
+                    // 置顶图标
+                    AnimatedVisibility(conversation.isPinned) {
                         Icon(
-                            if (conversation.isPinned) HugeIcons.PinOff else HugeIcons.Pin,
-                            null
+                            imageVector = HugeIcons.Pin,
+                            contentDescription = "Pinned",
+                            modifier = Modifier.size(12.dp),
+                            tint = MaterialTheme.colorScheme.primary
                         )
                     }
-                )
-
-                DropdownMenuItem(
-                    text = {
-                        Text(stringResource(id = R.string.chat_page_regenerate_title))
-                    },
-                    onClick = {
-                        onRegenerateTitle(conversation)
-                        showDropdownMenu = false
-                    },
-                    leadingIcon = {
-                        Icon(HugeIcons.Refresh01, null)
+                    AnimatedVisibility(loading) {
+                        Box(
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .background(MaterialTheme.extendColors.green6)
+                                .size(4.dp)
+                                .semantics {
+                                    contentDescription = "Loading"
+                                }
+                        )
                     }
-                )
+                    SubagentExpandIcon(
+                        expanded = expanded,
+                        hasChildren = hasChildren,
+                        onToggle = onToggle,
+                    )
+                    DropdownMenu(
+                        expanded = showDropdownMenu,
+                        onDismissRequest = { showDropdownMenu = false },
+                    ) {
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    if (conversation.isPinned) stringResource(R.string.unpin_chat) else stringResource(R.string.pin_chat)
+                                )
+                            },
+                            onClick = {
+                                onPin(conversation)
+                                showDropdownMenu = false
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    if (conversation.isPinned) HugeIcons.PinOff else HugeIcons.Pin,
+                                    null
+                                )
+                            }
+                        )
 
-                DropdownMenuItem(
-                    text = {
-                        Text(stringResource(R.string.chat_page_move_to_assistant))
-                    },
-                    onClick = {
-                        onMoveToAssistant(conversation)
-                        showDropdownMenu = false
-                    },
-                    leadingIcon = {
-                        Icon(HugeIcons.Forward02, null, modifier = Modifier.mirrorForRtl())
-                    }
-                )
+                        DropdownMenuItem(
+                            text = {
+                                Text(stringResource(id = R.string.chat_page_regenerate_title))
+                            },
+                            onClick = {
+                                onRegenerateTitle(conversation)
+                                showDropdownMenu = false
+                            },
+                            leadingIcon = {
+                                Icon(HugeIcons.Refresh01, null)
+                            }
+                        )
 
-                DropdownMenuItem(
-                    text = {
-                        Text(stringResource(R.string.chat_page_move_to_folder))
-                    },
-                    onClick = {
-                        onMoveToFolder(conversation)
-                        showDropdownMenu = false
-                    },
-                    leadingIcon = {
-                        Icon(HugeIcons.Folder01, null)
-                    }
-                )
+                        DropdownMenuItem(
+                            text = {
+                                Text(stringResource(R.string.chat_page_move_to_assistant))
+                            },
+                            onClick = {
+                                onMoveToAssistant(conversation)
+                                showDropdownMenu = false
+                            },
+                            leadingIcon = {
+                                Icon(HugeIcons.Forward02, null, modifier = Modifier.mirrorForRtl())
+                            }
+                        )
 
-                DropdownMenuItem(
-                    text = {
-                        Text(stringResource(id = R.string.chat_page_delete))
-                    },
-                    onClick = {
-                        onDelete(conversation)
-                        showDropdownMenu = false
-                    },
-                    leadingIcon = {
-                        Icon(HugeIcons.Delete01, null)
+                        DropdownMenuItem(
+                            text = {
+                                Text(stringResource(R.string.chat_page_move_to_folder))
+                            },
+                            onClick = {
+                                onMoveToFolder(conversation)
+                                showDropdownMenu = false
+                            },
+                            leadingIcon = {
+                                Icon(HugeIcons.Folder01, null)
+                            }
+                        )
+
+                        DropdownMenuItem(
+                            text = {
+                                Text(stringResource(id = R.string.chat_page_delete))
+                            },
+                            onClick = {
+                                onDelete(conversation)
+                                showDropdownMenu = false
+                            },
+                            leadingIcon = {
+                                Icon(HugeIcons.Delete01, null)
+                            }
+                        )
                     }
-                )
+                }
             }
-        }
-    }
+        },
+    )
 }

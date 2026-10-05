@@ -161,6 +161,7 @@ private fun AssistantLocalToolContent(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         CardGroup {
+            subagentControls(assistant, onUpdate)
             item(
                 headlineContent = {
                     Text(stringResource(R.string.assistant_page_local_tools_image_generation_title))

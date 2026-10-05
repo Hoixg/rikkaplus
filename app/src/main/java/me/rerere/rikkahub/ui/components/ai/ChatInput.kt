@@ -135,6 +135,7 @@ import kotlin.uuid.Uuid
 fun ChatInput(
     state: ChatInputState,
     modelOverrideId: Uuid? = null,
+    modelSelectionLocked: Boolean = modelOverrideId != null,
     loading: Boolean,
     settings: Settings,
     hazeState: HazeState,
@@ -320,7 +321,7 @@ fun ChatInput(
                             horizontalArrangement = Arrangement.spacedBy(2.dp)
                         ) {
                             // Model Picker
-                            if (modelOverrideId == null) {
+                            if (!modelSelectionLocked) {
                                 ModelSelector(
                                     modelId = displayedModelId,
                                     providers = settings.providers,
@@ -359,7 +360,7 @@ fun ChatInput(
 
                             // Reasoning
                             val model = chatModel
-                            if (modelOverrideId == null && model?.abilities?.contains(ModelAbility.REASONING) == true) {
+                            if (!modelSelectionLocked && model?.abilities?.contains(ModelAbility.REASONING) == true) {
                                 ReasoningButton(
                                     reasoningLevel = assistant.reasoningLevel,
                                     onUpdateReasoningLevel = {
@@ -432,7 +433,7 @@ fun ChatInput(
         }
     }
 
-    if (modelOverrideId == null) {
+    if (!modelSelectionLocked) {
         ModelListSheet(state = modelListState, onSelect = onUpdateChatModel)
     }
 }

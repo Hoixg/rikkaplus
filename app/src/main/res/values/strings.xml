@@ -819,7 +819,9 @@
   <string name="setting_page_preferences">Preferences</string>
   <string name="setting_page_preferences_desc">Theme, notifications, UI and general settings</string>
   <string name="setting_page_preferences_theme">Theme</string>
-  <string name="setting_page_preferences_theme_desc">Dynamic color, theme, AMOLED dark mode</string>
+  <string name="setting_page_preferences_theme_desc">Colors, AMOLED dark mode, context ring animation</string>
+  <string name="setting_page_context_ring_animation">Context ring animation</string>
+  <string name="setting_page_context_ring_animation_desc">Animate the context usage gradient and percentage; turn off to show a static gradient</string>
   <string name="setting_page_preferences_notification">Notifications</string>
   <string name="setting_page_preferences_notification_desc">Update alerts, message generation notifications</string>
   <string name="setting_page_preferences_general">General</string>
@@ -1496,7 +1498,7 @@
   <string name="chart_series">Series</string>
   <string name="chart_series_name">Series %1$d</string>
   <string name="assistant_page_local_tools_image_generation_title">Image generation</string>
-  <string name="assistant_page_local_tools_image_generation_desc">Let the AI propose image generation or edits during a conversation. Uses the model selected on the Image Generation page. Every request requires approval.</string>
+  <string name="assistant_page_local_tools_image_generation_desc">Let the AI submit an image request when you explicitly ask it to generate or edit images. Uses the model selected on the Image Generation page. Every request requires approval.</string>
   <string name="chat_image_generation_pending">Image generation · Awaiting approval</string>
   <string name="chat_image_generation_preparing">Preparing image request</string>
   <string name="chat_image_generation_running">Generating images</string>
@@ -1515,9 +1517,9 @@
   <string name="chat_image_generation_approve">Approve and generate</string>
   <string name="chat_image_generation_model_missing">The image model or provider is unavailable. Check the model selected on the Image Generation page.</string>
   <string name="chat_image_generation_unsupported">This provider does not yet support image generation or editing. Select a model using an OpenAI compatible image API.</string>
-  <string name="chat_image_generation_reference_missing">A reference image is no longer available. Submit a new image request.</string>
+  <string name="chat_image_generation_reference_missing">This request cannot run because a reference image is missing or changed. Restore or reselect the image and explicitly ask to try again. Do not automatically resubmit.</string>
   <string name="chat_image_generation_no_result">The image model returned no final images.</string>
-  <string name="chat_image_generation_configuration_changed">The approved image model configuration changed. Submit a new request for approval.</string>
+  <string name="chat_image_generation_configuration_changed">This request cannot run because the approved image model configuration changed. Check the model settings and explicitly ask to try again. Do not automatically resubmit.</string>
   <string name="chat_image_generation_cancelled">Image request cancelled</string>
   <string name="chat_image_generation_approved_waiting">Image request approved · Waiting to run</string>
   <string name="about_page_downloads">Downloads</string>

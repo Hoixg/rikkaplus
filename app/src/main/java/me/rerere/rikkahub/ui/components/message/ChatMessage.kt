@@ -113,6 +113,7 @@ fun ChatMessage(
     model: Model? = null,
     assistant: Assistant? = null,
     lastMessage: Boolean = false,
+    conversationId: kotlin.uuid.Uuid? = null,
     onFork: () -> Unit,
     onRegenerate: () -> Unit,
     onEdit: () -> Unit,
@@ -140,6 +141,9 @@ fun ChatMessage(
     val navController = LocalNavController.current
     val context = LocalContext.current
     val colorScheme = MaterialTheme.colorScheme
+    androidx.compose.runtime.CompositionLocalProvider(
+        me.rerere.rikkahub.ui.components.message.tools.LocalSubagentConversationId provides conversationId,
+    ) {
     Column(
         modifier = modifier.fillMaxWidth(),
         horizontalAlignment = if (message.role == MessageRole.USER) Alignment.End else Alignment.Start,
@@ -226,6 +230,7 @@ fun ChatMessage(
             ChatMessageNerdLine(message = message)
         }
 
+    }
     }
     if (showActionsSheet) {
         ChatMessageActionsSheet(

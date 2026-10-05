@@ -2,6 +2,13 @@ package me.rerere.rikkahub.ui.pages.chat
 
 import android.net.Uri
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -37,10 +44,14 @@ import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -48,8 +59,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -57,6 +70,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dokar.sonner.ToastType
 import dev.chrisbanes.haze.hazeSource
@@ -81,7 +95,6 @@ import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.findProvider
 import me.rerere.rikkahub.data.datastore.getCurrentAssistant
 import me.rerere.rikkahub.data.datastore.getAssistantById
-import me.rerere.rikkahub.data.datastore.getCurrentChatModel
 import me.rerere.rikkahub.data.datastore.getSelectedASRProvider
 import me.rerere.rikkahub.data.files.FilesManager
 import me.rerere.rikkahub.data.model.Assistant
@@ -101,7 +114,9 @@ import me.rerere.rikkahub.ui.context.LocalToaster
 import me.rerere.rikkahub.ui.context.Navigator
 import me.rerere.rikkahub.ui.hooks.ChatInputState
 import me.rerere.rikkahub.ui.hooks.EditStateContent
+import me.rerere.rikkahub.ui.hooks.rememberAppLifecycleState
 import me.rerere.rikkahub.ui.hooks.useEditState
+import me.rerere.rikkahub.ui.theme.LocalDarkMode
 import me.rerere.rikkahub.utils.base64Decode
 import me.rerere.rikkahub.utils.contextUsageDisplayCapacity
 import me.rerere.rikkahub.utils.contextUsageFraction
@@ -117,7 +132,10 @@ import org.koin.compose.koinInject
 import org.koin.core.parameter.parametersOf
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.uuid.Uuid
+import kotlin.math.PI
+import kotlin.math.cos
 import kotlin.math.roundToInt
+import kotlin.math.sin
 
 @Composable
 fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
@@ -312,7 +330,7 @@ private fun ChatPageContent(
     val workspaces by workspaceRepository.listFlow().collectAsStateWithLifecycle(initialValue = emptyList())
     var previewMode by rememberSaveable { mutableStateOf(false) }
     val hazeState = rememberHazeState()
-    val assistant = setting.getCurrentAssistant()
+    val assistant = setting.getAssistantById(conversation.assistantId) ?: setting.getCurrentAssistant()
     val boundWorkspace = remember(workspaces, assistant.workspaceId) {
         workspaces.find { it.id == assistant.workspaceId?.toString() }
     }
@@ -411,6 +429,7 @@ private fun ChatPageContent(
                 val voiceState by vm.voiceSession.state.collectAsStateWithLifecycle()
                 ChatInput(
                     modelOverrideId = conversation.modelOverrideId,
+                    modelSelectionLocked = conversation.modelOverrideId != null && conversation.parentConversationId == null,
                     onStartVoiceMode = onStartVoiceMode,
                     voiceState = voiceState,
                     onStopVoiceMode = vm.voiceSession::stop,
@@ -423,7 +442,7 @@ private fun ChatPageContent(
                     onSendQueuedMessageImmediately = vm::sendQueuedMessageImmediately,
                     onResumeMessageQueue = vm::resumeMessageQueue,
                     loading = loadingJob != null,
-                    settings = setting,
+                    settings = setting.copy(assistantId = assistant.id),
                     hazeState = hazeState,
                     completionProviders = completionProviders,
                     workspace = boundWorkspace,
@@ -442,8 +461,8 @@ private fun ChatPageContent(
                     },
                     enableSearch = enableWebSearch,
                     onUpdateSearchMode = { mode ->
-                        val current = setting.getCurrentAssistant()
-                        val model = setting.getCurrentChatModel()
+                        val current = assistant
+                        val model = conversationChatModel
                         vm.updateSettings(
                             setting.copy(
                                 assistants = setting.assistants.map { assistant ->
@@ -505,7 +524,11 @@ private fun ChatPageContent(
                         inputState.clearInput()
                     },
                     onUpdateChatModel = {
-                        vm.setChatModel(assistant = setting.getCurrentAssistant(), model = it)
+                        if (conversation.parentConversationId != null) {
+                            vm.setConversationChatModel(it)
+                        } else {
+                            vm.setChatModel(assistant = assistant, model = it)
+                        }
                     },
                     onUpdateAssistant = {
                         vm.updateSettings(
@@ -785,13 +808,16 @@ private fun TopBar(
         },
         actions = {
             contextUsage?.let { usage ->
-                ContextUsageRingButton(
-                    usedTokens = usage.usedTokens,
-                    modelWindowTokens = usage.modelWindowTokens,
-                    displayCapacityTokens = usage.displayCapacityTokens,
-                    thresholdPercent = settings.autoCompactionThresholdPercent,
-                    tokenLimit = settings.autoCompactionTokenLimit,
-                )
+                key(conversation.id) {
+                    ContextUsageRingButton(
+                        usedTokens = usage.usedTokens,
+                        modelWindowTokens = usage.modelWindowTokens,
+                        displayCapacityTokens = usage.displayCapacityTokens,
+                        thresholdPercent = settings.autoCompactionThresholdPercent,
+                        tokenLimit = settings.autoCompactionTokenLimit,
+                        enableAnimation = settings.enableContextUsageRingAnimation,
+                    )
+                }
             }
 
             IconButton(
@@ -856,24 +882,55 @@ private data class ContextUsage(
 )
 
 @Composable
-private fun ContextUsageRingButton(
+internal fun ContextUsageRingButton(
     usedTokens: Int,
     modelWindowTokens: Int,
     displayCapacityTokens: Int,
     thresholdPercent: Int,
     tokenLimit: Int?,
+    enableAnimation: Boolean = true,
 ) {
     var showPopup by remember { mutableStateOf(false) }
     val fraction = contextUsageFraction(usedTokens, displayCapacityTokens)
+    val lifecycleState by rememberAppLifecycleState()
+    val animateRing = enableAnimation && lifecycleState == Lifecycle.State.RESUMED
+    val displayedFraction = if (animateRing) {
+        animateFloatAsState(
+            targetValue = fraction,
+            animationSpec = tween(durationMillis = 500, easing = FastOutSlowInEasing),
+            label = "Context usage",
+        )
+    } else {
+        rememberUpdatedState(fraction)
+    }
+    // Removing the transition stops frame requests on navigation and in the background.
+    // Compose suspends infinite animations when the system duration scale is zero.
+    val phase = if (animateRing && fraction > 0f) {
+        rememberInfiniteTransition(label = "Context ring flow").animateFloat(
+            initialValue = 0f,
+            targetValue = (2 * PI).toFloat(),
+            animationSpec = infiniteRepeatable(tween(durationMillis = 9_000, easing = LinearEasing)),
+            label = "Gradient direction",
+        )
+    } else {
+        null
+    }
     val warningThresholdTokens = autoCompactionThresholdTokens(
         windowTokens = modelWindowTokens,
         thresholdPercent = thresholdPercent,
         tokenLimit = tokenLimit,
     )
     val isWarning = warningThresholdTokens != null && usedTokens >= warningThresholdTokens
-    val ringColor = if (isWarning) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+    val darkMode = LocalDarkMode.current
+    val errorColor = MaterialTheme.colorScheme.error
+    val ringColors = remember(darkMode, isWarning, errorColor) {
+        when {
+            isWarning -> listOf(lerp(errorColor, Color.White, 0.12f), errorColor, lerp(errorColor, Color.Black, 0.12f))
+            darkMode -> listOf(Color(0xFFE4906E), Color(0xFFDF8CAB), Color(0xFFAA9BDB))
+            else -> listOf(Color(0xFFB56342), Color(0xFFB95283), Color(0xFF8460BC))
+        }
+    }
     val trackColor = MaterialTheme.colorScheme.outlineVariant
-    val percent = (fraction * 100f).roundToInt()
 
     Box(
         modifier = Modifier
@@ -896,11 +953,16 @@ private fun ContextUsageRingButton(
                 size = arcSize,
                 style = Stroke(width = stroke, cap = StrokeCap.Round),
             )
-            if (fraction > 0f) {
+            val visibleFraction = displayedFraction.value
+            if (visibleFraction > 0f) {
+                // Read the phase only while drawing: flowing colors never recompose the top bar.
+                val angle = phase?.value ?: 0f
+                val radius = size.minDimension / 2
+                val direction = Offset(cos(angle) * radius, sin(angle) * radius)
                 drawArc(
-                    color = ringColor,
+                    brush = Brush.linearGradient(ringColors, start = center - direction, end = center + direction),
                     startAngle = -90f,
-                    sweepAngle = 360f * fraction,
+                    sweepAngle = 360f * visibleFraction,
                     useCenter = false,
                     topLeft = topLeft,
                     size = arcSize,
@@ -908,16 +970,7 @@ private fun ContextUsageRingButton(
                 )
             }
         }
-        Text(
-            text = percent.toString(),
-            fontSize = when {
-                percent >= 100 -> 7.sp
-                percent >= 10 -> 8.sp
-                else -> 9.sp
-            },
-            lineHeight = 9.sp,
-            color = if (isWarning) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        ContextUsagePercent(displayedFraction, isWarning)
     }
 
     DropdownMenu(
@@ -934,4 +987,19 @@ private fun ContextUsageRingButton(
             style = MaterialTheme.typography.bodySmall,
         )
     }
+}
+
+@Composable
+private fun ContextUsagePercent(fraction: State<Float>, isWarning: Boolean) {
+    val percent by remember(fraction) { derivedStateOf { (fraction.value * 100f).roundToInt() } }
+    Text(
+        text = percent.toString(),
+        fontSize = when {
+            percent >= 100 -> 7.sp
+            percent >= 10 -> 8.sp
+            else -> 9.sp
+        },
+        lineHeight = 9.sp,
+        color = if (isWarning) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+    )
 }

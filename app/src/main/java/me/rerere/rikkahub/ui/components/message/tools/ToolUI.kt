@@ -90,6 +90,11 @@ private object DefaultToolUIRenderer : ToolUIRenderer {
  */
 object ToolUIRegistry {
     private val renderers: Map<String, ToolUIRenderer> = listOf(
+        SubagentToolUI("spawn_agent"),
+        SubagentToolUI("followup_agent"),
+        SubagentToolUI("poll_agent"),
+        SubagentToolUI("cancel_agent"),
+        SubagentToolUI("list_agents"),
         MemoryToolUI,
         SearchWebToolUI,
         ScrapeWebToolUI,

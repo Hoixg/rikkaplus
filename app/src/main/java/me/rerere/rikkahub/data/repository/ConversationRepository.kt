@@ -327,6 +327,8 @@ class ConversationRepository(
     }
 
     suspend fun deleteConversation(conversation: Conversation) {
+        // Runtime callers drain writers through ChatService before reaching this persistence path.
+        getSubconversationsOfParentOnce(conversation.id).forEach { deleteConversation(it) }
         // 获取完整的 Conversation（包含 messageNodes）以正确清理文件
         val fullConversation = if (conversation.messageNodes.isEmpty()) {
             getConversationById(conversation.id) ?: conversation
@@ -363,7 +365,7 @@ class ConversationRepository(
     }
 
     suspend fun deleteConversationOfAssistant(assistantId: Uuid) {
-        getConversationsOfAssistant(assistantId).first().forEach { conversation ->
+        conversationDAO.getConversationsIncludingChildren(assistantId.toString()).map { conversationEntityToConversation(it, emptyList()) }.forEach { conversation ->
             deleteConversation(conversation)
         }
     }
@@ -384,6 +386,7 @@ class ConversationRepository(
             lorebookIds = JsonInstant.encodeToString(conversation.lorebookIds),
             workspaceCwd = conversation.workspaceCwd ?: "",
             folderId = conversation.folderId?.toString() ?: "",
+            parentConversationId = conversation.parentConversationId?.toString().orEmpty(),
             compressionSummaries = JsonInstant.encodeToString(conversation.compressionSummaries),
             modelOverrideId = conversation.modelOverrideId?.toString().orEmpty(),
         )
@@ -407,6 +410,7 @@ class ConversationRepository(
             lorebookIds = JsonInstant.decodeFromString(conversationEntity.lorebookIds),
             workspaceCwd = conversationEntity.workspaceCwd.ifEmpty { null },
             folderId = conversationEntity.folderId.ifEmpty { null }?.let { Uuid.parse(it) },
+            parentConversationId = conversationEntity.parentConversationId.ifEmpty { null }?.let(Uuid::parse),
             compressionSummaries = runCatching {
                 JsonInstant.decodeFromString<List<CompressionSummary>>(conversationEntity.compressionSummaries)
             }.getOrDefault(emptyList()),
@@ -435,6 +439,10 @@ class ConversationRepository(
         conversationDAO.updateAssistantId(conversationId.toString(), assistantId.toString())
     }
 
+    suspend fun updateConversationModelOverride(conversationId: Uuid, modelId: Uuid) {
+        conversationDAO.updateModelOverride(conversationId.toString(), modelId.toString())
+    }
+
     /**
      * 单列更新会话的文件夹归属，folderId 为 null 表示移出文件夹（未归类）。
      */
@@ -443,6 +451,22 @@ class ConversationRepository(
             id = conversationId.toString(),
             folderId = folderId?.toString() ?: ""
         )
+    }
+
+    fun getSubconversationsOfParent(parentId: Uuid): Flow<List<Conversation>> =
+        conversationDAO.getSubconversationsOfParent(parentId.toString()).map { rows ->
+            rows.map { conversationSummaryToConversation(it) }
+        }
+
+    suspend fun getSubconversationsOfParentOnce(parentId: Uuid): List<Conversation> =
+        conversationDAO.getSubconversationsOfParentOnce(parentId.toString()).map { conversationSummaryToConversation(it) }
+
+    suspend fun updateSubconversationsAssistant(parentId: Uuid, assistantId: Uuid) =
+        conversationDAO.updateSubconversationsAssistant(parentId.toString(), assistantId.toString())
+
+    suspend fun moveConversationTreeToAssistant(parentId: Uuid, assistantId: Uuid) = database.withTransaction {
+        conversationDAO.updateSubconversationsAssistant(parentId.toString(), assistantId.toString())
+        conversationDAO.updateAssistantId(parentId.toString(), assistantId.toString())
     }
 
     private fun conversationSummaryToConversation(entity: LightConversationEntity): Conversation {
@@ -455,6 +479,7 @@ class ConversationRepository(
             updateAt = Instant.ofEpochMilli(entity.updateAt),
             messageNodes = emptyList(),
             folderId = entity.folderId.ifEmpty { null }?.let { Uuid.parse(it) },
+            parentConversationId = entity.parentConversationId.ifEmpty { null }?.let(Uuid::parse),
         )
     }
 
@@ -524,6 +549,7 @@ data class LightConversationEntity(
     val createAt: Long,
     val updateAt: Long,
     val folderId: String = "",
+    val parentConversationId: String = "",
 )
 
 data class ConversationPageResult(

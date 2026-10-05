@@ -334,6 +334,7 @@ private fun ChatListNormal(
                         enabled = selecting,
                     ) {
                         ChatMessage(
+                            conversationId = conversation.id,
                             node = node,
                             model = node.currentMessage.modelId?.let(modelById::get),
                             assistant = assistant,

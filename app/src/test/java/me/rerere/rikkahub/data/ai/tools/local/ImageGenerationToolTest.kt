@@ -7,6 +7,8 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import me.rerere.ai.core.MessageRole
 import me.rerere.ai.core.Tool
@@ -168,6 +170,43 @@ class ImageGenerationToolTest {
         assertEquals(images, f.requests.single().references)
     }
 
+    @Test fun `system prompt refreshes its catalog from current conversation without invoking provider`() {
+        val f = Fixture()
+        val initial = Json.parseToJsonElement(f.tool.systemPrompt(f.model, emptyList()).lineSequence().last()) as JsonArray
+        assertEquals(1, initial.size)
+        f.messages = f.messages + UIMessage(role = MessageRole.ASSISTANT, parts = listOf(
+            UIMessagePart.Tool("result", IMAGE_GENERATION_TOOL_NAME, "{}", output = listOf(UIMessagePart.Image("file:///result.png")))
+        ))
+        val refreshedPrompt = f.tool.systemPrompt(f.model, emptyList())
+        val refreshed = Json.parseToJsonElement(refreshedPrompt.lineSequence().last()) as JsonArray
+        assertEquals(2, refreshed.size)
+        assertEquals(initial.single(), refreshed.first())
+        assertEquals("assistant", refreshed.last().jsonObject.getValue("role").jsonPrimitive.content)
+        assertFalse(refreshedPrompt.contains("file:"))
+        f.messages = emptyList()
+        assertEquals(JsonArray(emptyList()), Json.parseToJsonElement(f.tool.systemPrompt(f.model, emptyList()).lineSequence().last()))
+        assertTrue(f.requests.isEmpty())
+    }
+
+    @Test fun `catalog ids preserve chosen reference order and existing approval snapshot shape`() = runBlocking {
+        val f = Fixture()
+        f.messages = f.messages + UIMessage(role = MessageRole.ASSISTANT, parts = listOf(
+            UIMessagePart.Tool("generated", IMAGE_GENERATION_TOOL_NAME, "{}", output = listOf(UIMessagePart.Image("file:///generated-reference.png")))
+        ))
+        val selectedIds = buildChatImageReferenceCatalog(f.messages).reversed().map { it.jsonObject.getValue("id") }
+        val pending = f.pending(buildJsonObject {
+            put("prompt", "Use reference 1 for the style and reference 2 for the subject")
+            put("reference_image_ids", JsonArray(selectedIds))
+        })
+        val snapshot = pending.inputAsJson().jsonObject.getValue("_references") as JsonArray
+        snapshot.forEach { assertEquals(setOf("id", "url"), it.jsonObject.keys) }
+        assertTrue(f.requests.isEmpty())
+        val approved = applyToolApprovalDecision(pending, true)
+        executeToolWithApproval(approved, f.tool, approved.inputAsJson())
+        assertEquals(listOf("file:///generated-reference.png", "file:///uploaded.png"), f.requests.single().references.map { it.url })
+        assertEquals(selectedIds.map { it.jsonPrimitive.content }, f.requests.single().referenceImageIds)
+    }
+
     @Test fun `unknown image paths and forged internal snapshots are not trusted`() = runBlocking {
         val f = Fixture()
         val invalid = f.pending(buildJsonObject {
@@ -186,12 +225,15 @@ class ImageGenerationToolTest {
 
     @Test fun `removed or changed reference prevents execution after approval`() = runBlocking {
         val f = Fixture()
+        val originalMessages = f.messages
         val image = collectChatImageReferences(f.messages).single()
         val approved = applyToolApprovalDecision(f.pending(buildJsonObject {
             put("prompt", "Edit")
             put("reference_image_ids", JsonArray(listOf(JsonPrimitive(image.id))))
         }), true)
         f.messages = emptyList()
+        assertTrue(runCatching { executeToolWithApproval(approved, f.tool, approved.inputAsJson()) }.isFailure)
+        f.messages = originalMessages.map { it.copy(parts = listOf(UIMessagePart.Image("file:///changed.png"))) }
         assertTrue(runCatching { executeToolWithApproval(approved, f.tool, approved.inputAsJson()) }.isFailure)
         assertTrue(f.requests.isEmpty())
     }

@@ -11,6 +11,7 @@ import me.rerere.rikkahub.data.storage.StorageVolumeGrantStore
 import me.rerere.rikkahub.data.event.AppEventBus
 import me.rerere.rikkahub.service.ChatNotificationManager
 import me.rerere.rikkahub.service.ChatService
+import me.rerere.rikkahub.service.SubagentManager
 import me.rerere.rikkahub.ui.pages.extensions.workspace.WorkspaceTerminalSessionManager
 import me.rerere.rikkahub.utils.EmojiData
 import me.rerere.rikkahub.utils.EmojiUtils
@@ -86,9 +87,12 @@ val appModule = module {
         )
     }
 
+    single { SubagentManager(get<AppScope>()) }
+
     single {
         ChatService(
             scheduledTaskRepository = get(),
+            subagentManager = get(),
             context = get(),
             appScope = get(),
             appEventBus = get(),

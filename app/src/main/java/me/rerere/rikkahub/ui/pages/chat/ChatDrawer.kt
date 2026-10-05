@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -73,6 +74,7 @@ import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.data.model.Conversation
 import me.rerere.rikkahub.data.model.Folder
 import me.rerere.rikkahub.data.repository.ConversationRepository
+import me.rerere.rikkahub.service.ChatService
 import me.rerere.rikkahub.ui.components.ai.AssistantPicker
 import me.rerere.rikkahub.ui.components.ui.BackupReminderCard
 import me.rerere.rikkahub.ui.components.ui.Greeting
@@ -106,6 +108,7 @@ fun ChatDrawerContent(
     val toaster = LocalToaster.current
     val isPlayStore = rememberIsPlayStoreVersion()
     val repo = koinInject<ConversationRepository>()
+    val chatService: ChatService = koinInject()
 
     val activity = context as ComponentActivity
     val drawerVm: ChatDrawerVM = koinViewModel(viewModelStoreOwner = activity)
@@ -113,6 +116,7 @@ fun ChatDrawerContent(
     val conversations = drawerVm.conversations.collectAsLazyPagingItems()
     val folders by drawerVm.folders.collectAsStateWithLifecycle()
     val selectedFolderId by drawerVm.selectedFolderId.collectAsStateWithLifecycle()
+    val expandedSubagentIds by drawerVm.expandedSubagentIds.collectAsStateWithLifecycle()
     val conversationListState = rememberLazyListState(
         initialFirstVisibleItemIndex = drawerVm.scrollIndex,
         initialFirstVisibleItemScrollOffset = drawerVm.scrollOffset,
@@ -132,6 +136,7 @@ fun ChatDrawerContent(
     val conversationJobs by vm.conversationJobs.collectAsStateWithLifecycle(
         initialValue = emptyMap(),
     )
+    val subagentTasks by chatService.subagentManager.tasks.collectAsStateWithLifecycle()
 
     // 昵称编辑状态
     val nicknameEditState = useEditState<String> { newNickname ->
@@ -147,6 +152,7 @@ fun ChatDrawerContent(
     // 移动对话状态
     var showMoveToAssistantSheet by remember { mutableStateOf(false) }
     var conversationToMove by remember { mutableStateOf<Conversation?>(null) }
+    var subagentToDelete by remember { mutableStateOf<Conversation?>(null) }
     val bottomSheetState = rememberBottomSheetState(initialValue = SheetValue.Hidden)
 
     // 文件夹相关状态
@@ -249,6 +255,10 @@ fun ChatDrawerContent(
                 conversations = conversations,
                 conversationJobs = conversationJobs.keys,
                 listState = conversationListState,
+                subagentTasks = subagentTasks,
+                runningSessionIds = conversationJobs.filterValues { it?.isActive == true }.keys,
+                expandedSubagentIds = expandedSubagentIds,
+                onToggleSubagentExpand = drawerVm::toggleSubagentExpanded,
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f),
@@ -262,11 +272,12 @@ fun ChatDrawerContent(
                     scope.launch {
                         vm.deleteConversation(it).join()
                         conversations.refresh()
-                        if (it.id == current.id) {
+                        if (it.id == current.id || it.id == current.parentConversationId) {
                             navigateToChatPage(navController)
                         }
                     }
                 },
+                onRequestDeleteChild = { subagentToDelete = it },
                 onPin = {
                     vm.updatePinnedStatus(it)
                 },
@@ -279,6 +290,38 @@ fun ChatDrawerContent(
                     showMoveToFolderSheet = true
                 }
             )
+
+            subagentToDelete?.let { subagent ->
+                AlertDialog(
+                    onDismissRequest = { subagentToDelete = null },
+                    shape = RoundedCornerShape(14.dp),
+                    title = { Text(stringResource(R.string.confirm_delete)) },
+                    text = {
+                        Text(subagent.title.ifBlank { stringResource(R.string.chat_page_new_message) })
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                subagentToDelete = null
+                                scope.launch {
+                                    vm.deleteConversation(subagent).join()
+                                    conversations.refresh()
+                                    if (subagent.id == current.id) {
+                                        navigateToChatPage(navController)
+                                    }
+                                }
+                            }
+                        ) {
+                            Text(stringResource(R.string.delete))
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { subagentToDelete = null }) {
+                            Text(stringResource(R.string.cancel))
+                        }
+                    },
+                )
+            }
 
             // 助手选择器
             AssistantPicker(
