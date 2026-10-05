@@ -11,6 +11,7 @@ import me.rerere.rikkahub.data.storage.StorageVolumeGrantStore
 import me.rerere.rikkahub.data.event.AppEventBus
 import me.rerere.rikkahub.service.ChatNotificationManager
 import me.rerere.rikkahub.service.ChatService
+import me.rerere.rikkahub.service.MediaCreationService
 import me.rerere.rikkahub.service.SubagentManager
 import me.rerere.rikkahub.ui.pages.extensions.workspace.WorkspaceTerminalSessionManager
 import me.rerere.rikkahub.utils.EmojiData
@@ -108,6 +109,18 @@ val appModule = module {
             filesManager = get(),
             workspaceRepository = get(),
             folderRepository = get(),
+        )
+    }
+
+    single {
+        MediaCreationService(
+            context = get(),
+            appScope = get(),
+            settingsStore = get(),
+            repository = get(),
+            manager = get(),
+            remoteFileStore = get(),
+            okHttpClient = get(),
         )
     }
 }

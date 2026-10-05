@@ -60,6 +60,7 @@ import me.rerere.hugeicons.stroke.ChartColumn
 import me.rerere.hugeicons.stroke.Delete01
 import me.rerere.hugeicons.stroke.Folder01
 import me.rerere.hugeicons.stroke.FolderAdd
+import me.rerere.hugeicons.stroke.ImageToVideo
 import me.rerere.hugeicons.stroke.InLove
 import me.rerere.hugeicons.stroke.LanguageCircle
 import me.rerere.hugeicons.stroke.MagicWand01
@@ -360,6 +361,18 @@ fun ChatDrawerContent(
                     },
                     onClick = {
                         navController.navigate(Screen.ImageGen)
+                    },
+                )
+
+                DrawerAction(
+                    icon = {
+                        Icon(HugeIcons.ImageToVideo, stringResource(R.string.media_creation_title))
+                    },
+                    label = {
+                        Text(stringResource(R.string.media_creation_title))
+                    },
+                    onClick = {
+                        navController.navigate(Screen.MediaCreationSessions)
                     },
                 )
 
