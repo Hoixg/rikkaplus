@@ -101,24 +101,22 @@ fun shouldAutoCompact(
     return usedTokens >= thresholdTokens
 }
 
-private fun java.time.Instant.toCheckpointLocalDateTime(): kotlinx.datetime.LocalDateTime =
-    atZone(java.time.ZoneId.systemDefault()).toLocalDateTime().toKotlinLocalDateTime()
-
 fun Conversation.estimateWindowTokens(model: Model?): Int {
     val requestContext = requestContextForGeneration()
     val window = requestContext.messages
     val lastAssistant = window.lastOrNull()?.takeIf { it.role == MessageRole.ASSISTANT }
     val usage = lastAssistant?.usage
     val usageTokens = usage?.promptTokens ?: 0
-    val checkpoint = activeCompressionForRequest()
+    val checkpointAt = activeCompressionForRequest()?.createdAt
+        ?.atZone(java.time.ZoneId.systemDefault())
+        ?.toLocalDateTime()
+        ?.toKotlinLocalDateTime()
+        ?: window.lastOrNull { it.isContextCheckpoint }?.createdAt
     val finishedAt = lastAssistant?.finishedAt ?: lastAssistant?.createdAt
     val usageUsable = usageTokens > 0 && lastAssistant != null && model != null &&
         lastAssistant.modelId == model.id &&
         window.lastOrNull()?.id == lastAssistant.id &&
-        (
-            checkpoint == null ||
-                (finishedAt ?: lastAssistant.createdAt) > checkpoint.createdAt.toCheckpointLocalDateTime()
-            )
+        (checkpointAt == null || (finishedAt ?: lastAssistant.createdAt) > checkpointAt)
     return if (usageUsable) {
         val completionTokens = usage?.completionTokens?.takeIf { it > 0 }
             ?: estimateTokenCount(listOf(lastAssistant))

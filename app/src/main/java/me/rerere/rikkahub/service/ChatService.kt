@@ -67,7 +67,6 @@ import me.rerere.rikkahub.data.ai.tools.decideScheduledTaskApproval
 import me.rerere.rikkahub.data.ai.tools.SCHEDULED_APPROVAL_TIMEOUT_REASON
 import me.rerere.rikkahub.data.ai.tools.local.LocalToolOption
 import me.rerere.rikkahub.data.ai.tools.local.imageToolChatModel
-import me.rerere.rikkahub.data.model.CompressionSummary
 import me.rerere.rikkahub.data.ai.transformers.Base64ImageToLocalFileTransformer
 import me.rerere.rikkahub.data.ai.transformers.DocumentAsPromptTransformer
 import me.rerere.rikkahub.data.ai.transformers.OcrTransformer
@@ -110,7 +109,6 @@ import me.rerere.rikkahub.utils.chunkCompactionTexts
 import me.rerere.rikkahub.utils.toCompactionText
 import me.rerere.rikkahub.utils.estimateWindowTokens
 import me.rerere.rikkahub.utils.selectCompactionPrefixKeepingLatestTurn
-import me.rerere.rikkahub.utils.priorCheckpointMergeContext
 import java.util.Locale
 import kotlin.uuid.Uuid
 
@@ -167,15 +165,7 @@ internal fun insertContextCheckpoint(
     conversation: Conversation,
     afterNodeId: Uuid,
     summary: String,
-): Conversation? {
-    val nodes = conversation.messageNodes
-    val index = nodes.indexOfFirst { it.id == afterNodeId }
-    if (index < 0) return null
-    val checkpoint = UIMessage.user(summary).copy(isContextCheckpoint = true).toMessageNode()
-    return conversation.copy(
-        messageNodes = nodes.subList(0, index + 1) + checkpoint + nodes.subList(index + 1, nodes.size),
-    )
-}
+): Conversation? = conversation.withContextCheckpoint(afterNodeId, summary)
 
 data class ChatError(
     val id: Uuid = Uuid.random(),
@@ -1411,31 +1401,16 @@ class ChatService(
         val providerHandler = providerManager.getProviderByType(provider)
 
         val nodes = conversation.messageNodes
-        val latestMessageCheckpointIndex = nodes.indexOfLast { it.currentMessage.isContextCheckpoint }
+        val checkpointIndex = nodes.indexOfLast { it.currentMessage.isContextCheckpoint }
         val cutIndex = (nodes.size - keepRecentMessages.coerceAtLeast(0)).coerceAtLeast(0)
-        val activeSummary = conversation.activeCompressionForRequest()
-        val summaryBoundaryIndex = activeSummary?.boundaryNodeId?.let { boundaryId ->
-            nodes.indexOfFirst { it.id == boundaryId }.takeIf { it >= 0 }
-        }
-        val useSummaryCheckpoint = summaryBoundaryIndex != null &&
-            summaryBoundaryIndex >= latestMessageCheckpointIndex && summaryBoundaryIndex < cutIndex
-        val startIndex = when {
-            useSummaryCheckpoint -> summaryBoundaryIndex!!
-            latestMessageCheckpointIndex >= 0 -> latestMessageCheckpointIndex
-            else -> -1
-        }
-        if (cutIndex <= startIndex + 1) {
+        if (cutIndex <= checkpointIndex + 1) {
             throw IllegalStateException(context.getString(R.string.chat_page_compress_not_enough_messages))
         }
 
-        // A local automatic summary replaces its covered nodes in the model window. Reuse it
-        // here too, then include only the raw messages that follow its boundary.
-        val messagesToCompress = if (useSummaryCheckpoint) {
-            listOf(UIMessage.user(activeSummary!!.content).copy(isContextCheckpoint = true)) +
-                nodes.subList(summaryBoundaryIndex!! + 1, cutIndex).map { it.currentMessage }
-        } else {
-            nodes.subList(startIndex.coerceAtLeast(0), cutIndex).map { it.currentMessage }
-        }
+        // The current checkpoint carries the compressed prefix, so include it when creating
+        // its replacement and retain only the messages that follow it.
+        val messagesToCompress = nodes.subList(checkpointIndex.coerceAtLeast(0), cutIndex)
+            .map { it.currentMessage }
         check(messagesToCompress.none { message ->
             message.getTools().any { it.isPending || it.canResumeExecution }
         }) {
@@ -1533,28 +1508,22 @@ class ChatService(
                 model = model,
                 processingStatus = processingStatus,
             )
-            val previousSummary = conversation.activeCompressionForRequest()?.content.orEmpty()
-            val sourceTokens = nodesToCompress.sumOf { estimateTokenCount(listOf(it.currentMessage)) } +
-                estimateTextTokenCount(previousSummary)
+            val sourceTokens = nodesToCompress.sumOf { estimateTokenCount(listOf(it.currentMessage)) }
             if (estimateTextTokenCount(summary) >= sourceTokens) {
                 throw ContextCompactionException(context.getString(R.string.error_compress_context_failed))
             }
             val boundaryNodeId = nodesToCompress.last().id
             val sourceFingerprint = conversation.compressionSourceFingerprint(boundaryNodeId)
                 ?: throw ContextCompactionException(context.getString(R.string.error_compress_context_changed))
-            val checkpoint = CompressionSummary(
-                content = summary,
-                messageCount = nodesToCompress.size + (conversation.activeCompressionForRequest()?.messageCount ?: 0),
-                boundaryNodeId = boundaryNodeId,
-                sourceFingerprint = sourceFingerprint,
-            )
-            val candidate = conversation.copy(compressionSummaries = listOf(checkpoint))
+            val candidate = insertContextCheckpoint(conversation, boundaryNodeId, summary)
+                ?: throw ContextCompactionException(context.getString(R.string.error_compress_context_changed))
             if (candidate.estimateWindowTokens(model) + pendingTokens > targetTokens) {
                 throw ContextCompactionException(context.getString(R.string.error_compress_context_still_too_large))
             }
-            persistCompressionCheckpoint(
+            persistContextCheckpoint(
                 session = session,
-                checkpoint = checkpoint,
+                boundaryNodeId = boundaryNodeId,
+                summary = summary,
                 expectedFingerprint = sourceFingerprint,
                 model = model,
                 pendingTokens = pendingTokens,
@@ -1591,62 +1560,44 @@ class ChatService(
         )
     }
 
-    private suspend fun persistCompressionCheckpoint(
+    private suspend fun persistContextCheckpoint(
         session: ConversationSession,
-        checkpoint: CompressionSummary,
+        boundaryNodeId: Uuid,
+        summary: String,
         expectedFingerprint: String,
         model: Model,
         pendingTokens: Int,
         windowTokens: Int,
     ) {
-        val boundaryNodeId = checkpoint.boundaryNodeId
-            ?: throw ContextCompactionException(context.getString(R.string.error_compress_context_changed))
-
-        fun validationError(conversation: Conversation): String? {
+        fun makeUpdatedConversation(conversation: Conversation): Conversation {
             if (conversation.compressionSourceFingerprint(boundaryNodeId) != expectedFingerprint) {
-                return context.getString(R.string.error_compress_context_changed)
+                throw ContextCompactionException(context.getString(R.string.error_compress_context_changed))
             }
-            val candidate = conversation.copy(compressionSummaries = listOf(checkpoint))
+            val candidate = insertContextCheckpoint(conversation, boundaryNodeId, summary)
+                ?: throw ContextCompactionException(context.getString(R.string.error_compress_context_changed))
             if (candidate.estimateWindowTokens(model) + pendingTokens >
                 (windowTokens * AUTO_COMPRESS_TARGET_RATIO).toInt()
             ) {
-                return context.getString(R.string.error_compress_context_still_too_large)
+                throw ContextCompactionException(context.getString(R.string.error_compress_context_still_too_large))
             }
-            return null
+            return candidate
         }
 
         session.withPersistenceLock {
-            val previousSummaries = synchronized(session) {
+            val (previous, updated) = synchronized(session) {
                 val latest = session.state.value
-                validationError(latest)?.let { throw ContextCompactionException(it) }
-                latest.compressionSummaries.also { previous ->
-                    session.updateConversation(latest.copy(compressionSummaries = listOf(checkpoint)))
-                }
+                val candidate = makeUpdatedConversation(latest)
+                session.updateConversation(candidate)
+                latest to candidate
             }
             try {
-                conversationRepo.updateCompressionSummaries(session.id, listOf(checkpoint))
+                conversationRepo.updateConversation(updated)
             } catch (error: Exception) {
                 synchronized(session) {
                     val latest = session.state.value
-                    if (latest.compressionSummaries == listOf(checkpoint)) {
-                        session.updateConversation(latest.copy(compressionSummaries = previousSummaries))
-                    }
+                    if (latest == updated) session.updateConversation(previous)
                 }
                 throw error
-            }
-
-            val validationFailure = synchronized(session) {
-                val latest = session.state.value
-                val reason = validationError(latest) ?: return@synchronized null
-                if (latest.compressionSummaries == listOf(checkpoint)) {
-                    session.updateConversation(latest.copy(compressionSummaries = previousSummaries))
-                }
-                reason
-            }
-            if (validationFailure != null) {
-                val persistedSummaries = session.state.value.compressionSummaries
-                conversationRepo.updateCompressionSummaries(session.id, persistedSummaries)
-                throw ContextCompactionException(validationFailure)
             }
         }
     }
@@ -1668,12 +1619,8 @@ class ChatService(
             val providerHandler = providerManager.getProviderByType(provider)
             val inputBudget = (model.effectiveContextLength() - 1_024)
                 .coerceIn(512, AUTO_COMPRESS_INPUT_BUDGET_MAX)
-            val priorSummary = conversation.activeCompressionForRequest()?.content.orEmpty()
-            val priorTokens = estimateTextTokenCount(priorSummary)
-            val contentBudget = inputBudget - priorTokens - 512
-            if (contentBudget < 128) {
-                throw IllegalStateException("The existing checkpoint leaves no room for a safe merge")
-            }
+            val contentBudget = inputBudget - 512
+            if (contentBudget < 128) throw IllegalStateException("No room for a safe context summary")
 
             val mapTarget = (inputBudget / 6).coerceIn(128, 1_000)
             val reduceTarget = contentBudget.coerceAtMost(AUTO_COMPRESS_TARGET_TOKENS).coerceAtLeast(128)
@@ -1777,7 +1724,6 @@ class ChatService(
             summarize(
                 content = summaries.joinToString("\n\n"),
                 targetTokens = reduceTarget,
-                additionalContext = priorCheckpointMergeContext(priorSummary),
             )
         } catch (error: CancellationException) {
             throw error

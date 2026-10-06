@@ -318,14 +318,6 @@ class ConversationRepository(
         messageFtsManager.indexConversation(conversation)
     }
 
-    /** Update the checkpoint column without rewriting message rows from a possibly stale snapshot. */
-    suspend fun updateCompressionSummaries(conversationId: Uuid, summaries: List<CompressionSummary>) {
-        conversationDAO.updateCompressionSummaries(
-            id = conversationId.toString(),
-            summaries = JsonInstant.encodeToString(summaries),
-        )
-    }
-
     suspend fun deleteConversation(conversation: Conversation) {
         // Runtime callers drain writers through ChatService before reaching this persistence path.
         getSubconversationsOfParentOnce(conversation.id).forEach { deleteConversation(it) }
@@ -415,7 +407,7 @@ class ConversationRepository(
                 JsonInstant.decodeFromString<List<CompressionSummary>>(conversationEntity.compressionSummaries)
             }.getOrDefault(emptyList()),
             modelOverrideId = conversationEntity.modelOverrideId.takeIf(String::isNotEmpty)?.let(Uuid::parse),
-        )
+        ).migrateLegacyCompressionCheckpoint()
     }
 
     fun getPinnedConversations(): Flow<List<Conversation>> {

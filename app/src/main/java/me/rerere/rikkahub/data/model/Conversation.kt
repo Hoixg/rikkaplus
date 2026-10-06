@@ -34,7 +34,7 @@ data class Conversation(
     // 所属文件夹（助手内分组），null 表示未归入任何文件夹
     val folderId: Uuid? = null,
     val parentConversationId: Uuid? = null,
-    // Internal checkpoints; the latest valid consolidated checkpoint replaces the request prefix.
+    // Legacy sidecar checkpoints retained for migration from older app versions.
     val compressionSummaries: List<CompressionSummary> = emptyList(),
     val modelOverrideId: Uuid? = null,
     @Transient
@@ -54,6 +54,7 @@ data class Conversation(
             return messageNodes.map { node -> node.messages[node.selectIndex] }
         }
 
+    /** Reads a checkpoint sidecar written by older app versions. */
     fun activeCompression(): CompressionSummary? {
         val checkpoint = compressionSummaries.lastOrNull() ?: return null
         val boundaryNodeId = checkpoint.boundaryNodeId ?: return null
@@ -62,7 +63,7 @@ data class Conversation(
         return checkpoint.takeIf { compressionSourceFingerprint(boundaryNodeId) == expectedFingerprint }
     }
 
-    /** A request may use only checkpoints whose source can still be verified. */
+    /** A request may use only legacy sidecar checkpoints whose source can still be verified. */
     fun activeCompressionForRequest(): CompressionSummary? {
         val checkpoint = compressionSummaries.lastOrNull() ?: return null
         val boundaryNodeId = checkpoint.boundaryNodeId ?: return null
@@ -101,13 +102,59 @@ data class Conversation(
         }
     }
 
+    /** Replaces older summaries with one canonical, visible checkpoint while retaining source messages. */
+    internal fun withContextCheckpoint(afterNodeId: Uuid, summary: String): Conversation? {
+        val boundaryIndex = messageNodes.indexOfFirst { it.id == afterNodeId }
+        if (boundaryIndex < 0) return null
+
+        val retainedNodes = messageNodes.filterNot { it.currentMessage.isContextCheckpoint }
+        val retainedBoundaryIndex = retainedNodes.indexOfFirst { it.id == afterNodeId }
+        val insertIndex = if (retainedBoundaryIndex >= 0) {
+            retainedBoundaryIndex + 1
+        } else {
+            messageNodes.take(boundaryIndex).count { !it.currentMessage.isContextCheckpoint }
+        }
+        val checkpoint = UIMessage.user(summary).copy(isContextCheckpoint = true).toMessageNode()
+        val updatedNodes = retainedNodes.toMutableList().apply { add(insertIndex, checkpoint) }
+        return copy(
+            messageNodes = updatedNodes,
+            compressionSummaries = emptyList(),
+        )
+    }
+
+    /** Converts a verified checkpoint from the legacy sidecar column to the canonical message form. */
+    internal fun migrateLegacyCompressionCheckpoint(): Conversation {
+        val legacyCheckpoint = activeCompressionForRequest()
+        val boundaryNodeId = legacyCheckpoint?.boundaryNodeId
+        return if (legacyCheckpoint != null && boundaryNodeId != null) {
+            withContextCheckpoint(boundaryNodeId, legacyCheckpoint.content)
+                ?: withOnlyLatestContextCheckpoint()
+        } else {
+            withOnlyLatestContextCheckpoint()
+        }
+    }
+
+    private fun withOnlyLatestContextCheckpoint(): Conversation {
+        val latestCheckpointIndex = messageNodes.indexOfLast { it.currentMessage.isContextCheckpoint }
+        return copy(
+            messageNodes = if (latestCheckpointIndex < 0) {
+                messageNodes
+            } else {
+                messageNodes.filterIndexed { index, node ->
+                    index >= latestCheckpointIndex || !node.currentMessage.isContextCheckpoint
+                }
+            },
+            compressionSummaries = emptyList(),
+        )
+    }
+
     fun requestWindowMessages(): List<UIMessage> = requestContextForGeneration().messages
 
     /** Compatibility alias for callers that also need streamed-message source mapping. */
     internal fun requestWindowForGeneration(messageRange: ClosedRange<Int>? = null): ConversationRequestWindow =
         requestContextForGeneration(messageRange)
 
-    /** Builds a model request window with the checkpoint separated from persisted chat messages. */
+    /** Builds a model request window from the latest checkpoint while keeping older history persisted. */
     internal fun requestContextForGeneration(messageRange: ClosedRange<Int>? = null): ConversationRequestWindow {
         val checkpoint = activeCompressionForRequest()
         val compressionBoundaryIndex = checkpoint?.boundaryNodeId?.let { boundaryId ->
@@ -115,13 +162,14 @@ data class Conversation(
         }
         val messageCheckpointIndex = messageNodes.indexOfLast { it.currentMessage.isContextCheckpoint }
         val rangeEnd = messageRange?.endInclusive
-        val shouldUseCompressionCheckpoint = checkpoint != null && compressionBoundaryIndex != null &&
-            (rangeEnd == null || rangeEnd >= compressionBoundaryIndex)
+        val applicableCompressionBoundary = compressionBoundaryIndex?.takeIf { boundaryIndex ->
+            rangeEnd == null || rangeEnd >= boundaryIndex
+        }
         val shouldUseMessageCheckpoint = messageCheckpointIndex >= 0 &&
             (rangeEnd == null || rangeEnd >= messageCheckpointIndex) &&
-            (!shouldUseCompressionCheckpoint || messageCheckpointIndex > compressionBoundaryIndex!!)
+            (applicableCompressionBoundary == null || messageCheckpointIndex > applicableCompressionBoundary)
         val firstWindowIndex = when {
-            shouldUseCompressionCheckpoint -> compressionBoundaryIndex!! + 1
+            applicableCompressionBoundary != null -> applicableCompressionBoundary + 1
             shouldUseMessageCheckpoint -> messageCheckpointIndex
             else -> 0
         }
@@ -148,7 +196,7 @@ data class Conversation(
             messages = messages,
             sourceNodeIndexes = nodeIndexes,
             appendNodeIndex = appendNodeIndex,
-            checkpointContent = checkpoint?.content?.takeIf { shouldUseCompressionCheckpoint },
+            checkpointContent = checkpoint?.content?.takeIf { applicableCompressionBoundary != null },
         )
     }
 
@@ -185,6 +233,7 @@ data class Conversation(
         return copy(messageNodes = newNodes)
     }
 
+    /** Returns the active context window, including its single canonical checkpoint message. */
     fun windowNodes(): List<MessageNode> {
         val checkpoint = activeCompressionForRequest()
         if (checkpoint != null) {
