@@ -8,6 +8,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -74,12 +75,16 @@ import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.ArrowTurnBackward
 import me.rerere.hugeicons.stroke.ArrowDown01
 import me.rerere.hugeicons.stroke.ArrowRight01
+import me.rerere.hugeicons.stroke.ArrowUp01
+import me.rerere.hugeicons.stroke.Add01
 import me.rerere.hugeicons.stroke.Bash
 import me.rerere.hugeicons.stroke.ComputerTerminal01
 import me.rerere.hugeicons.stroke.Delete01
 import me.rerere.hugeicons.stroke.File02
+import me.rerere.hugeicons.stroke.FileAdd
 import me.rerere.hugeicons.stroke.FileImport
 import me.rerere.hugeicons.stroke.Folder01
+import me.rerere.hugeicons.stroke.FolderAdd
 import me.rerere.hugeicons.stroke.MoreVertical
 import me.rerere.hugeicons.stroke.Play
 import me.rerere.hugeicons.stroke.Refresh01
@@ -130,6 +135,13 @@ fun WorkspaceDetailPage(
     var deleteTarget by remember { mutableStateOf<WorkspaceFileEntry?>(null) }
     var showInstallDialog by remember { mutableStateOf(false) }
     var showMountDialog by remember { mutableStateOf(false) }
+    var showCreateFileDialog by rememberSaveable { mutableStateOf(false) }
+    var createFileName by rememberSaveable { mutableStateOf("") }
+    var creatingFile by remember { mutableStateOf(false) }
+    var showCreateFolderDialog by rememberSaveable { mutableStateOf(false) }
+    var createFolderName by rememberSaveable { mutableStateOf("") }
+    var creatingFolder by remember { mutableStateOf(false) }
+    var showCreateMenu by remember { mutableStateOf(false) }
     var previewImageUri by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
 
@@ -208,6 +220,39 @@ fun WorkspaceDetailPage(
                 },
                 navigationIcon = { BackButton() },
                 actions = {
+                    if (pagerState.currentPage == 1 && state.area == WorkspaceStorageArea.FILES) {
+                        Box {
+                            IconButton(onClick = { showCreateMenu = true }) {
+                                Icon(
+                                    HugeIcons.Add01,
+                                    contentDescription = stringResource(R.string.workspace_detail_create_entry),
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = showCreateMenu,
+                                onDismissRequest = { showCreateMenu = false },
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.workspace_detail_new_file)) },
+                                    leadingIcon = { Icon(HugeIcons.FileAdd, contentDescription = null) },
+                                    onClick = {
+                                        showCreateMenu = false
+                                        createFileName = ""
+                                        showCreateFileDialog = true
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.workspace_detail_new_folder)) },
+                                    leadingIcon = { Icon(HugeIcons.FolderAdd, contentDescription = null) },
+                                    onClick = {
+                                        showCreateMenu = false
+                                        createFolderName = ""
+                                        showCreateFolderDialog = true
+                                    },
+                                )
+                            }
+                        }
+                    }
                     if (pagerState.currentPage == 1) {
                         IconButton(onClick = { filePicker.launch(arrayOf("*/*")) }) {
                             Icon(
@@ -359,6 +404,126 @@ fun WorkspaceDetailPage(
             text = { Text(result, modifier = Modifier.verticalScroll(rememberScrollState())) },
             confirmButton = {
                 TextButton(onClick = vm::dismissExportResult) { Text(stringResource(R.string.common_confirm)) }
+            },
+        )
+    }
+
+    if (showCreateFileDialog) {
+        val normalizedName = createFileName.trim()
+        val fileNameInvalid = normalizedName.isNotEmpty() && !isValidWorkspaceEntryName(normalizedName)
+        AlertDialog(
+            onDismissRequest = {
+                if (!creatingFile) {
+                    showCreateFileDialog = false
+                    createFileName = ""
+                }
+            },
+            title = { Text(stringResource(R.string.workspace_detail_new_file)) },
+            text = {
+                OutlinedTextField(
+                    value = createFileName,
+                    onValueChange = { createFileName = it },
+                    label = { Text(stringResource(R.string.workspace_detail_file_name)) },
+                    singleLine = true,
+                    isError = fileNameInvalid,
+                    supportingText = if (fileNameInvalid) {
+                        { Text(stringResource(R.string.workspace_detail_file_name_invalid)) }
+                    } else {
+                        { Text(stringResource(R.string.workspace_detail_file_name_desc)) }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        creatingFile = true
+                        vm.createFile(normalizedName) { entry, error ->
+                            creatingFile = false
+                            if (entry != null) {
+                                showCreateFileDialog = false
+                                createFileName = ""
+                            } else {
+                                Toast.makeText(
+                                    context,
+                                    error ?: context.getString(R.string.workspace_file_save_failed),
+                                    Toast.LENGTH_SHORT,
+                                ).show()
+                            }
+                        }
+                    },
+                    enabled = isValidWorkspaceEntryName(normalizedName) && !creatingFile,
+                ) {
+                    Text(stringResource(R.string.workspace_detail_create_file))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showCreateFileDialog = false
+                        createFileName = ""
+                    },
+                    enabled = !creatingFile,
+                ) {
+                    Text(stringResource(R.string.common_cancel))
+                }
+            },
+        )
+    }
+
+    if (showCreateFolderDialog) {
+        val normalizedName = createFolderName.trim()
+        val folderNameInvalid = normalizedName.isNotEmpty() && !isValidWorkspaceEntryName(normalizedName)
+        AlertDialog(
+            onDismissRequest = {
+                if (!creatingFolder) {
+                    showCreateFolderDialog = false
+                    createFolderName = ""
+                }
+            },
+            title = { Text(stringResource(R.string.workspace_detail_new_folder)) },
+            text = {
+                OutlinedTextField(
+                    value = createFolderName,
+                    onValueChange = { createFolderName = it },
+                    label = { Text(stringResource(R.string.workspace_detail_folder_name)) },
+                    singleLine = true,
+                    isError = folderNameInvalid,
+                    supportingText = if (folderNameInvalid) {
+                        { Text(stringResource(R.string.workspace_detail_folder_name_invalid)) }
+                    } else null,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        creatingFolder = true
+                        vm.createFolder(normalizedName) { error ->
+                            creatingFolder = false
+                            if (error == null) {
+                                showCreateFolderDialog = false
+                                createFolderName = ""
+                            } else {
+                                Toast.makeText(context, error, Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    },
+                    enabled = isValidWorkspaceEntryName(normalizedName) && !creatingFolder,
+                ) {
+                    Text(stringResource(R.string.workspace_detail_create_folder))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showCreateFolderDialog = false
+                        createFolderName = ""
+                    },
+                    enabled = !creatingFolder,
+                ) {
+                    Text(stringResource(R.string.common_cancel))
+                }
             },
         )
     }
@@ -594,6 +759,7 @@ private fun WorkspaceToolApprovalCard(
     onToolApprovalChange: (String, Boolean) -> Unit,
 ) {
     val overrides = workspace?.toolApprovalOverrides().orEmpty()
+    var expanded by rememberSaveable(workspace?.id) { mutableStateOf(true) }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -602,48 +768,67 @@ private fun WorkspaceToolApprovalCard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(16.dp)
+                .animateContentSize(),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(
-                    text = stringResource(R.string.workspace_detail_tool_approval),
-                    style = MaterialTheme.typography.titleMedium,
-                )
-                Text(
-                    text = stringResource(R.string.workspace_detail_tool_approval_desc),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Text(
+                        text = stringResource(R.string.workspace_detail_tool_approval),
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    Text(
+                        text = stringResource(R.string.workspace_detail_tool_approval_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                IconButton(onClick = { expanded = !expanded }) {
+                    Icon(
+                        imageVector = if (expanded) HugeIcons.ArrowUp01 else HugeIcons.ArrowDown01,
+                        contentDescription = stringResource(
+                            if (expanded) R.string.code_block_collapse else R.string.code_block_expand
+                        ),
+                    )
+                }
             }
 
-            workspaceToolApprovalItems().forEach { (toolName, label) ->
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(2.dp),
+            if (expanded) {
+                workspaceToolApprovalItems().forEach { (toolName, label) ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text(
-                            text = label,
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                        Text(
-                            text = toolName,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(2.dp),
+                        ) {
+                            Text(
+                                text = label,
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                            Text(
+                                text = toolName,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        Switch(
+                            checked = resolveWorkspaceToolApproval(toolName, overrides),
+                            onCheckedChange = { onToolApprovalChange(toolName, it) },
+                            enabled = workspace != null,
                         )
                     }
-                    Switch(
-                        checked = resolveWorkspaceToolApproval(toolName, overrides),
-                        onCheckedChange = { onToolApprovalChange(toolName, it) },
-                        enabled = workspace != null,
-                    )
                 }
             }
         }

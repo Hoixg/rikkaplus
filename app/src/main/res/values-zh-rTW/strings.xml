@@ -1102,6 +1102,16 @@
   <string name="workspace_detail_tab_basic">基本</string>
   <string name="workspace_detail_tab_files">檔案</string>
   <string name="workspace_detail_import_file">匯入檔案</string>
+  <string name="workspace_detail_new_file">新增文字檔</string>
+  <string name="workspace_detail_file_name">檔案名稱（含副檔名）</string>
+  <string name="workspace_detail_file_name_desc">建立空白文字檔。請自行輸入副檔名，例如 note.txt 或 README.md；系統不會自動補上副檔名。</string>
+  <string name="workspace_detail_create_file">建立</string>
+  <string name="workspace_detail_file_name_invalid">檔案名稱不能包含路徑分隔符號（/ 或 \\）。</string>
+  <string name="workspace_detail_create_entry">新增檔案或資料夾</string>
+  <string name="workspace_detail_new_folder">新增資料夾</string>
+  <string name="workspace_detail_folder_name">資料夾名稱</string>
+  <string name="workspace_detail_create_folder">建立</string>
+  <string name="workspace_detail_folder_name_invalid">資料夾名稱不能包含路徑分隔符號（/ 或 \\）。</string>
   <string name="workspace_file_preview">預覽</string>
   <string name="workspace_file_source">原始碼</string>
   <string name="workspace_file_read_failed">讀取檔案失敗</string>

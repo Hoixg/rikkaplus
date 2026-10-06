@@ -1181,6 +1181,16 @@
   <string name="workspace_detail_tab_files">Files</string>
   <string name="workspace_open_files">Open workspace files</string>
   <string name="workspace_detail_import_file">Import File</string>
+  <string name="workspace_detail_new_file">New text file</string>
+  <string name="workspace_detail_file_name">File name (including extension)</string>
+  <string name="workspace_detail_file_name_desc">Creates a blank text file. Enter its extension yourself, such as note.txt or README.md; no extension is added automatically.</string>
+  <string name="workspace_detail_create_file">Create</string>
+  <string name="workspace_detail_file_name_invalid">File name cannot contain path separators (/ or \\).</string>
+  <string name="workspace_detail_create_entry">Create file or folder</string>
+  <string name="workspace_detail_new_folder">New folder</string>
+  <string name="workspace_detail_folder_name">Folder name</string>
+  <string name="workspace_detail_create_folder">Create</string>
+  <string name="workspace_detail_folder_name_invalid">Folder name cannot contain path separators (/ or \\).</string>
   <string name="workspace_file_preview">Preview</string>
   <string name="workspace_file_source">Source</string>
   <string name="workspace_file_read_failed">Failed to read file</string>

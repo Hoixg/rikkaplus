@@ -1162,6 +1162,16 @@
   <string name="workspace_detail_tab_files">文件</string>
   <string name="workspace_open_files">打开工作区文件</string>
   <string name="workspace_detail_import_file">导入文件</string>
+  <string name="workspace_detail_new_file">新建文本文件</string>
+  <string name="workspace_detail_file_name">文件名（含扩展名）</string>
+  <string name="workspace_detail_file_name_desc">创建的是空白文本文件，请自行填写扩展名（如 note.txt、README.md），不会自动补充后缀。</string>
+  <string name="workspace_detail_create_file">创建</string>
+  <string name="workspace_detail_file_name_invalid">文件名不能包含路径分隔符（/ 或 \\）。</string>
+  <string name="workspace_detail_create_entry">新建文件或文件夹</string>
+  <string name="workspace_detail_new_folder">新建文件夹</string>
+  <string name="workspace_detail_folder_name">文件夹名称</string>
+  <string name="workspace_detail_create_folder">创建</string>
+  <string name="workspace_detail_folder_name_invalid">文件夹名称不能包含路径分隔符（/ 或 \\）。</string>
   <string name="workspace_file_preview">预览</string>
   <string name="workspace_file_source">源码</string>
   <string name="workspace_file_read_failed">读取文件失败</string>

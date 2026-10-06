@@ -1,10 +1,10 @@
 package me.rerere.rikkahub.ui.components.message
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
@@ -100,9 +100,19 @@ fun ChainOfThoughtScope.ImageGenerationToolStep(
             {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     if (images.isNotEmpty()) {
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            items(images) { image ->
-                                ZoomableAsyncImage(image.url, null, Modifier.width(140.dp).height(120.dp))
+                        BoxWithConstraints(Modifier.fillMaxWidth()) {
+                            val imageWidth = maxWidth
+                            LazyRow(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                items(images) { image ->
+                                    ZoomableAsyncImage(
+                                        image.url,
+                                        null,
+                                        Modifier.width(imageWidth).heightIn(max = 420.dp),
+                                    )
+                                }
                             }
                         }
                     }

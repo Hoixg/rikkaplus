@@ -1098,6 +1098,16 @@
   <string name="workspace_detail_tab_basic">기본</string>
   <string name="workspace_detail_tab_files">파일</string>
   <string name="workspace_detail_import_file">파일 가져오기</string>
+  <string name="workspace_detail_new_file">새 텍스트 파일</string>
+  <string name="workspace_detail_file_name">파일 이름(확장자 포함)</string>
+  <string name="workspace_detail_file_name_desc">빈 텍스트 파일을 만듭니다. note.txt 또는 README.md처럼 확장자를 직접 입력해야 하며 자동으로 추가되지 않습니다.</string>
+  <string name="workspace_detail_create_file">생성</string>
+  <string name="workspace_detail_file_name_invalid">파일 이름에 경로 구분자(/ 또는 \\)를 사용할 수 없습니다.</string>
+  <string name="workspace_detail_create_entry">파일 또는 폴더 만들기</string>
+  <string name="workspace_detail_new_folder">새 폴더</string>
+  <string name="workspace_detail_folder_name">폴더 이름</string>
+  <string name="workspace_detail_create_folder">생성</string>
+  <string name="workspace_detail_folder_name_invalid">폴더 이름에 경로 구분자(/ 또는 \\)를 사용할 수 없습니다.</string>
   <string name="workspace_file_preview">미리보기</string>
   <string name="workspace_file_source">소스</string>
   <string name="workspace_file_read_failed">파일을 읽지 못했습니다</string>

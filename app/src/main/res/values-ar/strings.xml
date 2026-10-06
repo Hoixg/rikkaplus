@@ -1297,6 +1297,16 @@
   <string name="workspace_detail_enable_shell_desc">السماح لمساحة العمل هذه بتشغيل بيئة طرفية باستخدام Rootfs المحلي</string>
   <string name="workspace_detail_extracting">جارٍ استخراج %1$d عنصر%2$s</string>
   <string name="workspace_detail_import_file">استيراد ملف</string>
+  <string name="workspace_detail_new_file">ملف نصي جديد</string>
+  <string name="workspace_detail_file_name">اسم الملف (مع الامتداد)</string>
+  <string name="workspace_detail_file_name_desc">سيتم إنشاء ملف نصي فارغ. أدخل الامتداد بنفسك، مثل note.txt أو README.md؛ ولن تتم إضافته تلقائيًا.</string>
+  <string name="workspace_detail_create_file">إنشاء</string>
+  <string name="workspace_detail_file_name_invalid">لا يمكن أن يحتوي اسم الملف على فواصل المسار (/ أو \\).</string>
+  <string name="workspace_detail_create_entry">إنشاء ملف أو مجلد</string>
+  <string name="workspace_detail_new_folder">مجلد جديد</string>
+  <string name="workspace_detail_folder_name">اسم المجلد</string>
+  <string name="workspace_detail_create_folder">إنشاء</string>
+  <string name="workspace_detail_folder_name_invalid">لا يمكن أن يحتوي اسم المجلد على فواصل المسار (/ أو \\).</string>
   <string name="workspace_detail_install_complete">اكتمل التثبيت</string>
   <string name="workspace_detail_install_rootfs">تثبيت Rootfs</string>
   <string name="workspace_detail_install_rootfs_desc">سيتم تنزيل tar.gz واستخراجه إلى دليل linux الخاص بـ %s.</string>

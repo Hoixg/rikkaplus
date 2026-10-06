@@ -1098,6 +1098,16 @@
   <string name="workspace_detail_tab_basic">Основные</string>
   <string name="workspace_detail_tab_files">Файлы</string>
   <string name="workspace_detail_import_file">Импортировать файл</string>
+  <string name="workspace_detail_new_file">Новый текстовый файл</string>
+  <string name="workspace_detail_file_name">Имя файла (с расширением)</string>
+  <string name="workspace_detail_file_name_desc">Будет создан пустой текстовый файл. Укажите расширение сами, например note.txt или README.md; автоматически оно не добавляется.</string>
+  <string name="workspace_detail_create_file">Создать</string>
+  <string name="workspace_detail_file_name_invalid">Имя файла не должно содержать разделители пути (/ или \\).</string>
+  <string name="workspace_detail_create_entry">Создать файл или папку</string>
+  <string name="workspace_detail_new_folder">Новая папка</string>
+  <string name="workspace_detail_folder_name">Имя папки</string>
+  <string name="workspace_detail_create_folder">Создать</string>
+  <string name="workspace_detail_folder_name_invalid">Имя папки не должно содержать разделители пути (/ или \\).</string>
   <string name="workspace_file_preview">Просмотр</string>
   <string name="workspace_file_source">Исходный текст</string>
   <string name="workspace_file_read_failed">Не удалось прочитать файл</string>

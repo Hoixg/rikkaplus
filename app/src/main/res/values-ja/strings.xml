@@ -1098,6 +1098,16 @@
   <string name="workspace_detail_tab_basic">基本</string>
   <string name="workspace_detail_tab_files">ファイル</string>
   <string name="workspace_detail_import_file">ファイルをインポート</string>
+  <string name="workspace_detail_new_file">新しいテキストファイル</string>
+  <string name="workspace_detail_file_name">ファイル名（拡張子を含む）</string>
+  <string name="workspace_detail_file_name_desc">空のテキストファイルを作成します。拡張子（例: note.txt、README.md）は自分で入力してください。自動では追加されません。</string>
+  <string name="workspace_detail_create_file">作成</string>
+  <string name="workspace_detail_file_name_invalid">ファイル名にパス区切り文字（/ または \\）は使えません。</string>
+  <string name="workspace_detail_create_entry">ファイルまたはフォルダーを作成</string>
+  <string name="workspace_detail_new_folder">新しいフォルダー</string>
+  <string name="workspace_detail_folder_name">フォルダー名</string>
+  <string name="workspace_detail_create_folder">作成</string>
+  <string name="workspace_detail_folder_name_invalid">フォルダー名にパス区切り文字（/ または \\）は使えません。</string>
   <string name="workspace_file_preview">プレビュー</string>
   <string name="workspace_file_source">ソース</string>
   <string name="workspace_file_read_failed">ファイルの読み込みに失敗しました</string>

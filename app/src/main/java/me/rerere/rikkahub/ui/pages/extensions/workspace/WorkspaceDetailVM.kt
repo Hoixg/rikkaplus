@@ -215,6 +215,62 @@ class WorkspaceDetailVM(
         }
     }
 
+    fun createFile(fileName: String, onResult: (WorkspaceFileEntry?, String?) -> Unit) {
+        val current = state.value
+        val name = fileName.trim()
+        if (current.area != WorkspaceStorageArea.FILES) {
+            onResult(null, "Files can only be created in the workspace files area")
+            return
+        }
+        if (!isValidWorkspaceEntryName(name)) {
+            onResult(null, "Invalid file name")
+            return
+        }
+
+        val path = listOf(current.path, name)
+            .filter { it.isNotBlank() }
+            .joinToString("/")
+        viewModelScope.launch {
+            try {
+                val entry = repository.writeText(id, path, text = "", overwrite = false)
+                refresh()
+                onResult(entry, null)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                onResult(null, error.message)
+            }
+        }
+    }
+
+    fun createFolder(folderName: String, onResult: (String?) -> Unit) {
+        val current = state.value
+        val name = folderName.trim()
+        if (current.area != WorkspaceStorageArea.FILES) {
+            onResult("Folders can only be created in the workspace files area")
+            return
+        }
+        if (!isValidWorkspaceEntryName(name)) {
+            onResult("Invalid folder name")
+            return
+        }
+
+        val path = listOf(current.path, name)
+            .filter { it.isNotBlank() }
+            .joinToString("/")
+        viewModelScope.launch {
+            try {
+                repository.createDirectory(id, WorkspaceStorageArea.FILES, path)
+                refresh()
+                onResult(null)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                onResult(error.message)
+            }
+        }
+    }
+
     fun importFile(openSource: () -> Pair<InputStream, String>?) {
         viewModelScope.launch {
             runCatching {
@@ -579,6 +635,12 @@ data class WorkspaceFolderExportResult(
     val folderName: String,
     val failures: Int,
 )
+
+internal fun isValidWorkspaceEntryName(name: String): Boolean =
+    name.isNotBlank() &&
+        name != "." &&
+        name != ".." &&
+        name.none { it == '/' || it == '\\' || it == '\u0000' }
 
 private fun shellQuote(value: String): String =
     "'" + value.replace("'", "'\"'\"'") + "'"
