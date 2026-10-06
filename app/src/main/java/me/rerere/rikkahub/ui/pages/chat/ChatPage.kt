@@ -116,7 +116,6 @@ import me.rerere.rikkahub.ui.hooks.ChatInputState
 import me.rerere.rikkahub.ui.hooks.EditStateContent
 import me.rerere.rikkahub.ui.hooks.rememberAppLifecycleState
 import me.rerere.rikkahub.ui.hooks.useEditState
-import me.rerere.rikkahub.ui.theme.LocalDarkMode
 import me.rerere.rikkahub.utils.base64Decode
 import me.rerere.rikkahub.utils.contextUsageDisplayCapacity
 import me.rerere.rikkahub.utils.contextUsageFraction
@@ -922,13 +921,18 @@ internal fun ContextUsageRingButton(
         tokenLimit = tokenLimit,
     )
     val isWarning = warningThresholdTokens != null && usedTokens >= warningThresholdTokens
-    val darkMode = LocalDarkMode.current
+    val colorScheme = MaterialTheme.colorScheme
     val errorColor = MaterialTheme.colorScheme.error
-    val ringColors = remember(darkMode, isWarning, errorColor) {
+    val ringColors = remember(
+        isWarning,
+        errorColor,
+        colorScheme.primary,
+        colorScheme.secondary,
+        colorScheme.tertiary,
+    ) {
         when {
             isWarning -> listOf(lerp(errorColor, Color.White, 0.12f), errorColor, lerp(errorColor, Color.Black, 0.12f))
-            darkMode -> listOf(Color(0xFFE4906E), Color(0xFFDF8CAB), Color(0xFFAA9BDB))
-            else -> listOf(Color(0xFFB56342), Color(0xFFB95283), Color(0xFF8460BC))
+            else -> listOf(colorScheme.primary, colorScheme.secondary, colorScheme.tertiary)
         }
     }
     val trackColor = MaterialTheme.colorScheme.outlineVariant
