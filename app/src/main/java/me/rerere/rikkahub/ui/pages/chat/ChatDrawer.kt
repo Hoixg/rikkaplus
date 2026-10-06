@@ -64,6 +64,7 @@ import me.rerere.hugeicons.stroke.ImageToVideo
 import me.rerere.hugeicons.stroke.InLove
 import me.rerere.hugeicons.stroke.LanguageCircle
 import me.rerere.hugeicons.stroke.MagicWand01
+import me.rerere.hugeicons.stroke.MoreVertical
 import me.rerere.hugeicons.stroke.PencilEdit01
 import me.rerere.hugeicons.stroke.Settings03
 import me.rerere.rikkahub.R
@@ -376,29 +377,39 @@ fun ChatDrawerContent(
                     },
                 )
 
-                DrawerAction(
-                    icon = {
-                        Icon(HugeIcons.InLove, stringResource(R.string.favorite_page_title))
-                    },
-                    label = {
-                        Text(stringResource(R.string.favorite_page_title))
-                    },
-                    onClick = {
-                        navController.navigate(Screen.Favorite)
-                    },
-                )
-
-                DrawerAction(
-                    icon = {
-                        Icon(HugeIcons.LanguageCircle, stringResource(R.string.chat_page_menu_ai_translator))
-                    },
-                    label = {
-                        Text(stringResource(R.string.chat_page_menu_ai_translator))
-                    },
-                    onClick = {
-                        navController.navigate(Screen.Translator)
-                    },
-                )
+                var moreActionsExpanded by remember { mutableStateOf(false) }
+                Box {
+                    DrawerAction(
+                        icon = {
+                            Icon(HugeIcons.MoreVertical, stringResource(R.string.more_options))
+                        },
+                        label = {
+                            Text(stringResource(R.string.more_options))
+                        },
+                        onClick = { moreActionsExpanded = true },
+                    )
+                    DropdownMenu(
+                        expanded = moreActionsExpanded,
+                        onDismissRequest = { moreActionsExpanded = false },
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.favorite_page_title)) },
+                            leadingIcon = { Icon(HugeIcons.InLove, null) },
+                            onClick = {
+                                moreActionsExpanded = false
+                                navController.navigate(Screen.Favorite)
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.chat_page_menu_ai_translator)) },
+                            leadingIcon = { Icon(HugeIcons.LanguageCircle, null) },
+                            onClick = {
+                                moreActionsExpanded = false
+                                navController.navigate(Screen.Translator)
+                            },
+                        )
+                    }
+                }
 
                 DrawerAction(
                     icon = {

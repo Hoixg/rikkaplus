@@ -52,6 +52,7 @@ import me.rerere.ai.provider.ClaudePromptCacheTtl
 import me.rerere.ai.provider.ApiKeyInfo
 import me.rerere.ai.provider.ProviderSetting
 import me.rerere.ai.provider.apiKeyInfos
+import me.rerere.ai.provider.selectedApiKeyIndex
 import me.rerere.ai.provider.withApiKeyInfos
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.datastore.DEFAULT_PROVIDERS
@@ -69,6 +70,7 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlin.reflect.KClass
+import kotlin.uuid.Uuid
 
 @Composable
 fun ProviderConfigure(
@@ -118,13 +120,14 @@ fun ProviderConfigure(
 fun ProviderSetting.convertTo(type: KClass<out ProviderSetting>): ProviderSetting {
     if (this::class == type) return this
 
-    val apiKeyInfos = this.apiKeyInfos()
-    val apiKeys = apiKeyInfos.map { it.key }
-    val selectedApiKeyIndex = when (this) {
-        is ProviderSetting.OpenAI -> this.selectedApiKeyIndex
-        is ProviderSetting.Google -> this.selectedApiKeyIndex
-        is ProviderSetting.Claude -> this.selectedApiKeyIndex
-    }
+    val normalizedApiKeyInfos = this.apiKeyInfos()
+    val apiKeys = normalizedApiKeyInfos.map { it.key }
+    val storedApiKeyInfos = when (this) {
+        is ProviderSetting.OpenAI -> this.apiKeyInfos
+        is ProviderSetting.Google -> this.apiKeyInfos
+        is ProviderSetting.Claude -> this.apiKeyInfos
+    }.filter { it.key.trim() in apiKeys }
+    val selectedApiKeyIndex = this.selectedApiKeyIndex()
     val normalizedSelectedIndex = selectedApiKeyIndex.takeIf { it in apiKeys.indices } ?: 0
     val apiKey = apiKeys.getOrNull(normalizedSelectedIndex).orEmpty()
     val sourceBaseUrl = when (this) {
@@ -145,19 +148,19 @@ fun ProviderSetting.convertTo(type: KClass<out ProviderSetting>): ProviderSettin
             id = this.id, enabled = this.enabled, name = this.name, models = this.models,
             balanceOption = this.balanceOption, customHeaders = this.customHeaders, builtIn = this.builtIn,
             description = this.description, shortDescription = this.shortDescription,
-            apiKey = apiKey, apiKeys = apiKeys, selectedApiKeyIndex = normalizedSelectedIndex, apiKeyInfos = apiKeyInfos, baseUrl = convertedBaseUrl
+            apiKey = apiKey, apiKeys = apiKeys, selectedApiKeyIndex = normalizedSelectedIndex, apiKeyInfos = storedApiKeyInfos, baseUrl = convertedBaseUrl
         )
         ProviderSetting.Google::class -> ProviderSetting.Google(
             id = this.id, enabled = this.enabled, name = this.name, models = this.models,
             balanceOption = this.balanceOption, customHeaders = this.customHeaders, builtIn = this.builtIn,
             description = this.description, shortDescription = this.shortDescription,
-            apiKey = apiKey, apiKeys = apiKeys, selectedApiKeyIndex = normalizedSelectedIndex, apiKeyInfos = apiKeyInfos, baseUrl = convertedBaseUrl
+            apiKey = apiKey, apiKeys = apiKeys, selectedApiKeyIndex = normalizedSelectedIndex, apiKeyInfos = storedApiKeyInfos, baseUrl = convertedBaseUrl
         )
         ProviderSetting.Claude::class -> ProviderSetting.Claude(
             id = this.id, enabled = this.enabled, name = this.name, models = this.models,
             balanceOption = this.balanceOption, customHeaders = this.customHeaders, builtIn = this.builtIn,
             description = this.description, shortDescription = this.shortDescription,
-            apiKey = apiKey, apiKeys = apiKeys, selectedApiKeyIndex = normalizedSelectedIndex, apiKeyInfos = apiKeyInfos, baseUrl = convertedBaseUrl
+            apiKey = apiKey, apiKeys = apiKeys, selectedApiKeyIndex = normalizedSelectedIndex, apiKeyInfos = storedApiKeyInfos, baseUrl = convertedBaseUrl
         )
         else -> error("Unsupported provider type: $type")
     }
@@ -245,11 +248,7 @@ private fun ApiKeyEditor(
     onApiKeySelected: (ProviderSetting) -> Unit,
 ) {
     val entries = provider.apiKeyInfos()
-    val selectedIndex = when (provider) {
-        is ProviderSetting.OpenAI -> provider.selectedApiKeyIndex
-        is ProviderSetting.Google -> provider.selectedApiKeyIndex
-        is ProviderSetting.Claude -> provider.selectedApiKeyIndex
-    }.coerceIn(0, (entries.size - 1).coerceAtLeast(0))
+    val selectedIndex = provider.selectedApiKeyIndex().coerceIn(0, (entries.size - 1).coerceAtLeast(0))
     var showEditor by remember { mutableStateOf(false) }
     var editingIndex by remember { mutableStateOf<Int?>(null) }
     var draftKey by remember { mutableStateOf("") }
@@ -428,7 +427,12 @@ private fun ApiKeyEditor(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        val info = ApiKeyInfo(normalizedDraftKey, draftName, draftMultiplierValue ?: 1f)
+                        val info = ApiKeyInfo(
+                            key = normalizedDraftKey,
+                            name = draftName,
+                            multiplier = draftMultiplierValue ?: 1f,
+                            id = editingIndex?.let(entries::getOrNull)?.id ?: Uuid.random().toString(),
+                        )
                         val updated = if (editingIndex == null) entries + info else entries.mapIndexed { index, entry ->
                             if (index == editingIndex) info else entry
                         }

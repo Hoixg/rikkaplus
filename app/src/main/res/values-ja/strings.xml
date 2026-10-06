@@ -513,8 +513,8 @@
   <string name="reasoning_medium_desc">モデルはより多くの推論を使用して質問に答えます。</string>
   <string name="reasoning_off">オフ</string>
   <string name="reasoning_off_desc">推論機能を無効にし、モデルは直接質問に答えます。</string>
-  <string name="reasoning_picker_hint">すべてのモデルが深さ調整に対応しているわけではありません。モデルおよびプロバイダーのドキュメントを参照してください。</string>
-  <string name="reasoning_picker_title">思考の深さを調整</string>
+  <string name="reasoning_picker_hint">利用できるレベルはモデルによって異なります。</string>
+  <string name="reasoning_picker_title">思考の深さ</string>
   <string name="reasoning_xhigh">XHigh</string>
   <string name="regenerate">再生成</string>
   <string name="regenerate_confirm_message">このメッセージを再生成してもよろしいですか？このメッセージより下のメッセージはすべて削除されます。</string>

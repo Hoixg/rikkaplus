@@ -20,6 +20,8 @@ data class ApiKeyInfo(
     val key: String = "",
     val name: String = "",
     val multiplier: Float = 1f,
+    /** Stable identity for model bindings; blank in legacy settings. */
+    val id: String = "",
 )
 
 @Serializable
@@ -287,19 +289,36 @@ private val API_KEY_SPLIT_REGEX = Regex("[\\s,]+")
  * Older versions accepted multiple keys separated by whitespace or commas.
  */
 fun normalizeApiKeys(apiKeys: List<String>, legacyApiKey: String): List<String> {
-    val source = if (apiKeys.isNotEmpty()) apiKeys else listOf(legacyApiKey)
+    val fromList = splitApiKeyValues(apiKeys)
+    val source = fromList.ifEmpty { splitApiKeyValues(listOf(legacyApiKey)) }
     return source
-        .flatMap { it.split(API_KEY_SPLIT_REGEX) }
-        .map { it.trim() }
-        .filter { it.isNotBlank() }
         .distinct()
 }
+
+private fun splitApiKeyValues(values: List<String>): List<String> = values
+    .flatMap { it.split(API_KEY_SPLIT_REGEX) }
+    .map { it.trim() }
+    .filter { it.isNotBlank() }
 
 fun ProviderSetting.apiKeys(): List<String> = when (this) {
     is ProviderSetting.OpenAI -> normalizeApiKeys(apiKeys = this.apiKeys, legacyApiKey = this.apiKey)
     is ProviderSetting.Google -> normalizeApiKeys(apiKeys = this.apiKeys, legacyApiKey = this.apiKey)
     is ProviderSetting.Claude -> normalizeApiKeys(apiKeys = this.apiKeys, legacyApiKey = this.apiKey)
 }
+
+private fun ProviderSetting.rawApiKeyValues(): List<String> {
+    val (storedKeys, legacyKey) = when (this) {
+        is ProviderSetting.OpenAI -> apiKeys to apiKey
+        is ProviderSetting.Google -> apiKeys to apiKey
+        is ProviderSetting.Claude -> apiKeys to apiKey
+    }
+    val fromList = splitRawApiKeyValues(storedKeys)
+    return (if (fromList.any { it.isNotBlank() }) fromList else splitRawApiKeyValues(listOf(legacyKey)))
+}
+
+private fun splitRawApiKeyValues(values: List<String>): List<String> = values
+    .flatMap { it.split(API_KEY_SPLIT_REGEX) }
+    .map { it.trim() }
 
 /**
  * Returns normalized key metadata while retaining compatibility with the legacy key fields.
@@ -318,6 +337,7 @@ fun ProviderSetting.apiKeyInfos(): List<ApiKeyInfo> {
             key = key,
             name = info?.name?.trim().orEmpty().ifBlank { "Key ${index + 1}" },
             multiplier = info?.multiplier?.takeIf { it.isFinite() && it > 0f } ?: 1f,
+            id = info?.id?.trim().orEmpty().ifBlank { apiKeyReference(key) },
         )
     }
 }
@@ -330,9 +350,11 @@ fun ProviderSetting.selectedApiKey(): String {
         is ProviderSetting.Google -> selectedApiKeyIndex
         is ProviderSetting.Claude -> selectedApiKeyIndex
     }
-    val index = rawIndex.takeIf { it in keys.indices } ?: 0
-    return keys[index]
+    return rawApiKeyValues().getOrNull(rawIndex)?.takeIf { it in keys } ?: keys.first()
 }
+
+/** Returns the selected key's index after normalizing legacy and duplicate entries. */
+fun ProviderSetting.selectedApiKeyIndex(): Int = apiKeys().indexOf(selectedApiKey()).coerceAtLeast(0)
 
 /** Explicitly named alias for call sites where an empty key is a valid fallback. */
 fun ProviderSetting.selectedApiKeyOrBlank(): String = selectedApiKey()
@@ -365,17 +387,28 @@ fun ProviderSetting.withRequestApiKey(key: String): ProviderSetting {
     }
 }
 
-/** Stable, non-secret identifier used when a model pins one saved provider key. */
+/** Legacy non-secret identifier used by model references before key entries had stable IDs. */
 fun apiKeyReference(key: String): String {
     val digest = MessageDigest.getInstance("SHA-256").digest(key.trim().toByteArray())
     return digest.joinToString("") { "%02x".format(it.toInt() and 0xff) }
 }
 
+/** Returns a key entry's stable reference, falling back to the legacy key hash. */
+fun apiKeyReference(info: ApiKeyInfo): String = info.id.trim().ifBlank { apiKeyReference(info.key) }
+
 /** Returns a provider with normalized keys and the legacy field synchronized. */
 fun ProviderSetting.withApiKeys(keys: List<String>, selectedIndex: Int = 0): ProviderSetting {
+    val previousEntries = apiKeyInfos().associateBy { it.key }
+    val normalizedKeys = normalizeApiKeys(keys, legacyApiKey = "")
+    val requestedKey = keys.getOrNull(selectedIndex)
+        ?.let { normalizeApiKeys(listOf(it), legacyApiKey = "").firstOrNull() }
+    val normalizedIndex = requestedKey
+        ?.let(normalizedKeys::indexOf)
+        ?.takeIf { it >= 0 }
+        ?: selectedIndex
     return withApiKeyInfos(
-        entries = normalizeApiKeys(keys, legacyApiKey = "").map { ApiKeyInfo(key = it) },
-        selectedIndex = selectedIndex,
+        entries = normalizedKeys.map { key -> previousEntries[key] ?: ApiKeyInfo(key = key) },
+        selectedIndex = normalizedIndex,
     )
 }
 
@@ -384,6 +417,10 @@ fun ProviderSetting.withApiKeyInfos(
     entries: List<ApiKeyInfo>,
     selectedIndex: Int = 0,
 ): ProviderSetting {
+    val requestedKey = entries.getOrNull(selectedIndex)
+        ?.key
+        ?.let { normalizeApiKeys(listOf(it), legacyApiKey = "").firstOrNull() }
+    val usedIds = mutableSetOf<String>()
     val normalized = entries
         .map { info ->
             val key = info.key.trim()
@@ -391,15 +428,36 @@ fun ProviderSetting.withApiKeyInfos(
                 key = key,
                 name = info.name.trim(),
                 multiplier = info.multiplier.takeIf { it.isFinite() && it > 0f } ?: 1f,
+                id = info.id.trim().ifBlank { apiKeyReference(key) },
             )
         }
         .filter { it.first.isNotBlank() }
         .distinctBy { it.first }
         .mapIndexed { index, (_, info) ->
-            info.copy(name = info.name.ifBlank { "Key ${index + 1}" })
+            val requestedId = info.id.ifBlank { apiKeyReference(info.key) }
+            val id = if (usedIds.add(requestedId)) {
+                requestedId
+            } else {
+                val baseId = apiKeyReference(info.key)
+                var candidate = baseId
+                var suffix = 1
+                while (!usedIds.add(candidate)) {
+                    candidate = "$baseId-$suffix"
+                    suffix++
+                }
+                candidate
+            }
+            info.copy(
+                name = info.name.ifBlank { "Key ${index + 1}" },
+                id = id,
+            )
         }
     val keys = normalized.map { it.key }
-    val index = selectedIndex.takeIf { it in keys.indices } ?: 0
+    val index = requestedKey
+        ?.let(keys::indexOf)
+        ?.takeIf { it >= 0 }
+        ?: selectedIndex.takeIf { it in keys.indices }
+        ?: 0
     val selected = keys.getOrNull(index).orEmpty()
     val metadata = normalized.map { it.copy(key = it.key) }
     return when (this) {

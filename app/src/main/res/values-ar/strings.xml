@@ -617,8 +617,8 @@
   <string name="reasoning_medium_desc">سيستخدم النموذج مزيدًا من الاستدلال للإجابة عن الأسئلة.</string>
   <string name="reasoning_off">إيقاف</string>
   <string name="reasoning_off_desc">إيقاف وظيفة الاستدلال؛ سيجيب النموذج عن الأسئلة مباشرة.</string>
-  <string name="reasoning_picker_hint">لا تدعم جميع النماذج ضبط العمق. راجع وثائق النموذج والمزوّد.</string>
-  <string name="reasoning_picker_title">ضبط عمق التفكير</string>
+  <string name="reasoning_picker_hint">تختلف المستويات المتاحة حسب النموذج.</string>
+  <string name="reasoning_picker_title">عمق التفكير</string>
   <string name="reasoning_xhigh">مرتفع جدًا</string>
   <string name="regenerate">إعادة التوليد</string>
   <string name="regenerate_confirm_message">هل أنت متأكد من إعادة توليد هذه الرسالة؟ سيتم حذف جميع الرسائل أسفل هذه الرسالة.</string>

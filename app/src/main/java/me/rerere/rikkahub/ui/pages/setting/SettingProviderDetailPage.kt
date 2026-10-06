@@ -104,7 +104,6 @@ import me.rerere.ai.provider.ProviderSetting
 import me.rerere.ai.provider.TextGenerationParams
 import me.rerere.ai.provider.apiKeyInfos
 import me.rerere.ai.provider.apiKeyReference
-import me.rerere.ai.provider.withApiKeyInfos
 import me.rerere.ai.registry.ModelRegistry
 import me.rerere.ai.ui.UIMessage
 import me.rerere.rikkahub.R
@@ -150,7 +149,7 @@ fun SettingProviderDetailPage(id: Uuid, vm: SettingVM = koinViewModel()) {
     val settings by vm.settings.collectAsStateWithLifecycle()
     val navController = LocalNavController.current
     val provider = settings.providers.find { it.id == id } ?: return
-    var draftProvider by remember(provider) { mutableStateOf(provider) }
+    var draftProvider by remember(provider.id) { mutableStateOf(provider) }
     val pager = rememberPagerState { 3 }
     val scope = rememberCoroutineScope()
     val toaster = LocalToaster.current
@@ -266,12 +265,9 @@ fun SettingProviderDetailPage(id: Uuid, vm: SettingVM = koinViewModel()) {
                         },
                         onApiKeySelected = {
                             draftProvider = it
-                            val selectedIndex = when (it) {
-                                is ProviderSetting.OpenAI -> it.selectedApiKeyIndex
-                                is ProviderSetting.Google -> it.selectedApiKeyIndex
-                                is ProviderSetting.Claude -> it.selectedApiKeyIndex
-                            }
-                            onEdit(provider.withApiKeyInfos(provider.apiKeyInfos(), selectedIndex))
+                            // Switching a saved key is immediate; persist the complete current
+                            // draft so this write cannot replace it with a stale provider snapshot.
+                            onEdit(it)
                         },
                         onSave = {
                             draftProvider = it
@@ -783,7 +779,9 @@ private fun ModelApiKeySelector(
     val entries = remember(parentProvider) { parentProvider?.apiKeyInfos().orEmpty() }
     var expanded by remember { mutableStateOf(false) }
     val selected = model.apiKeyRef?.let { ref ->
-        entries.firstOrNull { apiKeyReference(it.key) == ref || it.key == ref }
+        entries.firstOrNull {
+            apiKeyReference(it) == ref || apiKeyReference(it.key) == ref || it.key == ref
+        }
     }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
@@ -823,7 +821,7 @@ private fun ModelApiKeySelector(
                     DropdownMenuItem(
                         text = { Text(formatModelApiKeyLabel(entry)) },
                         onClick = {
-                            onSelected(entry.key)
+                            onSelected(apiKeyReference(entry))
                             expanded = false
                         },
                     )

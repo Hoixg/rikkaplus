@@ -10,7 +10,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -24,8 +25,6 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.NavigationDrawerItem
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.rememberBottomSheetState
@@ -65,47 +64,39 @@ fun AssistantPicker(
     val defaultAssistantName = stringResource(R.string.assistant_page_default_assistant)
     var showPicker by remember { mutableStateOf(false) }
 
-    Surface(
-        shape = RoundedCornerShape(percent = 50),
-        color = Color.Transparent,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(56.dp)
+            .clickable(onClick = onClickSetting)
+            .padding(horizontal = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        NavigationDrawerItem(
-            icon = {
-                UIAvatar(
-                    name = state.currentAssistant.name.ifEmpty { defaultAssistantName },
-                    value = state.currentAssistant.avatar,
-                    onClick = onClickSetting,
-                )
-            },
-            label = {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = state.currentAssistant.name.ifEmpty { defaultAssistantName },
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-
-                    Spacer(Modifier.weight(1f))
-
-                    IconButton(
-                        onClick = { showPicker = true },
-                        modifier = Modifier.size(32.dp),
-                    ) {
-                        Icon(
-                            imageVector = HugeIcons.ArrowDataTransferHorizontal,
-                            contentDescription = stringResource(R.string.safe_mode_switch_assistant),
-                            modifier = Modifier.size(20.dp),
-                        )
-                    }
-                }
-            },
+        UIAvatar(
+            name = state.currentAssistant.name.ifEmpty { defaultAssistantName },
+            value = state.currentAssistant.avatar,
             onClick = onClickSetting,
-            modifier = modifier,
-            selected = false,
         )
+
+        Spacer(Modifier.width(12.dp))
+
+        Text(
+            text = state.currentAssistant.name.ifEmpty { defaultAssistantName },
+            modifier = Modifier.weight(1f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+
+        IconButton(
+            onClick = { showPicker = true },
+            modifier = Modifier.size(32.dp),
+        ) {
+            Icon(
+                imageVector = HugeIcons.ArrowDataTransferHorizontal,
+                contentDescription = stringResource(R.string.safe_mode_switch_assistant),
+                modifier = Modifier.size(20.dp),
+            )
+        }
     }
 
     if (showPicker) {

@@ -26,11 +26,13 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
 import me.rerere.ai.core.MessageRole
 import me.rerere.ai.core.ReasoningLevel
+import me.rerere.ai.provider.ApiKeyInfo
 import me.rerere.ai.provider.Model
 import me.rerere.ai.provider.ProviderSetting
 import me.rerere.ai.provider.apiKeyInfos
 import me.rerere.ai.provider.apiKeyReference
 import me.rerere.ai.provider.selectedApiKey
+import me.rerere.ai.provider.selectedApiKeyIndex
 import me.rerere.ai.provider.withApiKeyInfos
 import me.rerere.ai.provider.withRequestApiKey
 import me.rerere.rikkahub.AppScope
@@ -409,23 +411,22 @@ class SettingsStore(
             val asrProviders = settings.asrProviders.distinctBy { it.id }
             settings.copy(
                 providers = settings.providers.distinctBy { it.id }.map { provider ->
-                    val selectedIndex = when (provider) {
-                        is ProviderSetting.OpenAI -> provider.selectedApiKeyIndex
-                        is ProviderSetting.Google -> provider.selectedApiKeyIndex
-                        is ProviderSetting.Claude -> provider.selectedApiKeyIndex
-                    }
+                    val selectedIndex = provider.selectedApiKeyIndex()
                     provider.withApiKeyInfos(provider.apiKeyInfos(), selectedIndex).let { normalized ->
-                        val keyReferences = normalized.apiKeyInfos().associate { info ->
-                            apiKeyReference(info.key) to info.key
+                        val keyReferences = buildMap<String, ApiKeyInfo> {
+                            normalized.apiKeyInfos().forEach { info ->
+                                // Stable IDs are used for new model bindings. Accept the old
+                                // key hash and raw key as migration inputs for existing settings.
+                                put(apiKeyReference(info), info)
+                                put(apiKeyReference(info.key), info)
+                                put(info.key, info)
+                            }
                         }
                         fun normalizeModel(model: Model): Model {
                             val reference = model.apiKeyRef?.trim()?.takeIf { it.isNotBlank() }
-                            val normalizedReference = reference?.let { candidate ->
-                                when {
-                                    candidate in keyReferences -> candidate
-                                    else -> keyReferences.entries.firstOrNull { it.value == candidate }?.key
-                                }
-                            }
+                            val normalizedReference = reference
+                                ?.let(keyReferences::get)
+                                ?.let(::apiKeyReference)
                             return model.copy(apiKeyRef = normalizedReference)
                         }
                         when (normalized) {
@@ -884,7 +885,9 @@ fun Model.findRequestProvider(providers: List<ProviderSetting>): ProviderSetting
         ?.takeIf { it.isNotBlank() }
         ?.let { reference ->
             baseProvider.apiKeyInfos().firstOrNull {
-                apiKeyReference(it.key) == reference || it.key == reference
+                apiKeyReference(it) == reference ||
+                    apiKeyReference(it.key) == reference ||
+                    it.key == reference
             }?.key
         }
     return when {
