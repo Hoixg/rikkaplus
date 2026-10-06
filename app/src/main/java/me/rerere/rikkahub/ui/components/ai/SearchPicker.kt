@@ -222,17 +222,25 @@ private fun SearchPicker(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 24.dp)
-            .padding(bottom = 32.dp),
+            .padding(bottom = 16.dp),
     ) {
         val enabled = currentMode != SearchMode.OFF
-        PickerHeader(
+        PickerValueHeader(
             title = stringResource(R.string.use_web_search),
+            value = currentMode,
             hint = when (currentMode) {
                 SearchMode.OFF -> stringResource(R.string.search_picker_off_description)
                 SearchMode.LOCAL -> stringResource(R.string.search_picker_local_description)
                 SearchMode.BUILT_IN -> stringResource(R.string.search_picker_model_description)
             },
-            modifier = Modifier.padding(bottom = 24.dp),
+            modifier = Modifier.padding(bottom = 16.dp),
+            label = {
+                when (it) {
+                    SearchMode.OFF -> stringResource(R.string.search_picker_status_off)
+                    SearchMode.LOCAL -> stringResource(R.string.search_picker_local_title)
+                    SearchMode.BUILT_IN -> stringResource(R.string.search_picker_model_title)
+                }
+            },
         ) {
             PickerHero(
                 shapes = modeShapes,
@@ -249,35 +257,6 @@ private fun SearchPicker(
                     MaterialTheme.colorScheme.onSurfaceVariant
                 },
             )
-        }
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            PickerValueLabel(
-                value = currentMode,
-                modifier = Modifier.weight(1f),
-            ) {
-                when (it) {
-                    SearchMode.OFF -> stringResource(R.string.search_picker_status_off)
-                    SearchMode.LOCAL -> stringResource(R.string.search_picker_local_title)
-                    SearchMode.BUILT_IN -> stringResource(R.string.search_picker_model_title)
-                }
-            }
-            IconButton(
-                onClick = {
-                    onDismiss()
-                    navBackStack.navigate(Screen.SettingSearch)
-                }
-            ) {
-                Icon(
-                    imageVector = HugeIcons.Settings03,
-                    contentDescription = stringResource(R.string.search_picker_title),
-                )
-            }
         }
 
         // 连接式按钮组，选中项更宽并带图标
@@ -348,7 +327,7 @@ private fun SearchPicker(
             SegmentedListItem(
                 onClick = onSelectProvider,
                 shapes = ListItemDefaults.segmentedShapes(index = 0, count = 1),
-                modifier = Modifier.padding(top = 16.dp),
+                modifier = Modifier.padding(top = 12.dp),
                 leadingContent = {
                     if (currentService != null) {
                         AutoAIIcon(
@@ -363,7 +342,21 @@ private fun SearchPicker(
                     { SearchAbilityTagLine(options = it) }
                 },
                 trailingContent = {
-                    Icon(HugeIcons.ArrowRight01, contentDescription = null)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        // 搜索设置只和本地搜索的服务商有关，跟着这一行一起出现
+                        IconButton(
+                            onClick = {
+                                onDismiss()
+                                navBackStack.navigate(Screen.SettingSearch)
+                            }
+                        ) {
+                            Icon(
+                                imageVector = HugeIcons.Settings03,
+                                contentDescription = stringResource(R.string.search_picker_title),
+                            )
+                        }
+                        Icon(HugeIcons.ArrowRight01, contentDescription = null)
+                    }
                 },
             ) {
                 Text(
@@ -385,31 +378,6 @@ private fun SearchMode.shape(): RoundedPolygon = when (this) {
     SearchMode.OFF -> MaterialShapes.Circle
     SearchMode.LOCAL -> MaterialShapes.Cookie6Sided
     SearchMode.BUILT_IN -> MaterialShapes.Cookie9Sided
-}
-
-@Composable
-private fun SheetHeader(
-    title: String,
-    navigationIcon: (@Composable () -> Unit)? = null,
-    actions: @Composable () -> Unit = {},
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = 56.dp)
-            .padding(bottom = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        navigationIcon?.invoke()
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleLarge,
-            modifier = Modifier
-                .weight(1f)
-                .padding(start = if (navigationIcon == null) 8.dp else 4.dp),
-        )
-        actions()
-    }
 }
 
 @Composable
