@@ -227,6 +227,26 @@ class ChatVM(
         }
     }
 
+    fun handleCompressContext(
+        additionalPrompt: String,
+        targetTokens: Int,
+        keepRecentMessages: Int,
+    ): Job = viewModelScope.launch {
+        chatService.compressConversation(
+            conversationId = _conversationId,
+            conversation = conversation.value,
+            additionalPrompt = additionalPrompt,
+            targetTokens = targetTokens,
+            keepRecentMessages = keepRecentMessages,
+        ).onFailure { error ->
+            chatService.addError(
+                error = error,
+                conversationId = _conversationId,
+                title = context.getString(R.string.error_title_compress_context),
+            )
+        }
+    }
+
     suspend fun forkMessage(message: UIMessage): Conversation {
         return chatService.forkConversationAtMessage(_conversationId, message.id)
     }

@@ -51,6 +51,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Job
 import me.rerere.ai.provider.ProviderSetting
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Voice
@@ -62,6 +63,7 @@ import me.rerere.hugeicons.stroke.Folder01
 import me.rerere.hugeicons.stroke.Image02
 import me.rerere.hugeicons.stroke.MusicNote03
 import me.rerere.hugeicons.stroke.Package
+import me.rerere.hugeicons.stroke.Package01
 import me.rerere.hugeicons.stroke.Settings02
 import me.rerere.hugeicons.stroke.Tools
 import me.rerere.hugeicons.stroke.Video01
@@ -76,6 +78,7 @@ import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.data.model.Conversation
 import me.rerere.rikkahub.data.repository.WorkspaceRepository
 import me.rerere.rikkahub.ui.components.ui.ExtensionSelector
+import me.rerere.rikkahub.ui.components.ai.CompressContextDialog
 import me.rerere.rikkahub.ui.components.ui.permission.PermissionCamera
 import me.rerere.rikkahub.ui.components.ui.permission.PermissionManager
 import me.rerere.rikkahub.ui.components.ui.permission.rememberPermissionState
@@ -102,6 +105,7 @@ internal fun FilesPicker(
     onPickVideo: () -> Unit,
     onPickAudio: () -> Unit,
     onPickFile: () -> Unit,
+    onCompressContext: (additionalPrompt: String, targetTokens: Int, keepRecentMessages: Int) -> Job,
     onStartVoiceMode: (() -> Unit)? = null,
 ) {
     val settings = LocalSettings.current
@@ -109,6 +113,7 @@ internal fun FilesPicker(
     val navController = LocalNavController.current
     val workspaceRepository: WorkspaceRepository = koinInject()
     val workspaces by workspaceRepository.listFlow().collectAsState(initial = emptyList())
+    var showCompressDialog by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -216,6 +221,36 @@ internal fun FilesPicker(
                 },
         )
 
+        ListItem(
+            leadingContent = {
+                Icon(
+                    imageVector = HugeIcons.Package01,
+                    contentDescription = stringResource(R.string.chat_page_compress_context),
+                )
+            },
+            headlineContent = {
+                Text(stringResource(R.string.chat_page_compress_context))
+            },
+            trailingContent = {
+                if (conversation.messageNodes.isNotEmpty()) {
+                    Text(
+                        text = stringResource(
+                            R.string.chat_page_message_count,
+                            conversation.messageNodes.size,
+                        ),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            },
+            colors = ListItemDefaults.colors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainer,
+            ),
+            modifier = Modifier
+                .clip(MaterialTheme.shapes.large)
+                .clickable { showCompressDialog = true },
+        )
+
         // Workspace CWD
         val boundWorkspace = remember(workspaces, assistant.workspaceId) {
             workspaces.find { it.id == assistant.workspaceId?.toString() }
@@ -262,6 +297,16 @@ internal fun FilesPicker(
             onUpdateConversation = onUpdateConversation,
             onDismiss = { onShowInjectionSheetChange(false) },
             onDismissAll = onDismiss,
+        )
+    }
+
+    if (showCompressDialog) {
+        CompressContextDialog(
+            onDismiss = {
+                showCompressDialog = false
+                onDismiss()
+            },
+            onConfirm = onCompressContext,
         )
     }
 

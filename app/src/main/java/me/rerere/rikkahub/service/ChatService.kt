@@ -163,6 +163,20 @@ internal fun createForkConversation(
     modelOverrideId = source.modelOverrideId,
 )
 
+internal fun insertContextCheckpoint(
+    conversation: Conversation,
+    afterNodeId: Uuid,
+    summary: String,
+): Conversation? {
+    val nodes = conversation.messageNodes
+    val index = nodes.indexOfFirst { it.id == afterNodeId }
+    if (index < 0) return null
+    val checkpoint = UIMessage.user(summary).copy(isContextCheckpoint = true).toMessageNode()
+    return conversation.copy(
+        messageNodes = nodes.subList(0, index + 1) + checkpoint + nodes.subList(index + 1, nodes.size),
+    )
+}
+
 data class ChatError(
     val id: Uuid = Uuid.random(),
     val title: String? = null,
@@ -1376,6 +1390,108 @@ class ChatService(
         }
     }
 
+    suspend fun compressConversation(
+        conversationId: Uuid,
+        conversation: Conversation,
+        additionalPrompt: String,
+        targetTokens: Int,
+        keepRecentMessages: Int = 32,
+    ): Result<Unit> = runCatching {
+        val session = sessionManager.getOrCreate(conversationId)
+        check(!session.isGenerating) {
+            context.getString(R.string.chat_page_compress_blocked_generating)
+        }
+
+        val settings = settingsStore.settingsFlow.first()
+        val model = settings.getConversationChatModel(conversation)
+            ?: settings.getCurrentChatModel()
+            ?: throw IllegalStateException("No model available for compression")
+        val provider = model.findRequestProvider(settings.providers)
+            ?: throw IllegalStateException("Provider not found")
+        val providerHandler = providerManager.getProviderByType(provider)
+
+        val nodes = conversation.messageNodes
+        val latestMessageCheckpointIndex = nodes.indexOfLast { it.currentMessage.isContextCheckpoint }
+        val cutIndex = (nodes.size - keepRecentMessages.coerceAtLeast(0)).coerceAtLeast(0)
+        val activeSummary = conversation.activeCompressionForRequest()
+        val summaryBoundaryIndex = activeSummary?.boundaryNodeId?.let { boundaryId ->
+            nodes.indexOfFirst { it.id == boundaryId }.takeIf { it >= 0 }
+        }
+        val useSummaryCheckpoint = summaryBoundaryIndex != null &&
+            summaryBoundaryIndex >= latestMessageCheckpointIndex && summaryBoundaryIndex < cutIndex
+        val startIndex = when {
+            useSummaryCheckpoint -> summaryBoundaryIndex!!
+            latestMessageCheckpointIndex >= 0 -> latestMessageCheckpointIndex
+            else -> -1
+        }
+        if (cutIndex <= startIndex + 1) {
+            throw IllegalStateException(context.getString(R.string.chat_page_compress_not_enough_messages))
+        }
+
+        // A local automatic summary replaces its covered nodes in the model window. Reuse it
+        // here too, then include only the raw messages that follow its boundary.
+        val messagesToCompress = if (useSummaryCheckpoint) {
+            listOf(UIMessage.user(activeSummary!!.content).copy(isContextCheckpoint = true)) +
+                nodes.subList(summaryBoundaryIndex!! + 1, cutIndex).map { it.currentMessage }
+        } else {
+            nodes.subList(startIndex.coerceAtLeast(0), cutIndex).map { it.currentMessage }
+        }
+        check(messagesToCompress.none { message ->
+            message.getTools().any { it.isPending || it.canResumeExecution }
+        }) {
+            context.getString(R.string.chat_page_compress_pending_tools)
+        }
+
+        fun splitMessages(messages: List<UIMessage>): List<List<UIMessage>> {
+            if (messages.size <= 256) return listOf(messages)
+            val mid = messages.size / 2
+            return splitMessages(messages.subList(0, mid)) + splitMessages(messages.subList(mid, messages.size))
+        }
+
+        suspend fun compressMessages(messages: List<UIMessage>): String {
+            val contentToCompress = messages.joinToString("\n\n") { message ->
+                message.summaryAsText(maxLength = if (message.isContextCheckpoint) Int.MAX_VALUE else 2_000)
+            }
+            val prompt = settings.compressPrompt.applyPlaceholders(
+                "content" to contentToCompress,
+                "target_tokens" to targetTokens.toString(),
+                "additional_context" to if (additionalPrompt.isNotBlank()) {
+                    "Additional instructions from user: $additionalPrompt"
+                } else "",
+                "locale" to Locale.getDefault().displayName,
+            )
+            val result = providerHandler.generateText(
+                providerSetting = provider,
+                messages = listOf(UIMessage.user(prompt)),
+                params = backgroundTextGenerationParams(model, conversationId),
+            )
+            return result.message.toText().trim().takeIf { it.isNotBlank() }
+                ?: throw IllegalStateException("Failed to generate compressed summary")
+        }
+
+        val compressedSummaries = coroutineScope {
+            splitMessages(messagesToCompress).map { chunk -> async { compressMessages(chunk) } }.awaitAll()
+        }
+        val boundaryNodeId = nodes[cutIndex - 1].id
+        val sourceFingerprint = conversation.compressionSourceFingerprint(boundaryNodeId)
+            ?: throw IllegalStateException(context.getString(R.string.chat_page_compress_conversation_changed))
+        val summary = compressedSummaries.joinToString("\n\n")
+
+        val updatedConversation = synchronized(session) {
+            check(!session.isGenerating) {
+                context.getString(R.string.chat_page_compress_blocked_generating)
+            }
+            val latest = session.state.value
+            if (latest.compressionSourceFingerprint(boundaryNodeId) != sourceFingerprint) {
+                throw IllegalStateException(context.getString(R.string.chat_page_compress_conversation_changed))
+            }
+            val updated = insertContextCheckpoint(latest, boundaryNodeId, summary)
+                ?: throw IllegalStateException(context.getString(R.string.chat_page_compress_conversation_changed))
+            updated.copy(chatSuggestions = emptyList()).also { updateConversation(conversationId, it) }
+        }
+        saveConversation(conversationId, updatedConversation)
+    }
+
     private suspend fun autoCompressIfNeeded(
         conversationId: Uuid,
         session: ConversationSession,
@@ -1913,6 +2029,14 @@ class ChatService(
                 return@map node
             }
             edited = true
+
+            if (node.messages.firstOrNull { it.id == messageId }?.isContextCheckpoint == true) {
+                return@map node.copy(
+                    messages = node.messages.map { message ->
+                        if (message.id == messageId) message.copy(parts = processedParts) else message
+                    },
+                )
+            }
 
             node.copy(
                 messages = node.messages + UIMessage(

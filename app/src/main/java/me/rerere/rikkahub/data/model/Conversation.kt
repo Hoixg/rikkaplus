@@ -67,8 +67,10 @@ data class Conversation(
         val checkpoint = compressionSummaries.lastOrNull() ?: return null
         val boundaryNodeId = checkpoint.boundaryNodeId ?: return null
         val expectedFingerprint = checkpoint.sourceFingerprint ?: return null
+        val boundaryIndex = messageNodes.indexOfFirst { it.id == boundaryNodeId }
+        val latestMessageCheckpointIndex = messageNodes.indexOfLast { it.currentMessage.isContextCheckpoint }
         return checkpoint.takeIf {
-            messageNodes.any { node -> node.id == boundaryNodeId } &&
+            boundaryIndex >= latestMessageCheckpointIndex && boundaryIndex >= 0 &&
                 compressionSourceFingerprint(boundaryNodeId) == expectedFingerprint
         }
     }
@@ -108,17 +110,28 @@ data class Conversation(
     /** Builds a model request window with the checkpoint separated from persisted chat messages. */
     internal fun requestContextForGeneration(messageRange: ClosedRange<Int>? = null): ConversationRequestWindow {
         val checkpoint = activeCompressionForRequest()
-        val boundaryIndex = checkpoint?.boundaryNodeId?.let { boundaryId ->
+        val compressionBoundaryIndex = checkpoint?.boundaryNodeId?.let { boundaryId ->
             messageNodes.indexOfFirst { it.id == boundaryId }.takeIf { it >= 0 }
         }
-        val shouldUseCheckpoint = checkpoint != null && boundaryIndex != null &&
-            (messageRange == null || messageRange.endInclusive >= boundaryIndex)
+        val messageCheckpointIndex = messageNodes.indexOfLast { it.currentMessage.isContextCheckpoint }
+        val rangeEnd = messageRange?.endInclusive
+        val shouldUseCompressionCheckpoint = checkpoint != null && compressionBoundaryIndex != null &&
+            (rangeEnd == null || rangeEnd >= compressionBoundaryIndex)
+        val shouldUseMessageCheckpoint = messageCheckpointIndex >= 0 &&
+            (rangeEnd == null || rangeEnd >= messageCheckpointIndex) &&
+            (!shouldUseCompressionCheckpoint || messageCheckpointIndex > compressionBoundaryIndex!!)
+        val firstWindowIndex = when {
+            shouldUseCompressionCheckpoint -> compressionBoundaryIndex!! + 1
+            shouldUseMessageCheckpoint -> messageCheckpointIndex
+            else -> 0
+        }
         val messages = mutableListOf<UIMessage>()
         val nodeIndexes = mutableListOf<Int?>()
 
         messageNodes.forEachIndexed { index, node ->
-            val belongsToWindow = !shouldUseCheckpoint || index > boundaryIndex
-            if (belongsToWindow && (messageRange == null || index in messageRange)) {
+            val belongsToWindow = index >= firstWindowIndex
+            val checkpointMessage = shouldUseMessageCheckpoint && index == messageCheckpointIndex
+            if (belongsToWindow && (messageRange == null || index in messageRange || checkpointMessage)) {
                 messages += node.messages[node.selectIndex]
                 nodeIndexes += index
             }
@@ -135,7 +148,7 @@ data class Conversation(
             messages = messages,
             sourceNodeIndexes = nodeIndexes,
             appendNodeIndex = appendNodeIndex,
-            checkpointContent = checkpoint?.content?.takeIf { shouldUseCheckpoint },
+            checkpointContent = checkpoint?.content?.takeIf { shouldUseCompressionCheckpoint },
         )
     }
 
@@ -173,10 +186,13 @@ data class Conversation(
     }
 
     fun windowNodes(): List<MessageNode> {
-        val checkpoint = activeCompressionForRequest() ?: return messageNodes
-        val boundaryIndex = messageNodes.indexOfFirst { it.id == checkpoint.boundaryNodeId }
-        if (boundaryIndex < 0) return messageNodes
-        return messageNodes.drop(boundaryIndex + 1)
+        val checkpoint = activeCompressionForRequest()
+        if (checkpoint != null) {
+            val boundaryIndex = messageNodes.indexOfFirst { it.id == checkpoint.boundaryNodeId }
+            if (boundaryIndex >= 0) return messageNodes.drop(boundaryIndex + 1)
+        }
+        val messageCheckpointIndex = messageNodes.indexOfLast { it.currentMessage.isContextCheckpoint }
+        return if (messageCheckpointIndex >= 0) messageNodes.drop(messageCheckpointIndex) else messageNodes
     }
 
     fun getMessageNodeByMessage(message: UIMessage): MessageNode? {

@@ -256,6 +256,15 @@
   <string name="chat_page_cancel">取消</string>
   <string name="chat_page_check_fast_model_settings">檢查快速模型設定</string>
   <string name="chat_page_clear_all_errors">清除全部</string>
+  <string name="chat_page_compress_additional_prompt">額外指示（選填）</string>
+  <string name="chat_page_compress_additional_prompt_hint">指定要保留或聚焦的內容</string>
+  <string name="chat_page_compress_context">壓縮歷史</string>
+  <string name="chat_page_compress_context_desc">將對話壓縮成摘要以節省 token</string>
+  <string name="chat_page_compress_context_title">壓縮對話紀錄</string>
+  <string name="chat_page_compress_keep_recent">保留最近訊息</string>
+  <string name="chat_page_compress_not_enough_messages">訊息不足，無法壓縮。請減少要保留的訊息數量，或新增更多訊息。</string>
+  <string name="chat_page_compress_target_tokens">目標 Token 大小</string>
+  <string name="chat_page_compressing">正在壓縮...</string>
   <string name="chat_page_conversation_system_prompt">對話系統提示</string>
   <string name="chat_page_conversation_system_prompt_clear">清除</string>
   <string name="chat_page_conversation_system_prompt_hint">覆蓋此對話的助理系統提示</string>
@@ -1532,4 +1541,9 @@
   <string name="search_picker_off">關閉</string>
   <string name="search_picker_status_off">已關閉</string>
   <string name="search_picker_off_description">模型僅根據自身已知的內容回答，不會存取網路。</string>
+  <string name="chat_page_compress_checkpoint_title">先前的訊息已壓縮為摘要</string>
+  <string name="chat_page_compress_checkpoint_hint">此線以上的訊息將不再傳送給模型；此摘要會取代它們。刪除摘要即可再次傳送完整歷史記錄。</string>
+  <string name="chat_page_compress_blocked_generating">請先停止生成，再壓縮上下文</string>
+  <string name="chat_page_compress_conversation_changed">對話在壓縮期間已變更。請再試一次。</string>
+  <string name="chat_page_compress_pending_tools">請先處理待處理的工具呼叫，或保留包含這些呼叫的近期訊息</string>
 </resources>
