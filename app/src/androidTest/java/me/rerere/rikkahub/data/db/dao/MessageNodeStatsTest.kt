@@ -32,7 +32,7 @@ class MessageNodeStatsTest {
                 id = "stats-test",
                 assistantId = "assistant",
                 title = "Stats test",
-                nodes = "[]",
+                conversationConfigJson = "[]",
                 createAt = 0,
                 updateAt = 0,
                 chatSuggestions = "[]",

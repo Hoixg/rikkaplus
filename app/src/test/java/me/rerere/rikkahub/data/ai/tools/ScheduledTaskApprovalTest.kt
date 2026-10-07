@@ -32,7 +32,8 @@ class ScheduledTaskApprovalTest {
         val pending = pending()
         assertTrue(pending.isPending)
         assertEquals(0, executions)
-        assertEquals(now + 30_000L, scheduledApprovalDeadline(pending))
+        assertEquals(now + 60_000L, scheduledApprovalDeadline(pending))
+        assertEquals(60_000L, scheduledApprovalDurationMs(pending))
         val restored = Json.decodeFromString(UIMessagePart.Tool.serializer(), Json.encodeToString(UIMessagePart.Tool.serializer(), pending))
         assertEquals(pending, restored)
         now += 10_000
@@ -40,9 +41,9 @@ class ScheduledTaskApprovalTest {
         assertTrue(runCatching { executeToolWithApproval(pending, definition, pending.inputAsJson()) }.isFailure)
     }
 
-    @Test fun approvalAt29SecondsCanExecuteAfterDeadline() = runBlocking {
+    @Test fun approvalAt59SecondsCanExecuteAfterDeadline() = runBlocking {
         val pending = pending("run_now")
-        now += 29_000
+        now += 59_000
         val approved = decideScheduledTaskApproval(pending, true, now = now)
         assertEquals(ToolApprovalState.Approved, approved.approvalState)
         now += 2_000
@@ -51,9 +52,9 @@ class ScheduledTaskApprovalTest {
         assertEquals(approved, decideScheduledTaskApproval(approved, false, now = now))
     }
 
-    @Test fun at30SecondsLateApprovalIsDeniedAndCannotExecute() = runBlocking {
+    @Test fun at60SecondsLateApprovalIsDeniedAndCannotExecute() = runBlocking {
         val pending = pending("update")
-        now += 30_000
+        now += 60_000
         val denied = decideScheduledTaskApproval(pending, true, now = now)
         assertEquals(ToolApprovalState.Denied(SCHEDULED_APPROVAL_TIMEOUT_REASON), denied.approvalState)
         assertEquals(denied, decideScheduledTaskApproval(denied, true, now = now))
@@ -67,6 +68,43 @@ class ScheduledTaskApprovalTest {
         assertEquals(legacy, prepareScheduledTaskApproval(legacy, definition) { now })
         val pending = pending()
         assertTrue(scheduledApprovalExpired(pending, now - 1))
+    }
+
+    @Test fun restoredLegacyRequestKeepsIts30SecondDeadline() = runBlocking {
+        val created = pending()
+        val metadata = created.metadata ?: error("Missing metadata")
+        val original = scheduledApprovalMetadata(created) ?: error("Missing approval metadata")
+        val legacy = created.copy(metadata = buildJsonObject {
+            metadata.forEach { (key, value) ->
+                put(key, if (key == SCHEDULED_APPROVAL_METADATA) buildJsonObject {
+                    original.forEach { (field, item) -> if (field != "timeout_ms" && field != "expires_at") put(field, item) }
+                    put("expires_at", now + 30_000L)
+                } else value)
+            }
+        })
+        assertEquals(30_000L, scheduledApprovalDurationMs(legacy))
+        assertEquals(now + 30_000L, scheduledApprovalDeadline(legacy))
+        now += 29_000L
+        assertEquals(ToolApprovalState.Approved, decideScheduledTaskApproval(legacy, true, now = now).approvalState)
+        now += 1_000L
+        assertEquals(ToolApprovalState.Denied(SCHEDULED_APPROVAL_TIMEOUT_REASON),
+            decideScheduledTaskApproval(legacy, true, now = now).approvalState)
+        assertEquals(legacy, prepareScheduledTaskApproval(legacy, definition) { now })
+    }
+
+    @Test fun reopeningPageUsesRemainingTimeFromPersistedDeadline() = runBlocking {
+        val created = pending()
+        now += 10_000L
+        val restored = Json.decodeFromString(UIMessagePart.Tool.serializer(),
+            Json.encodeToString(UIMessagePart.Tool.serializer(), created))
+        val waits = Channel<Long>(Channel.UNLIMITED)
+        val coordinator = ScheduledTaskApprovalCoordinator(this, { _, _ -> },
+            clock = { now }, wait = { waits.send(it); awaitCancellation() })
+        coordinator.observe("chat", listOf(restored))
+        assertEquals(50_000L, waits.receive())
+        coordinator.observe("chat", listOf(restored.copy()))
+        assertTrue(waits.tryReceive().isFailure)
+        coordinator.cancelAll()
     }
 
     @Test fun otherToolsAndNonTimedScheduledActionsKeepGenericApproval() = runBlocking {
@@ -93,15 +131,15 @@ class ScheduledTaskApprovalTest {
         val first = pending(id = "first")
         coordinator.observe("chat", listOf(first))
         val firstWait = waits.receive()
-        assertEquals(30_000L, firstWait.first)
+        assertEquals(60_000L, firstWait.first)
         now += 10_000
         val second = pending(id = "second")
         coordinator.observe("chat", listOf(first.copy(), second))
         val secondWait = waits.receive()
-        assertEquals(30_000L, secondWait.first)
+        assertEquals(60_000L, secondWait.first)
         assertTrue(waits.tryReceive().isFailure)
         assertEquals(2, references)
-        now += 20_000
+        now += 50_000
         firstWait.second.complete(Unit)
         yield()
         assertEquals(listOf("first"), expired)
@@ -115,7 +153,7 @@ class ScheduledTaskApprovalTest {
         var waits = 0
         val expired = mutableListOf<String>()
         val pending = pending()
-        now += 31_000
+        now += 61_000
         val coordinator = ScheduledTaskApprovalCoordinator(this, { _, id -> expired += id }, clock = { now }, wait = { waits++ })
         coordinator.observe("chat", listOf(pending,
             UIMessagePart.Tool("other", "workspace_shell", "{}", approvalState = ToolApprovalState.Pending)))

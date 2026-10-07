@@ -14,7 +14,8 @@ import me.rerere.ai.core.MessageRole
 
 internal const val SCHEDULED_APPROVAL_METADATA = "scheduled_task_approval"
 internal const val SCHEDULED_PREPARED_ARGUMENT = "_scheduled_task_prepared"
-internal const val SCHEDULED_APPROVAL_TIMEOUT_MS = 30_000L
+internal const val SCHEDULED_APPROVAL_TIMEOUT_MS = 60_000L
+internal const val SCHEDULED_APPROVAL_LEGACY_TIMEOUT_MS = 30_000L
 internal const val SCHEDULED_APPROVAL_TIMEOUT_REASON = "审批超时，未批准"
 internal val scheduledApprovalActions = setOf("create", "update", "run_now")
 internal val scheduledReadActions = setOf("list", "get", "options", "history")
@@ -33,9 +34,14 @@ internal fun scheduledApprovalMetadata(call: UIMessagePart.Tool): JsonObject? =
 internal fun scheduledApprovalDeadline(call: UIMessagePart.Tool): Long? =
     scheduledApprovalMetadata(call)?.get("expires_at")?.jsonPrimitive?.longOrNull
 
+/** Older persisted requests have no duration field and retain their original 30-second window. */
+internal fun scheduledApprovalDurationMs(call: UIMessagePart.Tool): Long =
+    scheduledApprovalMetadata(call)?.get("timeout_ms")?.jsonPrimitive?.longOrNull
+        ?.takeIf { it in 1..SCHEDULED_APPROVAL_TIMEOUT_MS } ?: SCHEDULED_APPROVAL_LEGACY_TIMEOUT_MS
+
 internal fun scheduledApprovalExpired(call: UIMessagePart.Tool, now: Long): Boolean =
     isScheduledApproval(call) && call.isPending && (scheduledApprovalDeadline(call)?.let {
-        now >= it || now < it - SCHEDULED_APPROVAL_TIMEOUT_MS
+        now >= it || now < it - scheduledApprovalDurationMs(call)
     } ?: true)
 
 internal fun hasDeniedScheduledRequestInTurn(messages: List<UIMessage>): Boolean =
@@ -58,6 +64,7 @@ internal suspend fun prepareScheduledTaskApproval(
         prepared.metadata?.forEach { (key, value) -> put(key, value) }
         put(SCHEDULED_APPROVAL_METADATA, buildJsonObject {
             snapshot.forEach { (key, value) -> put(key, value) }
+            put("timeout_ms", SCHEDULED_APPROVAL_TIMEOUT_MS)
             put("expires_at", now() + SCHEDULED_APPROVAL_TIMEOUT_MS)
         })
     })
@@ -102,7 +109,7 @@ internal class ScheduledTaskApprovalCoordinator(
             retain(conversationId)
             val job = scope.launch(start = CoroutineStart.LAZY) {
                 val remaining = if (scheduledApprovalExpired(call, clock())) 0L else
-                    ((scheduledApprovalDeadline(call) ?: clock()) - clock()).coerceIn(0L, SCHEDULED_APPROVAL_TIMEOUT_MS)
+                    ((scheduledApprovalDeadline(call) ?: clock()) - clock()).coerceIn(0L, scheduledApprovalDurationMs(call))
                 if (remaining > 0) wait(remaining)
                 expire(conversationId, call.toolCallId)
             }

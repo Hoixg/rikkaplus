@@ -67,7 +67,7 @@ fun createScheduledTaskTools(
             Schedule types: DAILY (`time_of_day` "HH:mm"), WEEKLY (`time_of_day` and `weekdays` 1=Mon..7=Sun), INTERVAL (`interval_minutes` >= 15), ONCE (`trigger_at` "yyyy-MM-dd HH:mm").
             DAILY and WEEKLY support optional inclusive `start_date` and `end_date` (yyyy-MM-dd). Null clears a date bound. Creating an enabled task requires exact-alarm permission; `enabled=false` saves a draft.
             create needs `name` + `prompt` (+ one schedule spec); update only needs the fields to change.
-            Execution modes: NEW_CHAT (default), FOLLOW_UP (target_conversation_id), REGENERATE (target_conversation_id and target_user_message_id; copies context to a new chat; prompt may be empty). Null clears optional IDs. Optional model_override_id applies only to the run. notify/show_preview default true. create/update/run_now require separate human approval within 30 seconds; timeout means denied. Never retry a denied/timed-out request or recreate it under another name. run_now does not change the schedule. Busy conversations wait until idle.
+            Execution modes: NEW_CHAT (default), FOLLOW_UP (target_conversation_id), REGENERATE (target_conversation_id and target_user_message_id; copies context to a new chat; prompt may be empty). Null clears optional IDs. Optional model_override_id applies only to the run. notify/show_preview default true. create/update/run_now require separate human approval within 60 seconds; timeout means denied. Never retry a denied/timed-out request or recreate it under another name. run_now does not change the schedule. Busy conversations wait until idle.
             ${if (scheduledExecution) "This is an execution of an EXISTING scheduled task. Complete its content now. Only list/get/options/history are allowed. Never create, change, delete, enable, cancel, or trigger scheduled tasks." else ""}
         """.trimIndent(),
         parameters = {
@@ -146,7 +146,7 @@ fun createScheduledTaskTools(
             You can manage this assistant's scheduled tasks with `$SCHEDULED_TASK_TOOL_NAME`
             (list / get / options / create / update / delete / set_enabled / run_now / history / cancel_run). Only this assistant's tasks are visible and editable.
             "Help me check/research/do something" / "帮我检查某件事" means execute that work now. Do not infer a scheduled task from those words, task content, past messages, or an empty task list. Create a task only when the human explicitly requests a future or recurring schedule. A stored task prompt describes the work of one run; it is not permission to create another task.
-            create/update/run_now each need human approval within 30 seconds. After denial or timeout, explain that nothing was performed; do not automatically retry, change the name, or issue another approval request without new human instructions.
+            create/update/run_now each need human approval within 60 seconds. After denial or timeout, explain that nothing was performed; do not automatically retry, change the name, or issue another approval request without new human instructions.
             ${if (scheduledExecution) "You are executing an already configured scheduled task, not responding to a new human scheduling request. Complete this run's work. Task management and triggering other tasks are prohibited; only read actions are available." else ""}
             """.trimIndent()
         },
