@@ -1,15 +1,15 @@
 package me.rerere.rikkahub.utils
 
 import me.rerere.ai.provider.Model
+import me.rerere.ai.provider.BuiltInTools
 import me.rerere.ai.registry.ModelRegistry
 import me.rerere.ai.core.MessageRole
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.rikkahub.data.model.Conversation
+import me.rerere.rikkahub.data.model.getChatModelOf
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.findModelById
-import me.rerere.rikkahub.data.datastore.getAssistantById
-import me.rerere.rikkahub.data.datastore.getCurrentAssistant
 import kotlinx.datetime.toKotlinLocalDateTime
 
 fun parseContextLengthInput(text: String): Int? {
@@ -48,9 +48,19 @@ fun Model?.effectiveContextLength(): Int =
             ?: DEFAULT_CONTEXT_LENGTH
 
 fun Settings.getConversationChatModel(conversation: Conversation): Model? {
-    conversation.modelOverrideId?.let { return findModelById(it) }
-    val assistant = getAssistantById(conversation.assistantId) ?: getCurrentAssistant()
-    return findModelById(assistant.chatModelId) ?: findModelById(chatModelId)
+    val modelOverride = conversation.modelOverrideId?.let { findModelById(it) }
+    if (modelOverride != null) {
+        val config = conversation.config
+        if (config == null || config.chatModelId != modelOverride.id) return modelOverride
+        return modelOverride.copy(
+            tools = if (config.builtInSearch) {
+                modelOverride.tools + BuiltInTools.Search
+            } else {
+                modelOverride.tools - BuiltInTools.Search
+            }
+        )
+    }
+    return getChatModelOf(conversation)
 }
 
 fun normalizeAutoCompactionThresholdPercent(value: Int): Int {

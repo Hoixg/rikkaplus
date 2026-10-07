@@ -300,8 +300,10 @@ fun WorkspaceDetailPage(
             when (page) {
                 0 -> WorkspaceBasicPage(
                     workspace = state.workspace,
+                    toolApprovalExpanded = state.toolApprovalExpanded,
                     installProgress = installProgress,
                     onInstallRootfs = { showInstallDialog = true },
+                    onToolApprovalExpandedChange = vm::setToolApprovalExpanded,
                     onToolApprovalChange = vm::setToolApproval,
                     onShellCompatibilityModeChange = vm::setShellCompatibilityMode,
                     onAddMount = { showMountDialog = true },
@@ -617,8 +619,10 @@ fun WorkspaceDetailPage(
 @Composable
 private fun WorkspaceBasicPage(
     workspace: WorkspaceEntity?,
+    toolApprovalExpanded: Boolean,
     installProgress: RootfsInstallProgress?,
     onInstallRootfs: () -> Unit,
+    onToolApprovalExpandedChange: (Boolean) -> Unit,
     onToolApprovalChange: (String, Boolean) -> Unit,
     onShellCompatibilityModeChange: (Boolean) -> Unit,
     onAddMount: () -> Unit,
@@ -738,6 +742,8 @@ private fun WorkspaceBasicPage(
         item {
             WorkspaceToolApprovalCard(
                 workspace = workspace,
+                expanded = toolApprovalExpanded,
+                onExpandedChange = onToolApprovalExpandedChange,
                 onToolApprovalChange = onToolApprovalChange,
             )
         }
@@ -756,10 +762,11 @@ private fun WorkspaceBasicPage(
 @Composable
 private fun WorkspaceToolApprovalCard(
     workspace: WorkspaceEntity?,
+    expanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit,
     onToolApprovalChange: (String, Boolean) -> Unit,
 ) {
     val overrides = workspace?.toolApprovalOverrides().orEmpty()
-    var expanded by rememberSaveable(workspace?.id) { mutableStateOf(true) }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -790,7 +797,7 @@ private fun WorkspaceToolApprovalCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                IconButton(onClick = { expanded = !expanded }) {
+                IconButton(onClick = { onExpandedChange(!expanded) }) {
                     Icon(
                         imageVector = if (expanded) HugeIcons.ArrowUp01 else HugeIcons.ArrowDown01,
                         contentDescription = stringResource(

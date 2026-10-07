@@ -193,10 +193,6 @@ class ChatVM(
         }
     }
 
-    fun setChatModel(assistant: Assistant, model: Model) {
-        updateAssistant(assistant.copy(chatModelId = model.id))
-    }
-
     // 设置聊天模型
     fun setChatModel(model: Model) {
         viewModelScope.launch {

@@ -406,6 +406,7 @@ class WorkspaceRepository(
             manager.deleteWorkspace(workspace.root)
         }
         cleanupAssistantReferences(id)
+        settingsStore.clearWorkspaceToolApprovalExpanded(id)
         return true
     }
 

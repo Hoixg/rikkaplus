@@ -10,12 +10,10 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
 import coil3.compose.AsyncImage
-import me.rerere.rikkahub.data.datastore.Settings
-import me.rerere.rikkahub.data.datastore.getCurrentAssistant
+import me.rerere.rikkahub.data.model.Assistant
 
 @Composable
-fun AssistantBackground(setting: Settings, modifier: Modifier) {
-    val assistant = setting.getCurrentAssistant()
+fun AssistantBackground(assistant: Assistant, modifier: Modifier) {
     if (assistant.useGradientBackground) {
         MeshGradientBackground(modifier = modifier)
         return

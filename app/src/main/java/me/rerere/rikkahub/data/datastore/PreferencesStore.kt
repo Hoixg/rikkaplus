@@ -596,6 +596,22 @@ class SettingsStore(
         dataStore.edit { preferences -> preferences[LAUNCH_COUNT] = count }
     }
 
+    fun workspaceToolApprovalExpandedFlow(workspaceId: String) = dataStore.data
+        .map { preferences ->
+            preferences[booleanPreferencesKey("workspace_tool_approval_expanded_$workspaceId")] ?: true
+        }
+        .distinctUntilChanged()
+
+    suspend fun setWorkspaceToolApprovalExpanded(workspaceId: String, expanded: Boolean) {
+        val key = booleanPreferencesKey("workspace_tool_approval_expanded_$workspaceId")
+        dataStore.edit { preferences -> preferences[key] = expanded }
+    }
+
+    suspend fun clearWorkspaceToolApprovalExpanded(workspaceId: String) {
+        val key = booleanPreferencesKey("workspace_tool_approval_expanded_$workspaceId")
+        dataStore.edit { preferences -> preferences.remove(key) }
+    }
+
     suspend fun updateAssistant(assistantId: Uuid) {
         dataStore.edit { preferences ->
             preferences[SELECT_ASSISTANT] = assistantId.toString()

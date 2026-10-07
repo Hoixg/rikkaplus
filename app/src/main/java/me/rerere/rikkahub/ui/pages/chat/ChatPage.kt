@@ -390,7 +390,7 @@ private fun ChatPageContent(
         color = MaterialTheme.colorScheme.background,
         modifier = Modifier.fillMaxSize()
     ) {
-        AssistantBackground(setting = setting, modifier = Modifier.hazeSource(hazeState))
+        AssistantBackground(assistant = assistant, modifier = Modifier.hazeSource(hazeState))
         Scaffold(
             topBar = {
                 TopBar(
@@ -489,12 +489,10 @@ private fun ChatPageContent(
                         }
                         inputState.clearInput()
                     },
-                    onUpdateChatModel = {
-                        if (conversation.parentConversationId != null) {
-                            vm.setConversationChatModel(it)
-                        } else {
-                            vm.setChatModel(assistant = assistant, model = it)
-                        }
+                    onUpdateChatModel = if (conversation.parentConversationId != null) {
+                        vm::setConversationChatModel
+                    } else {
+                        vm::setChatModel
                     },
                     onUpdateAssistant = vm::updateAssistant,
                     onUpdateSearchService = { index ->

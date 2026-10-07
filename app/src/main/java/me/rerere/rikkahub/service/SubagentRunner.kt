@@ -54,6 +54,7 @@ internal class SubagentRunner(
                 title = manager.tasks.value[id]?.description.orEmpty(),
                 messageNodes = emptyList(),
                 customSystemPrompt = parent.customSystemPrompt,
+                config = parent.config,
                 modeInjectionIds = parent.modeInjectionIds,
                 lorebookIds = parent.lorebookIds,
                 workspaceCwd = parent.workspaceCwd,

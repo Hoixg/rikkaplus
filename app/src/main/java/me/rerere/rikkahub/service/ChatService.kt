@@ -1067,8 +1067,7 @@ class ChatService(
             settings.getAssistantOf(initialConversation)
         }
         val model = scheduledTask?.modelOverrideId?.let { settings.findModelById(Uuid.parse(it)) }
-            ?: initialConversation.modelOverrideId?.let(settings::findModelById)
-            ?: settings.getChatModelOf(initialConversation)
+            ?: settings.getConversationChatModel(initialConversation)
             ?: throw IllegalStateException("No chat model selected")
         val requestModel = imageToolChatModel(model, LocalToolOption.ImageGeneration in assistant.localTools)
 
@@ -1776,19 +1775,21 @@ class ChatService(
      */
     suspend fun updateChatAssistant(conversationId: Uuid, update: (Assistant) -> Assistant) {
         sessionManager.withSession(conversationId) { session ->
-            ensureInitialized(session)
-            val settings = settingsStore.settingsFlow.first()
-            val conversation = session.state.value
-            val stored = settings.getStoredAssistantOf(conversation)
-            val updated = update(settings.getAssistantOf(conversation))
-            val assistant = updated.withoutConversationFields(conversation, stored)
-            session.updateMetadata(
-                update = { it.withAssistantUpdate(updated, settings) },
-                persist = conversationRepo::updateConversationConfig,
-            )
-            if (assistant != stored) {
-                settingsStore.update { latest ->
-                    latest.copy(assistants = latest.assistants.map { if (it.id == assistant.id) assistant else it })
+            session.withPersistenceLock {
+                ensureInitialized(session)
+                val settings = settingsStore.settingsFlow.first()
+                val conversation = session.state.value
+                val stored = settings.getStoredAssistantOf(conversation)
+                val updated = update(settings.getAssistantOf(conversation))
+                val assistant = updated.withoutConversationFields(conversation, stored)
+                session.updateMetadata(
+                    update = { it.withAssistantUpdate(updated, settings) },
+                    persist = conversationRepo::updateConversationConfig,
+                )
+                if (assistant != stored) {
+                    settingsStore.update { latest ->
+                        latest.copy(assistants = latest.assistants.map { if (it.id == assistant.id) assistant else it })
+                    }
                 }
             }
         }
@@ -1804,51 +1805,53 @@ class ChatService(
         builtInSearch: Boolean? = null,
     ) {
         sessionManager.withSession(conversationId) { session ->
-            ensureInitialized(session)
-            val conversation = session.state.value
-            if (conversation.config != null) {
-                session.updateMetadata(
-                    update = {
-                        it.copy(
-                            config = it.config?.let { config ->
-                                config.copy(
-                                    enableWebSearch = enableWebSearch ?: config.enableWebSearch,
-                                    builtInSearch = builtInSearch ?: config.builtInSearch,
+            session.withPersistenceLock {
+                ensureInitialized(session)
+                val conversation = session.state.value
+                if (conversation.config != null) {
+                    session.updateMetadata(
+                        update = {
+                            it.copy(
+                                config = it.config?.let { config ->
+                                    config.copy(
+                                        enableWebSearch = enableWebSearch ?: config.enableWebSearch,
+                                        builtInSearch = builtInSearch ?: config.builtInSearch,
+                                    )
+                                }
+                            )
+                        },
+                        persist = conversationRepo::updateConversationConfig,
+                    )
+                    return@withPersistenceLock
+                }
+                settingsStore.update { settings ->
+                    val assistant = settings.getAssistantOf(conversation)
+                    val model = settings.getChatModelOf(conversation)
+                    settings.copy(
+                        assistants = if (enableWebSearch == null) {
+                            settings.assistants
+                        } else {
+                            settings.assistants.map {
+                                if (it.id == assistant.id) it.copy(enableWebSearch = enableWebSearch) else it
+                            }
+                        },
+                        providers = if (builtInSearch == null || model == null) {
+                            settings.providers
+                        } else {
+                            settings.providers.map { provider ->
+                                provider.editModel(
+                                    model.copy(
+                                        tools = if (builtInSearch) {
+                                            model.tools + BuiltInTools.Search
+                                        } else {
+                                            model.tools - BuiltInTools.Search
+                                        }
+                                    )
                                 )
                             }
-                        )
-                    },
-                    persist = conversationRepo::updateConversationConfig,
-                )
-                return@withSession
-            }
-            settingsStore.update { settings ->
-                val assistant = settings.getAssistantOf(conversation)
-                val model = settings.getChatModelOf(conversation)
-                settings.copy(
-                    assistants = if (enableWebSearch == null) {
-                        settings.assistants
-                    } else {
-                        settings.assistants.map {
-                            if (it.id == assistant.id) it.copy(enableWebSearch = enableWebSearch) else it
                         }
-                    },
-                    providers = if (builtInSearch == null || model == null) {
-                        settings.providers
-                    } else {
-                        settings.providers.map { provider ->
-                            provider.editModel(
-                                model.copy(
-                                    tools = if (builtInSearch) {
-                                        model.tools + BuiltInTools.Search
-                                    } else {
-                                        model.tools - BuiltInTools.Search
-                                    }
-                                )
-                            )
-                        }
-                    },
-                )
+                    )
+                }
             }
         }
     }
@@ -1878,7 +1881,9 @@ class ChatService(
                 conversationRepo.getConversationById(conversationId)
                     ?: throw IllegalStateException("Conversation not found")
             }
-            session.updateMetadata(update, persist)
+            session.withPersistenceLock {
+                session.updateMetadata(update, persist)
+            }
         }
     }
 
@@ -1892,15 +1897,27 @@ class ChatService(
 
     suspend fun updateConversationChatModel(conversationId: Uuid, modelId: Uuid) {
         sessionManager.withSession(conversationId) { session ->
-            session.initialize { conversationRepo.getConversationById(conversationId) ?: error("Conversation not found") }
             session.withPersistenceLock {
+                ensureInitialized(session)
+                val settings = settingsStore.settingsFlow.first()
+                val selectedModel = settings.findModelById(modelId)
+                    ?: throw IllegalStateException("Selected model is no longer available")
                 session.updateMetadata(
                     update = { conversation ->
                         requireWritableConversation(conversation)
                         check(conversation.parentConversationId != null) { "Only child chats can change their inherited model" }
-                        conversation.copy(modelOverrideId = modelId)
+                        conversation.copy(
+                            modelOverrideId = modelId,
+                            config = conversation.config?.copy(
+                                chatModelId = modelId,
+                                builtInSearch = BuiltInTools.Search in selectedModel.tools,
+                            ),
+                        )
                     },
-                    persist = { conversationRepo.updateConversationModelOverride(conversationId, modelId) },
+                    persist = {
+                        conversationRepo.updateConversationModelOverride(conversationId, modelId)
+                        conversationRepo.updateConversationConfig(it)
+                    },
                 )
             }
         }

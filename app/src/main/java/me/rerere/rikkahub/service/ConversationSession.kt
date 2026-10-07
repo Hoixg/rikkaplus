@@ -80,7 +80,7 @@ class ConversationSession(
         }
     }
 
-    /** Serialize full conversation writes with narrow checkpoint-column writes. */
+    /** Serialize full conversation writes with narrow metadata-column writes. */
     internal suspend fun <T> withPersistenceLock(block: suspend () -> T): T =
         persistenceMutex.withLock { block() }
 

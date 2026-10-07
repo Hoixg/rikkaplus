@@ -90,10 +90,9 @@ import kotlinx.coroutines.launch
 import me.rerere.ai.ui.UIMessage
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.datastore.Settings
-import me.rerere.rikkahub.data.datastore.getAssistantById
 import me.rerere.rikkahub.data.model.Conversation
 import me.rerere.rikkahub.data.model.MessageNode
-import me.rerere.rikkahub.data.model.withConversation
+import me.rerere.rikkahub.data.model.getAssistantOf
 import me.rerere.rikkahub.service.ChatError
 import me.rerere.rikkahub.ui.components.message.ChatMessage
 import me.rerere.rikkahub.ui.components.ui.ErrorCardsDisplay
@@ -267,13 +266,17 @@ private fun ChatListNormal(
 
     val assistant = remember(
         settings.assistants,
+        settings.assistantId,
+        settings.mcpServers,
+        settings.modeInjections,
+        settings.lorebooks,
         conversation.assistantId,
         conversation.config,
         conversation.modeInjectionIds,
         conversation.lorebookIds,
     ) {
         // 工作区等配置在会话开始后以会话上固定的为准
-        settings.getAssistantById(conversation.assistantId)?.withConversation(conversation)
+        settings.getAssistantOf(conversation)
     }
     val modelById = remember(settings.providers) {
         settings.providers
@@ -384,7 +387,7 @@ private fun ChatListNormal(
                 }
             }
 
-            if (!loading && assistant?.allowConversationSystemPrompt == true && onConversationSystemPromptChange != null) {
+            if (!loading && assistant.allowConversationSystemPrompt && onConversationSystemPromptChange != null) {
                 item(key = "ConversationSystemPrompt") {
                     ConversationSystemPromptButton(
                         customSystemPrompt = conversation.customSystemPrompt,

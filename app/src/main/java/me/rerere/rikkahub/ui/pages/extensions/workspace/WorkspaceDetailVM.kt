@@ -21,7 +21,9 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
+import me.rerere.rikkahub.AppScope
 import me.rerere.rikkahub.data.db.entity.WorkspaceEntity
+import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.repository.WorkspaceRepository
 import me.rerere.workspace.RootfsInstallProgress
 import me.rerere.workspace.RootfsInstallStage
@@ -33,6 +35,8 @@ import me.rerere.workspace.WorkspaceStorageArea
 class WorkspaceDetailVM(
     private val id: String,
     private val repository: WorkspaceRepository,
+    private val settingsStore: SettingsStore,
+    private val appScope: AppScope,
     private val terminalSessionManager: WorkspaceTerminalSessionManager,
 ) : ViewModel() {
     private val _state = MutableStateFlow(WorkspaceDetailState())
@@ -126,8 +130,21 @@ class WorkspaceDetailVM(
     }
 
     init {
+        viewModelScope.launch {
+            settingsStore.workspaceToolApprovalExpandedFlow(id).collect { expanded ->
+                _state.update { it.copy(toolApprovalExpanded = expanded) }
+            }
+        }
         loadWorkspace()
         refresh()
+    }
+
+    fun setToolApprovalExpanded(expanded: Boolean) {
+        _state.update { it.copy(toolApprovalExpanded = expanded) }
+        appScope.launch {
+            runCatching { settingsStore.setWorkspaceToolApprovalExpanded(id, expanded) }
+                .onFailure { error -> Log.w(TAG, "Failed to save workspace tool approval state", error) }
+        }
     }
 
     fun selectArea(area: WorkspaceStorageArea) {
@@ -617,6 +634,7 @@ data class WorkspaceDetailState(
     val exportResult: String? = null,
     val expandedPaths: Set<String> = emptySet(),
     val childrenCache: Map<String, List<WorkspaceFileEntry>> = emptyMap(),
+    val toolApprovalExpanded: Boolean = true,
 )
 
 data class WorkspaceTerminalState(

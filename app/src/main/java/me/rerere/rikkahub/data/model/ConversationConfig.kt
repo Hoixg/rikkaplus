@@ -132,15 +132,26 @@ fun Settings.getChatModelOf(conversation: Conversation): Model? {
  * 只有固定的模型被删除时才改为固定助手当前的模型，之后不再跟着助手变。
  */
 fun Conversation.bindConfig(settings: Settings): Conversation {
-    val model = settings.getChatModelOf(this)
+    val overrideModel = modelOverrideId?.let { settings.findModelById(it) }
+    val invalidModelOverride = modelOverrideId != null && overrideModel == null
+    val model = overrideModel ?: settings.getChatModelOf(this)
     val builtInSearch = model != null && BuiltInTools.Search in model.tools
     val config = config
     if (config != null) {
-        if (model == null || model.id == config.chatModelId) return this
-        return copy(config = config.copy(chatModelId = model.id, builtInSearch = builtInSearch))
+        if (model == null) return if (invalidModelOverride) copy(modelOverrideId = null) else this
+        if (!invalidModelOverride && model.id == config.chatModelId) return this
+        return copy(
+            modelOverrideId = if (invalidModelOverride) null else modelOverrideId,
+            config = if (model.id == config.chatModelId) {
+                config
+            } else {
+                config.copy(chatModelId = model.id, builtInSearch = builtInSearch)
+            },
+        )
     }
     val assistant = settings.getAssistantOf(this)
     return copy(
+        modelOverrideId = if (invalidModelOverride) null else modelOverrideId,
         config = assistant.toConversationConfig().copy(chatModelId = model?.id, builtInSearch = builtInSearch),
         // 旧版本允许会话单独绑定注入，这类会话保留自己的绑定
         modeInjectionIds = modeInjectionIds.ifEmpty { assistant.modeInjectionIds },
