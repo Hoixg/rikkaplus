@@ -1,6 +1,7 @@
 package me.rerere.rikkahub.ui.pages.extensions.workspace
 
 import me.rerere.workspace.WorkspaceFileEntry
+import me.rerere.workspace.WorkspaceStorageArea
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 
@@ -18,7 +19,10 @@ private val IMAGE_EXTENSIONS = setOf(
 
 internal sealed interface WorkspaceMarkdownImagePath {
     data class Network(val url: String) : WorkspaceMarkdownImagePath
-    data class Local(val path: String) : WorkspaceMarkdownImagePath
+    data class Local(
+        val path: String,
+        val area: WorkspaceStorageArea? = null,
+    ) : WorkspaceMarkdownImagePath
 }
 
 private val URI_SCHEME = Regex("^[A-Za-z][A-Za-z0-9+.-]*:")
@@ -32,6 +36,10 @@ internal fun resolveWorkspaceMarkdownImagePath(
         trimmed.startsWith("https://", ignoreCase = true)
     ) {
         return WorkspaceMarkdownImagePath.Network(trimmed)
+    }
+    parseWorkspacePathReference(trimmed)?.let { reference ->
+        if (!isWorkspaceImageFileName(reference.path)) return null
+        return WorkspaceMarkdownImagePath.Local(reference.path, WorkspaceStorageArea.FILES)
     }
     if (trimmed.isEmpty() || URI_SCHEME.containsMatchIn(trimmed)) return null
 

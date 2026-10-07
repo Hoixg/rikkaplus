@@ -145,7 +145,7 @@ fun WorkspaceFileEditorPage(
                 null -> null
                 is WorkspaceMarkdownImagePath.Network -> resolved.url
                 is WorkspaceMarkdownImagePath.Local -> runCatching {
-                    repository.resolvePreviewFile(id, area, resolved.path).absolutePath
+                    repository.resolvePreviewFile(id, resolved.area ?: area, resolved.path).absolutePath
                 }.getOrNull()
             }
         }
