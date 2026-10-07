@@ -102,7 +102,7 @@ fun createMcpManageTools(
 )
 
 private suspend fun currentServers(settingsStore: SettingsStore): List<McpServerConfig> =
-    settingsStore.settingsFlowRaw.first().mcpServers
+    settingsStore.awaitLoaded().mcpServers
 
 private suspend fun saveServer(
     input: JsonObject,

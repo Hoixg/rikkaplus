@@ -4,6 +4,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.mutablePreferencesOf
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.edit
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
@@ -57,7 +58,7 @@ class SettingsSubagentsTest {
                 transform(state.value).also { state.value = it }
         }
         val assistant = Assistant(enableSubagents = true, systemPrompt = "task delegation")
-        SettingsStore.persistSettings(dataStore, Settings(assistants = listOf(assistant)))
+        dataStore.edit { it.putSettings(Settings(assistants = listOf(assistant))) }
         assertNull(state.value[legacyKey])
         assertEquals("keep", state.value[unrelatedKey])
         assertEquals(listOf(assistant), JsonInstant.decodeFromString<List<Assistant>>(state.value[SettingsStore.ASSISTANTS]!!))

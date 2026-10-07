@@ -155,7 +155,7 @@ private fun ModelSettingsPage(settings: Settings, vm: SettingVM, contentPadding:
                 description = stringResource(R.string.setting_model_page_chat_model_desc),
                 modelId = settings.chatModelId,
                 providers = settings.providers,
-                onSelect = { vm.updateSettings(settings.copy(chatModelId = it.id)) },
+                onSelect = { vm.updateSettings { latest -> latest.copy(chatModelId = it.id) } },
             )
         }
         item {
@@ -164,10 +164,10 @@ private fun ModelSettingsPage(settings: Settings, vm: SettingVM, contentPadding:
                 description = stringResource(R.string.setting_model_page_fast_model_desc),
                 modelId = settings.fastModelId,
                 providers = settings.providers,
-                onSelect = { vm.updateSettings(settings.copy(fastModelId = it.id)) },
+                onSelect = { vm.updateSettings { latest -> latest.copy(fastModelId = it.id) } },
                 reasoningLevel = settings.fastModelReasoningLevel,
                 onUpdateReasoningLevel = {
-                    vm.updateSettings(settings.copy(fastModelReasoningLevel = it))
+                    vm.updateSettings { latest -> latest.copy(fastModelReasoningLevel = it) }
                 },
             )
         }
@@ -183,7 +183,7 @@ private fun ModelSettingsPage(settings: Settings, vm: SettingVM, contentPadding:
                 description = stringResource(R.string.setting_model_page_translate_model_desc),
                 modelId = settings.translateModeId,
                 providers = settings.providers,
-                onSelect = { vm.updateSettings(settings.copy(translateModeId = it.id)) },
+                onSelect = { vm.updateSettings { latest -> latest.copy(translateModeId = it.id) } },
             )
         }
         item {
@@ -192,7 +192,7 @@ private fun ModelSettingsPage(settings: Settings, vm: SettingVM, contentPadding:
                 description = stringResource(R.string.setting_model_page_ocr_model_desc),
                 modelId = settings.ocrModelId,
                 providers = settings.providers,
-                onSelect = { vm.updateSettings(settings.copy(ocrModelId = it.id)) },
+                onSelect = { vm.updateSettings { latest -> latest.copy(ocrModelId = it.id) } },
             )
         }
         item {
@@ -208,7 +208,7 @@ private fun ModelSettingsPage(settings: Settings, vm: SettingVM, contentPadding:
                         Switch(
                             checked = settings.enableAutoCompaction,
                             onCheckedChange = {
-                                vm.updateSettings(settings.copy(enableAutoCompaction = it))
+                                vm.updateSettings { latest -> latest.copy(enableAutoCompaction = it) }
                             },
                         )
                     },
@@ -244,7 +244,7 @@ private fun ModelSettingsPage(settings: Settings, vm: SettingVM, contentPadding:
                                             thresholdSliderValue = snappedPercent.toFloat()
                                             if (snappedPercent != settings.autoCompactionThresholdPercent) {
                                                 vm.updateSettings(
-                                                    settings.copy(autoCompactionThresholdPercent = snappedPercent)
+                                                    { latest -> latest.copy(autoCompactionThresholdPercent = snappedPercent) }
                                                 )
                                             }
                                         },
@@ -353,7 +353,7 @@ private fun ModelSettingsPage(settings: Settings, vm: SettingVM, contentPadding:
         AutoCompactionTokenLimitDialog(
             initialValue = settings.autoCompactionTokenLimit,
             onConfirm = { value ->
-                vm.updateSettings(settings.copy(autoCompactionTokenLimit = value))
+                vm.updateSettings { latest -> latest.copy(autoCompactionTokenLimit = value) }
                 showTokenLimitDialog = false
             },
             onDismiss = { showTokenLimitDialog = false },
@@ -430,7 +430,7 @@ private fun SuggestionSettingItem(
                 Switch(
                     checked = settings.enableSuggestion,
                     onCheckedChange = {
-                        vm.updateSettings(settings.copy(enableSuggestion = it))
+                        vm.updateSettings { latest -> latest.copy(enableSuggestion = it) }
                     }
                 )
             },
