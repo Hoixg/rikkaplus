@@ -20,10 +20,10 @@ import coil3.request.fallback
 import coil3.request.placeholder
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.ui.components.ui.ImagePreviewDialog
-import me.rerere.rikkahub.ui.components.ui.LocalExportContext
 import me.rerere.rikkahub.ui.components.ui.ResolvedLocalPathImagePreviewDialog
 import me.rerere.rikkahub.ui.modifier.shimmer
 import me.rerere.rikkahub.ui.theme.LocalDarkMode
+import me.rerere.ui.components.LocalExportContext
 
 @Composable
 fun ZoomableAsyncImage(

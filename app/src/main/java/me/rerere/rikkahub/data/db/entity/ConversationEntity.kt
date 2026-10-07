@@ -13,8 +13,10 @@ data class ConversationEntity(
     val assistantId: String,
     @ColumnInfo("title")
     val title: String,
+    // Message nodes live in message_node. Keep using the now-unused legacy column
+    // for the conversation config snapshot so this fork does not add another DB column.
     @ColumnInfo("nodes")
-    val nodes: String,
+    val conversationConfigJson: String = "[]",
     @ColumnInfo("create_at")
     val createAt: Long,
     @ColumnInfo("update_at")

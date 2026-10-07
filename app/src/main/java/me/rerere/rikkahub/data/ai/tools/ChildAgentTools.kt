@@ -12,6 +12,8 @@ private val CHILD_FORBIDDEN_TOOLS = SUBAGENT_TOOL_NAMES + setOf("ask_user", "gra
 
 internal fun childAssistant(assistant: Assistant, parent: Conversation): Assistant = assistant.copy(
     enableSubagents = false,
+    modeInjectionIds = parent.modeInjectionIds.ifEmpty { assistant.modeInjectionIds },
+    lorebookIds = parent.lorebookIds.ifEmpty { assistant.lorebookIds },
     // Resolve the parent's effective prompt before appending child execution constraints.
     allowConversationSystemPrompt = false,
     systemPrompt = buildString {

@@ -48,6 +48,7 @@ import me.rerere.rikkahub.data.datastore.migration.PreferenceStoreV1Migration
 import me.rerere.rikkahub.data.datastore.migration.PreferenceStoreV2Migration
 import me.rerere.rikkahub.data.datastore.migration.PreferenceStoreV3Migration
 import me.rerere.rikkahub.data.ai.prompts.DEFAULT_COMPRESS_PROMPT
+import me.rerere.rikkahub.data.datastore.migration.PreferenceStoreV4Migration
 import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.data.model.Avatar
 import me.rerere.rikkahub.data.model.InjectionPosition
@@ -105,7 +106,8 @@ private fun createSettingsDataStore(context: Context): DataStore<Preferences> {
         migrations = listOf(
             PreferenceStoreV1Migration(),
             PreferenceStoreV2Migration(),
-            PreferenceStoreV3Migration()
+            PreferenceStoreV3Migration(),
+            PreferenceStoreV4Migration(),
         ),
         produceFile = { file },
     )
@@ -750,6 +752,15 @@ enum class BackgroundEffectType {
 }
 
 @Serializable
+enum class ConversationSortOrder {
+    @SerialName("update_time")
+    UPDATE_TIME,
+
+    @SerialName("create_time")
+    CREATE_TIME,
+}
+
+@Serializable
 data class DisplaySetting(
     val userAvatar: Avatar = Avatar.Dummy,
     val userNickname: String = "",
@@ -789,6 +800,7 @@ data class DisplaySetting(
     val chatCustomFontName: String = "",
     val enableVolumeKeyScroll: Boolean = false,
     val volumeKeyScrollRatio: Float = 1.0f,
+    val conversationSortOrder: ConversationSortOrder = ConversationSortOrder.UPDATE_TIME,
 )
 
 @Serializable

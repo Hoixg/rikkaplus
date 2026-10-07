@@ -45,7 +45,7 @@ import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.ai.tools.local.ImageToolRequest
 import me.rerere.rikkahub.ui.components.richtext.ZoomableAsyncImage
 import me.rerere.rikkahub.ui.components.ui.ChainOfThoughtScope
-import me.rerere.rikkahub.ui.components.ui.DotLoading
+import me.rerere.ui.components.DotLoading
 import me.rerere.rikkahub.utils.JsonInstant
 
 @Composable

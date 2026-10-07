@@ -138,6 +138,7 @@ import me.rerere.rikkahub.utils.UiState
 import me.rerere.rikkahub.utils.formatContextLength
 import me.rerere.rikkahub.utils.parseContextLengthInput
 import me.rerere.rikkahub.utils.plus
+import me.rerere.ui.components.RikkaConfirmDialog
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
 import sh.calvin.reorderable.ReorderableItem

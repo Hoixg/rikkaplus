@@ -77,10 +77,7 @@ import me.rerere.rikkahub.ui.components.richtext.MarkdownBlock
 import me.rerere.rikkahub.ui.components.richtext.MarkdownImageResolver
 import me.rerere.rikkahub.ui.components.richtext.ChatBodyZoomableAsyncImage
 import me.rerere.rikkahub.ui.components.richtext.buildMarkdownPreviewHtml
-import me.rerere.rikkahub.ui.components.webview.WebViewContentCache
 import me.rerere.rikkahub.ui.components.ui.ChainOfThought
-import me.rerere.rikkahub.ui.components.charts.ChartCard
-import me.rerere.rikkahub.ui.components.charts.ChartSpec
 import me.rerere.rikkahub.ui.components.ui.Favicon
 import me.rerere.rikkahub.ui.components.ui.FaviconRow
 import me.rerere.rikkahub.ui.context.LocalNavController
@@ -96,6 +93,9 @@ import me.rerere.rikkahub.ui.pages.extensions.workspace.linkifyWorkspacePaths
 import me.rerere.rikkahub.ui.pages.extensions.workspace.parseWorkspacePathReference
 import me.rerere.workspace.WorkspaceStorageArea
 import org.koin.compose.koinInject
+import me.rerere.ui.charts.ChartCard
+import me.rerere.ui.charts.ChartSpec
+import me.rerere.ui.webview.WebViewContentCache
 import java.util.Locale
 import kotlin.time.Duration.Companion.milliseconds
 

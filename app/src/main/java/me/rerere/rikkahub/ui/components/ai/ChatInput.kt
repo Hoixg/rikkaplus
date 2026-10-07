@@ -105,8 +105,6 @@ import me.rerere.hugeicons.stroke.Zap
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.datastore.BackgroundEffectType
 import me.rerere.rikkahub.data.datastore.Settings
-import me.rerere.rikkahub.data.datastore.getCurrentAssistant
-import me.rerere.rikkahub.data.datastore.getCurrentChatModel
 import me.rerere.rikkahub.data.datastore.findModelById
 import me.rerere.rikkahub.data.datastore.getQuickMessagesOfAssistant
 import me.rerere.rikkahub.data.db.entity.WorkspaceEntity
@@ -120,7 +118,7 @@ import me.rerere.rikkahub.ui.components.ai.completion.ChatCompletionItem
 import me.rerere.rikkahub.ui.components.ai.completion.ChatCompletionList
 import me.rerere.rikkahub.ui.components.ai.completion.ChatCompletionProvider
 import me.rerere.rikkahub.ui.components.ui.KeepScreenOn
-import me.rerere.rikkahub.ui.components.ui.ToggleSurface
+import me.rerere.ui.components.ToggleSurface
 import me.rerere.rikkahub.ui.components.ui.permission.PermissionManager
 import me.rerere.rikkahub.ui.components.ui.permission.PermissionRecordAudio
 import me.rerere.rikkahub.ui.components.ui.permission.rememberPermissionState
@@ -142,8 +140,10 @@ fun ChatInput(
     modelSelectionLocked: Boolean = modelOverrideId != null,
     loading: Boolean,
     settings: Settings,
+    // 会话视角下的助手和模型：会话开始后以会话上固定的配置为准
+    assistant: Assistant,
+    chatModel: Model?,
     hazeState: HazeState,
-    enableSearch: Boolean,
     onUpdateSearchMode: (SearchMode) -> Unit,
     modifier: Modifier = Modifier,
     completionProviders: List<ChatCompletionProvider> = emptyList(),
@@ -168,8 +168,8 @@ fun ChatInput(
     onStopVoiceMode: () -> Unit = {},
 ) {
     val toaster = LocalToaster.current
-    val assistant = settings.getCurrentAssistant()
-    val displayedModelId = modelOverrideId ?: assistant.chatModelId ?: settings.chatModelId
+    val displayedModelId = modelOverrideId ?: chatModel?.id ?: assistant.chatModelId ?: settings.chatModelId
+    val selectedChatModel = settings.findModelById(displayedModelId) ?: chatModel
     val hazeTintColor = MaterialTheme.colorScheme.surfaceContainerLow
     val inputHazeStyle = HazeBlurStyle.Material3 {
         blurRadius(12.dp)
@@ -318,6 +318,7 @@ fun ChatInput(
 
                     TextInputRow(
                         state = state,
+                        assistant = assistant,
                         completionProviders = completionProviders,
                         onSendMessage = { sendMessage() },
                     )
@@ -352,9 +353,8 @@ fun ChatInput(
                             // Search
                             val enableSearchMsg = stringResource(R.string.web_search_enabled)
                             val disableSearchMsg = stringResource(R.string.web_search_disabled)
-                            val chatModel = settings.findModelById(displayedModelId)
                             SearchPickerButton(
-                                enableSearch = enableSearch,
+                                enableSearch = assistant.enableWebSearch,
                                 settings = settings,
                                 onUpdateSearchMode = { mode ->
                                     onUpdateSearchMode(mode)
@@ -370,12 +370,11 @@ fun ChatInput(
                                     )
                                 },
                                 onUpdateSearchService = onUpdateSearchService,
-                                model = chatModel,
+                                model = selectedChatModel,
                             )
 
                             // Reasoning
-                            val model = chatModel
-                            if (!modelSelectionLocked && model?.abilities?.contains(ModelAbility.REASONING) == true) {
+                            if (!modelSelectionLocked && selectedChatModel?.abilities?.contains(ModelAbility.REASONING) == true) {
                                 ReasoningButton(
                                     reasoningLevel = assistant.reasoningLevel,
                                     onUpdateReasoningLevel = {
@@ -537,12 +536,12 @@ private fun ActionIconButton(
 @Composable
 private fun TextInputRow(
     state: ChatInputState,
+    assistant: Assistant,
     completionProviders: List<ChatCompletionProvider>,
     onSendMessage: () -> Unit,
 ) {
     val settings = LocalSettings.current
     val filesManager: FilesManager = koinInject()
-    val assistant = settings.getCurrentAssistant()
     val quickMessages = remember(settings.quickMessages, assistant.quickMessageIds) {
         settings.getQuickMessagesOfAssistant(assistant)
     }

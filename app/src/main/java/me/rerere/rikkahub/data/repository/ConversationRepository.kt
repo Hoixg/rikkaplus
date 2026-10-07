@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import me.rerere.ai.ui.UIMessage
+import me.rerere.rikkahub.data.datastore.ConversationSortOrder
 import me.rerere.rikkahub.data.db.AppDatabase
 import me.rerere.rikkahub.data.db.fts.MessageFtsManager
 import me.rerere.rikkahub.data.db.fts.MessageSearchSort
@@ -80,26 +81,42 @@ class ConversationRepository(
         }
     }
 
-    fun getUnfiledConversationsOfAssistantPaging(assistantId: Uuid): Flow<PagingData<Conversation>> = Pager(
+    fun getUnfiledConversationsOfAssistantPaging(
+        assistantId: Uuid,
+        sortOrder: ConversationSortOrder = ConversationSortOrder.UPDATE_TIME,
+    ): Flow<PagingData<Conversation>> = Pager(
         config = PagingConfig(
             pageSize = PAGE_SIZE,
             initialLoadSize = INITIAL_LOAD_SIZE,
             enablePlaceholders = false
         ),
-        pagingSourceFactory = { conversationDAO.getUnfiledConversationsOfAssistantPaging(assistantId.toString()) }
+        pagingSourceFactory = {
+            conversationDAO.getUnfiledConversationsOfAssistantPaging(
+                assistantId = assistantId.toString(),
+                sortByCreateTime = sortOrder == ConversationSortOrder.CREATE_TIME,
+            )
+        }
     ).flow.map { pagingData ->
         pagingData.map { entity ->
             conversationSummaryToConversation(entity)
         }
     }
 
-    fun getConversationsOfFolderPaging(folderId: Uuid): Flow<PagingData<Conversation>> = Pager(
+    fun getConversationsOfFolderPaging(
+        folderId: Uuid,
+        sortOrder: ConversationSortOrder = ConversationSortOrder.UPDATE_TIME,
+    ): Flow<PagingData<Conversation>> = Pager(
         config = PagingConfig(
             pageSize = PAGE_SIZE,
             initialLoadSize = INITIAL_LOAD_SIZE,
             enablePlaceholders = false
         ),
-        pagingSourceFactory = { conversationDAO.getConversationsOfFolderPaging(folderId.toString()) }
+        pagingSourceFactory = {
+            conversationDAO.getConversationsOfFolderPaging(
+                folderId = folderId.toString(),
+                sortByCreateTime = sortOrder == ConversationSortOrder.CREATE_TIME,
+            )
+        }
     ).flow.map { pagingData ->
         pagingData.map { entity ->
             conversationSummaryToConversation(entity)
@@ -177,7 +194,7 @@ class ConversationRepository(
         offset: Int,
         limit: Int,
     ): ConversationPageResult = loadConversationPage(
-        conversationDAO.getUnfiledConversationsOfAssistantPaging(assistantId.toString()),
+        conversationDAO.getUnfiledConversationsOfAssistantPaging(assistantId.toString(), sortByCreateTime = false),
         offset,
         limit,
     )
@@ -187,7 +204,7 @@ class ConversationRepository(
         offset: Int,
         limit: Int,
     ): ConversationPageResult = loadConversationPage(
-        conversationDAO.getConversationsOfFolderPaging(folderId.toString()),
+        conversationDAO.getConversationsOfFolderPaging(folderId.toString(), sortByCreateTime = false),
         offset,
         limit,
     )
@@ -367,7 +384,7 @@ class ConversationRepository(
         return ConversationEntity(
             id = conversation.id.toString(),
             title = conversation.title,
-            nodes = "[]",  // nodes 现在存储在单独的表中
+            conversationConfigJson = conversation.config?.let { JsonInstant.encodeToString(it) } ?: "[]",
             createAt = conversation.createAt.toEpochMilli(),
             updateAt = conversation.updateAt.toEpochMilli(),
             assistantId = conversation.assistantId.toString(),
@@ -407,6 +424,9 @@ class ConversationRepository(
                 JsonInstant.decodeFromString<List<CompressionSummary>>(conversationEntity.compressionSummaries)
             }.getOrDefault(emptyList()),
             modelOverrideId = conversationEntity.modelOverrideId.takeIf(String::isNotEmpty)?.let(Uuid::parse),
+            config = conversationEntity.conversationConfigJson
+                .takeIf { it.isNotBlank() && it != "[]" }
+                ?.let { runCatching { JsonInstant.decodeFromString<me.rerere.rikkahub.data.model.ConversationConfig>(it) }.getOrNull() },
         ).migrateLegacyCompressionCheckpoint()
     }
 
@@ -433,6 +453,19 @@ class ConversationRepository(
 
     suspend fun updateConversationModelOverride(conversationId: Uuid, modelId: Uuid) {
         conversationDAO.updateModelOverride(conversationId.toString(), modelId.toString())
+    }
+
+    /**
+     * 只更新会话持有的配置（含注入绑定和工作目录），不重写消息节点。
+     */
+    suspend fun updateConversationConfig(conversation: Conversation) {
+        conversationDAO.updateConfig(
+            id = conversation.id.toString(),
+            config = conversation.config?.let { JsonInstant.encodeToString(it) } ?: "",
+            modeInjectionIds = JsonInstant.encodeToString(conversation.modeInjectionIds),
+            lorebookIds = JsonInstant.encodeToString(conversation.lorebookIds),
+            workspaceCwd = conversation.workspaceCwd ?: "",
+        )
     }
 
     /**

@@ -83,11 +83,11 @@ import me.rerere.rikkahub.R
 import me.rerere.rikkahub.ui.components.nav.BackButton
 import me.rerere.rikkahub.ui.components.richtext.MarkdownBlock
 import me.rerere.rikkahub.ui.components.richtext.MarkdownImageResolver
-import me.rerere.rikkahub.ui.components.webview.WebView
-import me.rerere.rikkahub.ui.components.webview.rememberWebViewState
 import me.rerere.rikkahub.ui.context.LocalToaster
 import me.rerere.rikkahub.ui.theme.CustomColors
 import me.rerere.rikkahub.ui.theme.JetbrainsMono
+import me.rerere.ui.webview.WebView
+import me.rerere.ui.webview.rememberWebViewState
 import me.rerere.workspace.WorkspaceStorageArea
 import org.koin.compose.koinInject
 import kotlin.math.roundToInt

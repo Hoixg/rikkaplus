@@ -90,8 +90,6 @@ internal class SubagentRunner(
                     conversationId = id,
                     conversationSystemPrompt = base.customSystemPrompt,
                     compactionContext = window.checkpointContent,
-                    conversationModeInjectionIds = base.modeInjectionIds,
-                    conversationLorebookIds = base.lorebookIds,
                     workspaceCwd = base.workspaceCwd,
                     processingStatus = session.processingStatus,
                     memories = if (assistant.useGlobalMemory) memoryRepository.getGlobalMemories() else memoryRepository.getMemoriesOfAssistant(assistant.id.toString()),

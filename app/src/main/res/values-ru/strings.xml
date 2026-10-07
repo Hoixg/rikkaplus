@@ -44,8 +44,6 @@
   <string name="assistant_page_add_header">Добавить заголовок</string>
   <string name="assistant_page_allow_conversation_system_prompt">Системный промпт для каждой беседы</string>
   <string name="assistant_page_allow_conversation_system_prompt_desc">Разрешить каждому разговору переопределять системный запрос ассистента</string>
-  <string name="assistant_page_allow_conversation_prompt_injection">Промпт-инъекции для каждой беседы</string>
-  <string name="assistant_page_allow_conversation_prompt_injection_desc">Разрешить каждой беседе привязывать собственные промпт-инъекции и лорбуки</string>
   <string name="assistant_page_available_variables">Доступные переменные:</string>
   <string name="assistant_page_background_opacity">Прозрачность фона</string>
   <string name="assistant_page_background_opacity_desc">Настройте видимость фонового изображения чата</string>
@@ -1550,4 +1548,10 @@
   <string name="chat_page_compress_blocked_generating">Остановите генерацию перед сжатием контекста</string>
   <string name="chat_page_compress_conversation_changed">Диалог изменился во время сжатия. Повторите попытку.</string>
   <string name="chat_page_compress_pending_tools">Сначала обработайте ожидающие вызовы инструментов или сохраните последние сообщения, содержащие их</string>
+  <string name="sketch">Эскиз</string>
+  <string name="sketch_draw_on_image">Рисовать на изображении</string>
+  <string name="imggen_page_deprecated_warning">Эта функция устарела и будет удалена в будущей версии. Вместо неё используйте %1$s</string>
+  <string name="chat_page_sort_conversations">Сортировать чаты</string>
+  <string name="chat_page_sort_by_update_time">По последнему обновлению</string>
+  <string name="chat_page_sort_by_create_time">По дате создания</string>
 </resources>

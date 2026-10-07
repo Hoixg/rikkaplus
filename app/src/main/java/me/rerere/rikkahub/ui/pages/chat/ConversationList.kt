@@ -51,6 +51,7 @@ import androidx.compose.ui.unit.dp
 import androidx.paging.compose.LazyPagingItems
 import androidx.paging.compose.itemKey
 import me.rerere.rikkahub.R
+import me.rerere.rikkahub.data.datastore.ConversationSortOrder
 import me.rerere.rikkahub.data.model.Conversation
 import me.rerere.rikkahub.service.SubagentTask
 import me.rerere.rikkahub.ui.theme.extendColors
@@ -66,7 +67,8 @@ import kotlin.uuid.Uuid
 sealed class ConversationListItem {
     data class DateHeader(
         val date: LocalDate,
-        val label: String
+        val label: String,
+        val sortOrder: ConversationSortOrder = ConversationSortOrder.UPDATE_TIME,
     ) : ConversationListItem()
     data object PinnedHeader : ConversationListItem()
     data class Item(
@@ -137,7 +139,8 @@ fun ColumnScope.ConversationList(
             count = conversations.itemCount,
             key = conversations.itemKey { item ->
                 when (item) {
-                    is ConversationListItem.DateHeader -> "date_${item.date}"
+                    // key 带上排序方式，避免切换排序后列表锚定到另一种排序下的同日期分组而发生跳动
+                    is ConversationListItem.DateHeader -> "date_${item.sortOrder}_${item.date}"
                     is ConversationListItem.PinnedHeader -> "pinned_header"
                     is ConversationListItem.Item -> item.conversation.id.toString()
                 }

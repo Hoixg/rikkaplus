@@ -128,14 +128,13 @@ internal object AppDatabaseFactory {
         if (!remaining) runCatching { db.execSQL("DROP TABLE IF EXISTS legacy_scheduled_task_cleanup") }
     }
 
-    /** Cancel pending work from the removed scheduled-jobs feature without deleting its stored history. */
+    /** Cancel pending work from the removed scheduled-jobs feature, then clear its obsolete rows. */
     private fun cancelRemovedScheduledJobs(context: Context, db: SupportSQLiteDatabase) {
         val ids = runCatching {
             db.query("SELECT id FROM scheduled_jobs").use { cursor ->
                 buildList { while (cursor.moveToNext()) add(cursor.getString(0)) }
             }
         }.getOrDefault(emptyList())
-        if (ids.isEmpty()) return
 
         val alarmManager = context.getSystemService(AlarmManager::class.java)
         val workManager = runCatching { WorkManager.getInstance(context) }.getOrNull()
@@ -148,7 +147,7 @@ internal object AppDatabaseFactory {
                 action = "me.rerere.rikkahub.action.FIRE_SCHEDULED_JOB"
                 data = Uri.parse("rikkahub://scheduled-job/${Uri.encode(id)}")
             }
-            runCatching {
+            val alarmCancelled = runCatching {
                 PendingIntent.getBroadcast(
                     context,
                     0,
@@ -158,13 +157,28 @@ internal object AppDatabaseFactory {
                     alarmManager.cancel(pendingIntent)
                     pendingIntent.cancel()
                 }
-            }
-            runCatching {
+            }.isSuccess
+            val workCancelled = runCatching {
                 val manager = checkNotNull(workManager) { "WorkManager is not initialized" }
                 manager.cancelUniqueWork("scheduled_job_$id")
                 manager.cancelUniqueWork("scheduled_job_${id}_manual")
                 manager.cancelAllWorkByTag("scheduled_job:$id")
+            }.isSuccess
+            if (alarmCancelled && workCancelled) runCatching {
+                db.beginTransaction()
+                try {
+                    db.execSQL("DELETE FROM scheduled_job_runs WHERE jobId = ?", arrayOf(id))
+                    db.execSQL("DELETE FROM scheduled_jobs WHERE id = ?", arrayOf(id))
+                    db.setTransactionSuccessful()
+                } finally {
+                    db.endTransaction()
+                }
             }
+        }
+
+        // Clear orphaned history too; active legacy jobs stay until their cancellation succeeds.
+        runCatching {
+            db.execSQL("DELETE FROM scheduled_job_runs WHERE jobId NOT IN (SELECT id FROM scheduled_jobs)")
         }
     }
 }

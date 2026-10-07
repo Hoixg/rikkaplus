@@ -64,7 +64,7 @@ import me.rerere.rikkahub.data.db.entity.ScheduleType
 import me.rerere.rikkahub.data.db.entity.ScheduledTaskEntity
 import me.rerere.rikkahub.data.db.entity.ScheduledTaskRunStatus
 import me.rerere.rikkahub.ui.components.nav.BackButton
-import me.rerere.rikkahub.ui.components.ui.RikkaConfirmDialog
+import me.rerere.ui.components.RikkaConfirmDialog
 import me.rerere.rikkahub.ui.context.LocalNavController
 import me.rerere.rikkahub.ui.theme.CustomColors
 import me.rerere.rikkahub.ui.theme.extendColors

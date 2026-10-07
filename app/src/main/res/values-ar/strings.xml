@@ -42,8 +42,6 @@
   <string name="assistant_page_add">إضافة</string>
   <string name="assistant_page_add_body">إضافة جسم</string>
   <string name="assistant_page_add_header">إضافة ترويسة</string>
-  <string name="assistant_page_allow_conversation_prompt_injection">حقن المطالبات لكل محادثة</string>
-  <string name="assistant_page_allow_conversation_prompt_injection_desc">السماح لكل محادثة بربط حقن المطالبات وكتب المعرفة الخاصة بها</string>
   <string name="assistant_page_allow_conversation_system_prompt">مطالبة النظام لكل محادثة</string>
   <string name="assistant_page_allow_conversation_system_prompt_desc">السماح لكل محادثة بتجاوز مطالبة النظام الخاصة بالمساعد</string>
   <string name="assistant_page_available_variables">\"المتغيرات المتاحة: \"</string>
@@ -1538,4 +1536,10 @@
   <string name="chat_page_compress_blocked_generating">أوقف التوليد قبل ضغط السياق</string>
   <string name="chat_page_compress_conversation_changed">تغيّرت المحادثة أثناء الضغط. يرجى المحاولة مرة أخرى.</string>
   <string name="chat_page_compress_pending_tools">تعامل مع استدعاءات الأدوات المعلّقة أولًا، أو احتفظ بالرسائل الحديثة التي تحتوي عليها</string>
+  <string name="sketch">رسم</string>
+  <string name="sketch_draw_on_image">ارسم على الصورة</string>
+  <string name="imggen_page_deprecated_warning">هذه الميزة مهملة وستُزال في إصدار مستقبلي. استخدم %1$s بدلاً من ذلك</string>
+  <string name="chat_page_sort_conversations">ترتيب المحادثات</string>
+  <string name="chat_page_sort_by_update_time">حسب آخر تحديث</string>
+  <string name="chat_page_sort_by_create_time">حسب تاريخ الإنشاء</string>
 </resources>

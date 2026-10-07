@@ -102,8 +102,6 @@ class GenerationLoop(
         conversationSystemPrompt: String? = null,
         compactionContext: String? = null,
         conversationId: Uuid? = null,
-        conversationModeInjectionIds: Set<Uuid> = emptySet(),
-        conversationLorebookIds: Set<Uuid> = emptySet(),
         workspaceCwd: String? = null,
         shouldYieldAfterToolResults: () -> Boolean = { false },
         resetTurnTracker: Boolean = true,
@@ -176,8 +174,6 @@ class GenerationLoop(
                     conversationSystemPrompt = conversationSystemPrompt,
                     compactionContext = compactionContext,
                     conversationId = conversationId,
-                    conversationModeInjectionIds = conversationModeInjectionIds,
-                    conversationLorebookIds = conversationLorebookIds,
                     workspaceCwd = workspaceCwd,
                 )
                 messages = messages.visualTransforms(
@@ -477,8 +473,6 @@ class GenerationLoop(
         conversationSystemPrompt: String? = null,
         compactionContext: String? = null,
         conversationId: Uuid? = null,
-        conversationModeInjectionIds: Set<Uuid> = emptySet(),
-        conversationLorebookIds: Set<Uuid> = emptySet(),
         workspaceCwd: String? = null,
     ) {
         val internalMessages = buildList {
@@ -519,8 +513,6 @@ class GenerationLoop(
             model = model,
             assistant = assistant,
             settings = settings,
-            conversationModeInjectionIds = conversationModeInjectionIds,
-            conversationLorebookIds = conversationLorebookIds,
             processingStatus = processingStatus,
             workspaceCwd = workspaceCwd,
         )
