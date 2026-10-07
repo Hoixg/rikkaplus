@@ -619,7 +619,7 @@ fun WorkspaceDetailPage(
 @Composable
 private fun WorkspaceBasicPage(
     workspace: WorkspaceEntity?,
-    toolApprovalExpanded: Boolean,
+    toolApprovalExpanded: Boolean?,
     installProgress: RootfsInstallProgress?,
     onInstallRootfs: () -> Unit,
     onToolApprovalExpandedChange: (Boolean) -> Unit,
@@ -739,13 +739,15 @@ private fun WorkspaceBasicPage(
             }
         }
 
-        item {
-            WorkspaceToolApprovalCard(
-                workspace = workspace,
-                expanded = toolApprovalExpanded,
-                onExpandedChange = onToolApprovalExpandedChange,
-                onToolApprovalChange = onToolApprovalChange,
-            )
+        if (toolApprovalExpanded != null) {
+            item {
+                WorkspaceToolApprovalCard(
+                    workspace = workspace,
+                    expanded = toolApprovalExpanded,
+                    onExpandedChange = onToolApprovalExpandedChange,
+                    onToolApprovalChange = onToolApprovalChange,
+                )
+            }
         }
 
         item {

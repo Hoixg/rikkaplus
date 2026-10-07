@@ -634,7 +634,8 @@ data class WorkspaceDetailState(
     val exportResult: String? = null,
     val expandedPaths: Set<String> = emptySet(),
     val childrenCache: Map<String, List<WorkspaceFileEntry>> = emptyMap(),
-    val toolApprovalExpanded: Boolean = true,
+    // Null until the persisted preference has loaded; avoid replaying a collapse animation on entry.
+    val toolApprovalExpanded: Boolean? = null,
 )
 
 data class WorkspaceTerminalState(
