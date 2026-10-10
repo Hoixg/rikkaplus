@@ -56,7 +56,6 @@ class ChatToolFactory(
         if (assistant.enableSubagents && ModelAbility.TOOL in model.abilities) addAll(subagentTools)
         addAll(createScheduledTaskTools(scheduledTaskRepository, assistant.id, conversationRepository,
             getSettings = { settingsStore.settingsFlow.value }, scheduledExecution = scheduledExecution, getMessages = getMessages))
-        if (scheduledTask != null) addAll(createScheduledTaskFileTools(context, scheduledTaskRepository, scheduledTask))
         if (assistant.enableMemory) {
             val memoryAssistantId = if (assistant.useGlobalMemory) {
                 MemoryRepository.GLOBAL_MEMORY_ID

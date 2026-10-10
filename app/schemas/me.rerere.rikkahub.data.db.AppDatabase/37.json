@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 37,
-    "identityHash": "eef75e9bde5510cbaa51076c18aaec22",
+    "identityHash": "fa0e87bedb43220c4a214c714c08cf13",
     "entities": [
       {
         "tableName": "ConversationEntity",
@@ -609,7 +609,7 @@
       },
       {
         "tableName": "scheduled_task",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `prompt` TEXT NOT NULL, `assistantId` TEXT NOT NULL, `scheduleType` TEXT NOT NULL, `triggerAt` INTEGER NOT NULL, `intervalMinutes` INTEGER NOT NULL, `timeOfDayMinutes` INTEGER NOT NULL, `weekdaysMask` INTEGER NOT NULL DEFAULT 127, `startDate` TEXT, `endDate` TEXT, `enabled` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, `lastRunAt` INTEGER NOT NULL, `lastRunId` TEXT NOT NULL, `lastManualRunId` TEXT NOT NULL, `lastRunStatus` TEXT NOT NULL, `lastConversationId` TEXT NOT NULL, `lastError` TEXT NOT NULL, `revision` TEXT NOT NULL, `nextRunAt` INTEGER, `activeRunId` TEXT, `activeConversationId` TEXT, `activeManual` INTEGER NOT NULL, `activeScheduledAt` INTEGER, `mode` TEXT NOT NULL DEFAULT 'NEW_CHAT', `targetConversationId` TEXT, `targetUserMessageId` TEXT, `modelOverrideId` TEXT, `notify` INTEGER NOT NULL DEFAULT 1, `showPreview` INTEGER NOT NULL DEFAULT 1, `filesJson` TEXT NOT NULL DEFAULT '[]', `filesEnabled` INTEGER NOT NULL DEFAULT 0, `allowFileRead` INTEGER NOT NULL DEFAULT 0, `allowFileWrite` INTEGER NOT NULL DEFAULT 0, `allowFileDelete` INTEGER NOT NULL DEFAULT 0, `resetContextBeforeRun` INTEGER NOT NULL DEFAULT 0, `activeContextStartIndex` INTEGER, PRIMARY KEY(`id`))",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `prompt` TEXT NOT NULL, `assistantId` TEXT NOT NULL, `scheduleType` TEXT NOT NULL, `triggerAt` INTEGER NOT NULL, `intervalMinutes` INTEGER NOT NULL, `timeOfDayMinutes` INTEGER NOT NULL, `weekdaysMask` INTEGER NOT NULL DEFAULT 127, `startDate` TEXT, `endDate` TEXT, `enabled` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, `lastRunAt` INTEGER NOT NULL, `lastRunId` TEXT NOT NULL, `lastManualRunId` TEXT NOT NULL, `lastRunStatus` TEXT NOT NULL, `lastConversationId` TEXT NOT NULL, `lastError` TEXT NOT NULL, `revision` TEXT NOT NULL, `nextRunAt` INTEGER, `activeRunId` TEXT, `activeConversationId` TEXT, `activeManual` INTEGER NOT NULL, `activeScheduledAt` INTEGER, `mode` TEXT NOT NULL DEFAULT 'NEW_CHAT', `targetConversationId` TEXT, `targetUserMessageId` TEXT, `modelOverrideId` TEXT, `notify` INTEGER NOT NULL DEFAULT 1, `showPreview` INTEGER NOT NULL DEFAULT 1, `resetContextBeforeRun` INTEGER NOT NULL DEFAULT 0, `activeContextStartIndex` INTEGER, PRIMARY KEY(`id`))",
         "fields": [
           {
             "fieldPath": "id",
@@ -797,41 +797,6 @@
             "affinity": "INTEGER",
             "notNull": true,
             "defaultValue": "1"
-          },
-          {
-            "fieldPath": "filesJson",
-            "columnName": "filesJson",
-            "affinity": "TEXT",
-            "notNull": true,
-            "defaultValue": "'[]'"
-          },
-          {
-            "fieldPath": "filesEnabled",
-            "columnName": "filesEnabled",
-            "affinity": "INTEGER",
-            "notNull": true,
-            "defaultValue": "0"
-          },
-          {
-            "fieldPath": "allowFileRead",
-            "columnName": "allowFileRead",
-            "affinity": "INTEGER",
-            "notNull": true,
-            "defaultValue": "0"
-          },
-          {
-            "fieldPath": "allowFileWrite",
-            "columnName": "allowFileWrite",
-            "affinity": "INTEGER",
-            "notNull": true,
-            "defaultValue": "0"
-          },
-          {
-            "fieldPath": "allowFileDelete",
-            "columnName": "allowFileDelete",
-            "affinity": "INTEGER",
-            "notNull": true,
-            "defaultValue": "0"
           },
           {
             "fieldPath": "resetContextBeforeRun",
@@ -1520,7 +1485,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'eef75e9bde5510cbaa51076c18aaec22')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'fa0e87bedb43220c4a214c714c08cf13')"
     ]
   }
 }

@@ -9,11 +9,6 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import me.rerere.rikkahub.data.db.AppDatabase
 import me.rerere.rikkahub.data.db.entity.*
-import me.rerere.rikkahub.data.model.ScheduledTaskFile
-import me.rerere.rikkahub.data.model.encodeScheduledTaskFiles
-import me.rerere.rikkahub.data.model.isScheduledTaskTextFile
-import me.rerere.rikkahub.data.model.parseScheduledTaskFiles
-import me.rerere.rikkahub.data.model.scheduledTaskFiles
 import me.rerere.rikkahub.worker.ScheduledTaskScheduler
 import me.rerere.rikkahub.utils.SystemPermissions
 import kotlin.uuid.Uuid
@@ -118,8 +113,7 @@ class ScheduledTaskRepository(
             fun configuration(t: ScheduledTaskEntity) = listOf(t.name.trim(), t.prompt.trim(), t.assistantId, t.mode,
                 t.targetConversationId, t.targetUserMessageId, t.modelOverrideId, t.notify, t.showPreview,
                 t.scheduleType, t.triggerAt, t.intervalMinutes, t.timeOfDayMinutes, t.weekdaysMask, t.startDate, t.endDate,
-                t.filesJson, t.filesEnabled, t.creationFolderUri, t.allowFileCreate,
-                t.allowFileRead, t.allowFileWrite, t.allowFileDelete, t.resetContextBeforeRun)
+                t.resetContextBeforeRun)
             require(old?.activeRunId == null || configuration(task) == configuration(old)) { "请先取消当前执行，再修改任务" }
             val changedSchedule = old == null || old.scheduleType != task.scheduleType || old.triggerAt != task.triggerAt ||
                 old.intervalMinutes != task.intervalMinutes || old.timeOfDayMinutes != task.timeOfDayMinutes || old.enabled != task.enabled ||
@@ -128,16 +122,6 @@ class ScheduledTaskRepository(
                 "请先在权限管理中允许精确闹钟，再启用任务"
             }
             ScheduledTaskSchedule.validate(task, now, old == null || (changedSchedule && task.enabled))
-            val files = parseScheduledTaskFiles(task.filesJson)
-            require(files.distinctBy { it.uri }.size == files.size && files.all {
-                it.uri.startsWith("content://") && isScheduledTaskTextFile(it.name)
-            }) { "任务文件必须是已选定的文本文件，且不能重复" }
-            require(task.creationFolderUri == null || task.creationFolderUri.startsWith("content://")) {
-                "创建位置必须是已选定的文件夹"
-            }
-            require(!task.filesEnabled || !task.allowFileCreate || task.creationFolderUri != null) {
-                "请先为任务选择创建文件的位置"
-            }
             require(dao.getByAssistant(task.assistantId).none { it.id != task.id && it.name == task.name.trim() }) { "该助手已有同名任务" }
             val base = (old ?: task).copy(name = task.name.trim(), prompt = task.prompt.trim(), assistantId = task.assistantId,
                 scheduleType = task.scheduleType, triggerAt = task.triggerAt, intervalMinutes = task.intervalMinutes,
@@ -145,11 +129,8 @@ class ScheduledTaskRepository(
                 startDate = task.startDate, endDate = task.endDate,
                 mode = task.mode, targetConversationId = task.targetConversationId,
                 targetUserMessageId = task.targetUserMessageId, modelOverrideId = task.modelOverrideId,
-                notify = task.notify, showPreview = task.showPreview, filesJson = task.filesJson,
-                createdFilesJson = old?.createdFilesJson ?: "[]", filesEnabled = task.filesEnabled,
-                creationFolderUri = task.creationFolderUri, allowFileCreate = task.allowFileCreate,
-                allowFileRead = task.allowFileRead, allowFileWrite = task.allowFileWrite,
-                allowFileDelete = task.allowFileDelete, resetContextBeforeRun = task.resetContextBeforeRun,
+                notify = task.notify, showPreview = task.showPreview,
+                resetContextBeforeRun = task.resetContextBeforeRun,
                 enabled = task.enabled, updatedAt = now, revision = if (approvedCreate) task.revision else Uuid.random().toString())
             val updated = base.copy(nextRunAt = if (!base.enabled) null else if (changedSchedule) ScheduledTaskSchedule.next(base, now) else old?.nextRunAt)
             dao.upsert(updated)
@@ -164,31 +145,6 @@ class ScheduledTaskRepository(
             require(dao.getById(task.id)?.activeRunId == null) { "请先取消当前执行，再删除任务" }
             dao.deleteById(task.id); ScheduledTaskScheduler.cancelAll(context, task.id)
             refreshResumeAlarm()
-        }
-    }
-
-    /** Append a model-created file only to the run that created it. */
-    suspend fun recordCreatedFile(taskId: String, runId: String, file: ScheduledTaskFile): Boolean = mutation.withLock {
-        database.withTransaction {
-            val current = dao.getById(taskId) ?: return@withTransaction false
-            if (current.activeRunId != runId || !current.filesEnabled || !current.allowFileCreate) return@withTransaction false
-            if (file.parentTreeUri != current.creationFolderUri) return@withTransaction false
-            if (!file.uri.startsWith("content://") || !isScheduledTaskTextFile(file.name)) return@withTransaction false
-            val files = scheduledTaskFiles(current)
-            if (files.any { it.uri == file.uri }) return@withTransaction false
-            val created = parseScheduledTaskFiles(current.createdFilesJson) + file
-            dao.upsert(current.copy(createdFilesJson = encodeScheduledTaskFiles(created), updatedAt = clock()))
-            true
-        }
-    }
-
-    /** Remove a generated file from the task's allowlist without deleting the physical file. */
-    suspend fun forgetCreatedFile(taskId: String, uri: String, runId: String? = null) = mutation.withLock {
-        database.withTransaction {
-            val current = dao.getById(taskId) ?: return@withTransaction
-            require(current.activeRunId == runId) { "请先取消当前执行，再移除任务文件" }
-            val created = parseScheduledTaskFiles(current.createdFilesJson).filterNot { it.uri == uri }
-            dao.upsert(current.copy(createdFilesJson = encodeScheduledTaskFiles(created), updatedAt = clock()))
         }
     }
 

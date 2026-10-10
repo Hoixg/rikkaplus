@@ -1,17 +1,7 @@
 // Adapted from xiaoyuili/Yuihub, AGPL-3.0.
 package me.rerere.rikkahub.ui.pages.automation
 
-import android.content.Intent
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.documentfile.provider.DocumentFile
 import androidx.compose.material3.Switch
-import me.rerere.hugeicons.stroke.Add01
-import me.rerere.hugeicons.stroke.Delete01
-import me.rerere.rikkahub.data.model.ScheduledTaskFile
-import me.rerere.rikkahub.data.model.encodeScheduledTaskFiles
-import me.rerere.rikkahub.data.model.isScheduledTaskTextFile
-import me.rerere.rikkahub.data.model.parseScheduledTaskFiles
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -152,51 +142,7 @@ fun ScheduledTaskEditPage(
     var modelOverrideId by remember(existing?.id) { mutableStateOf(existing?.modelOverrideId) }
     var notify by remember(existing?.id) { mutableStateOf(existing?.notify ?: true) }
     var showPreview by remember(existing?.id) { mutableStateOf(existing?.showPreview ?: true) }
-    var files by remember(existing?.id) { mutableStateOf(parseScheduledTaskFiles(existing?.filesJson ?: "[]")) }
-    val createdFiles = remember(existing?.createdFilesJson) {
-        parseScheduledTaskFiles(existing?.createdFilesJson ?: "[]")
-    }
-    var filesEnabled by remember(existing?.id) { mutableStateOf(existing?.filesEnabled ?: false) }
-    var creationFolderUri by remember(existing?.id) { mutableStateOf(existing?.creationFolderUri) }
-    var allowFileCreate by remember(existing?.id) { mutableStateOf(existing?.allowFileCreate ?: false) }
-    var allowFileRead by remember(existing?.id) { mutableStateOf(existing?.allowFileRead ?: false) }
-    var allowFileWrite by remember(existing?.id) { mutableStateOf(existing?.allowFileWrite ?: false) }
-    var allowFileDelete by remember(existing?.id) { mutableStateOf(existing?.allowFileDelete ?: false) }
     var resetContextBeforeRun by remember(existing?.id) { mutableStateOf(existing?.resetContextBeforeRun ?: false) }
-    val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
-        val selected = uris.mapNotNull { uri ->
-            val name = DocumentFile.fromSingleUri(context, uri)?.name.orEmpty()
-            if (!isScheduledTaskTextFile(name)) {
-                vm.error.value = "仅支持 Markdown、TXT 等文本文件：$name"
-                return@mapNotNull null
-            }
-            val resolver = context.contentResolver
-            val read = Intent.FLAG_GRANT_READ_URI_PERMISSION
-            val write = Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-            val granted = runCatching { resolver.takePersistableUriPermission(uri, read or write) }
-                .recoverCatching { resolver.takePersistableUriPermission(uri, read) }
-                .isSuccess
-            if (!granted) {
-                vm.error.value = "无法取得文件的长期访问权限：$name"
-                return@mapNotNull null
-            }
-            ScheduledTaskFile(uri.toString(), name)
-        }
-        files = (files + selected).distinctBy { it.uri }
-    }
-    val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
-        if (uri != null) {
-            val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-            val granted = runCatching { context.contentResolver.takePersistableUriPermission(uri, flags) }.isSuccess
-            if (granted) creationFolderUri = uri.toString()
-            else vm.error.value = "无法取得文件夹的长期读写权限"
-        }
-    }
-    val creationFolderName = remember(creationFolderUri) {
-        creationFolderUri?.let { uri ->
-            runCatching { DocumentFile.fromTreeUri(context, android.net.Uri.parse(uri))?.name }.getOrNull()
-        }
-    }
     var picker by remember { mutableStateOf<String?>(null) }
     val conversationFlow = remember(assistantId) { conversationRepo.getConversationsOfAssistant(assistantId) }
     val conversations by conversationFlow.collectAsStateWithLifecycle(emptyList())
@@ -279,10 +225,6 @@ fun ScheduledTaskEditPage(
                 mode = mode, targetConversationId = if (mode == "NEW_CHAT") null else targetConversationId,
                 targetUserMessageId = if (mode == "REGENERATE") targetUserMessageId else null,
                 modelOverrideId = modelOverrideId, notify = notify, showPreview = showPreview,
-                filesJson = encodeScheduledTaskFiles(files), filesEnabled = filesEnabled,
-                creationFolderUri = creationFolderUri, allowFileCreate = allowFileCreate,
-                allowFileRead = allowFileRead,
-                allowFileWrite = allowFileWrite, allowFileDelete = allowFileDelete,
                 resetContextBeforeRun = mode == "FOLLOW_UP" && resetContextBeforeRun,
                 onDone = {
                     // 保存成功后回到任务列表，而不是停留在编辑页
@@ -306,10 +248,6 @@ fun ScheduledTaskEditPage(
                     mode = mode, targetConversationId = if (mode == "NEW_CHAT") null else targetConversationId,
                     targetUserMessageId = if (mode == "REGENERATE") targetUserMessageId else null,
                     modelOverrideId = modelOverrideId, notify = notify, showPreview = showPreview,
-                    filesJson = encodeScheduledTaskFiles(files), filesEnabled = filesEnabled,
-                    creationFolderUri = creationFolderUri, allowFileCreate = allowFileCreate,
-                    allowFileRead = allowFileRead,
-                    allowFileWrite = allowFileWrite, allowFileDelete = allowFileDelete,
                     resetContextBeforeRun = mode == "FOLLOW_UP" && resetContextBeforeRun,
                 ),
                 onDone = {
@@ -498,61 +436,6 @@ fun ScheduledTaskEditPage(
                             onClear = if (modelOverrideId != null) ({ modelOverrideId = null }) else null,
                         )
                     }
-                }
-            }
-            item {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text("任务文件", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                        IconButton(onClick = { filePicker.launch(arrayOf("*/*")) }) {
-                            Icon(HugeIcons.Add01, contentDescription = "添加文本文件")
-                        }
-                    }
-                    Text(
-                        "仅此任务可访问清单中的文本文件；创建位置内的其他文件不会自动授权。",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    files.forEach { file ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(file.name, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            IconButton(onClick = { files = files.filterNot { it.uri == file.uri } }) {
-                                Icon(HugeIcons.Delete01, contentDescription = "移除${file.name}")
-                            }
-                        }
-                    }
-                    createdFiles.forEach { file ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text("${file.name} · 已创建", modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            IconButton(
-                                onClick = { existing?.let { vm.forgetCreatedFile(it, file.uri) } },
-                                enabled = existing?.activeRunId == null,
-                            ) {
-                                Icon(HugeIcons.Delete01, contentDescription = "移除${file.name}的任务访问权限")
-                            }
-                        }
-                    }
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    TaskToggleRow("启用任务文件", null, filesEnabled, { filesEnabled = it })
-                    TaskSettingRow(
-                        label = "创建位置",
-                        value = creationFolderName ?: "未选择文件夹",
-                        onClick = { folderPicker.launch(null) },
-                        onClear = if (creationFolderUri != null) ({ creationFolderUri = null; allowFileCreate = false }) else null,
-                    )
-                    TaskToggleRow("创建文件", null, allowFileCreate, { allowFileCreate = it }, enabled = filesEnabled)
-                    TaskToggleRow("读取文件", null, allowFileRead, { allowFileRead = it }, enabled = filesEnabled)
-                    TaskToggleRow("修改文件", null, allowFileWrite, { allowFileWrite = it }, enabled = filesEnabled)
-                    TaskToggleRow("删除文件", null, allowFileDelete, { allowFileDelete = it }, enabled = filesEnabled)
                 }
             }
             item {
