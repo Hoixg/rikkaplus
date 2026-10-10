@@ -148,6 +148,18 @@ internal fun selectCompactionPrefixKeepingLatestTurn(
     return nodes.take(alignedKeepStart)
 }
 
+/** After a completed turn, compact that turn too when retaining it cannot reach the target. */
+internal fun selectNodesForAutomaticCompaction(
+    nodes: List<MessageNode>,
+    keepBudgetTokens: Int,
+    includeLatestCompletedTurn: Boolean,
+): List<MessageNode> {
+    val prefix = selectCompactionPrefixKeepingLatestTurn(nodes, keepBudgetTokens)
+    if (!includeLatestCompletedTurn || nodes.isEmpty()) return prefix
+    val retainedTokens = nodes.drop(prefix.size).sumOf { estimateTokenCount(listOf(it.currentMessage)) }
+    return if (prefix.isNotEmpty() && retainedTokens <= keepBudgetTokens) prefix else nodes
+}
+
 internal fun priorCheckpointMergeContext(summary: String): String = if (summary.isBlank()) "" else
     "PRIOR CHECKPOINT (merge this exactly once with the new conversation into one consolidated checkpoint):\n$summary"
 

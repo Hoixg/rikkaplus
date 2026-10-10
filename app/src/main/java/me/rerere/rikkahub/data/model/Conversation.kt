@@ -159,6 +159,17 @@ data class Conversation(
     internal fun requestWindowForGeneration(messageRange: ClosedRange<Int>? = null): ConversationRequestWindow =
         requestContextForGeneration(messageRange)
 
+    /** Keep older messages visible in the chat while excluding them from this model request. */
+    internal fun requestContextFromNode(startIndex: Int): ConversationRequestWindow {
+        require(startIndex in 0..messageNodes.size)
+        val indexes = (startIndex until messageNodes.size).toList()
+        return ConversationRequestWindow(
+            messages = indexes.map { messageNodes[it].currentMessage },
+            sourceNodeIndexes = indexes,
+            appendNodeIndex = messageNodes.size,
+        )
+    }
+
     /** Builds a model request window from the latest checkpoint while keeping older history persisted. */
     internal fun requestContextForGeneration(messageRange: ClosedRange<Int>? = null): ConversationRequestWindow {
         val checkpoint = activeCompressionForRequest()

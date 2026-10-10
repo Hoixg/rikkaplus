@@ -1366,6 +1366,8 @@
   <string name="chat_generation_network_timeout">Connection timed out</string>
   <string name="chat_generation_network_unreachable">Unable to connect to server</string>
   <string name="chat_generation_network_disconnected">Network connection lost</string>
+  <string name="chat_generation_turn_budget_exceeded">Generation stopped after reaching the %1$d-minute turn limit. Partial results were saved. Increase the turn budget in Settings > Termux to continue longer.</string>
+  <string name="chat_generation_tool_steps_exceeded">Generation stopped after %1$d tool steps. Partial results were saved. Increase tool steps per turn in Settings > Termux to continue longer.</string>
   <string name="search_page_scope_current_assistant">Current Assistant</string>
   <string name="search_page_scope_all_assistants">All Assistants</string>
   <string name="chat_page_voice_title">Voice mode</string>
@@ -1479,7 +1481,7 @@
   <string name="setting_termux_command_timeout">Default command timeout</string>
   <string name="setting_termux_command_timeout_desc">How long to wait for a background shell command to return output. Range 5 s to 600 s.</string>
   <string name="setting_termux_turn_budget">Per-turn wall-clock budget (all tools)</string>
-  <string name="setting_termux_turn_budget_desc">Hard cap on the total time any single user turn can spend executing tools. Range 1 min to 60 min.</string>
+  <string name="setting_termux_turn_budget_desc">Hard cap on the total time any single user turn can spend executing tools. Range 1 min to 240 min.</string>
   <string name="setting_termux_verify_timeout">Verify smoke-test timeout</string>
   <string name="setting_termux_verify_timeout_desc">Timeout for the allow-external-apps echo smoke test. Range 3 s to 30 s.</string>
   <string name="setting_termux_unit_seconds">seconds</string>

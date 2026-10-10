@@ -99,6 +99,17 @@ fun autoCompactionThresholdTokens(
     return minOf(percentageThreshold, normalizeAutoCompactionTokenLimit(tokenLimit) ?: Int.MAX_VALUE)
 }
 
+internal fun autoCompactionTargetTokens(
+    windowTokens: Int,
+    thresholdPercent: Int = DEFAULT_AUTO_COMPACTION_THRESHOLD_PERCENT,
+    tokenLimit: Int? = null,
+): Int? {
+    val threshold = autoCompactionThresholdTokens(windowTokens, thresholdPercent, tokenLimit) ?: return null
+    return minOf(windowTokens.toLong() * 65 / 100, threshold.toLong() * 80 / 100)
+        .coerceAtLeast(1)
+        .toInt()
+}
+
 fun shouldAutoCompact(
     enabled: Boolean,
     usedTokens: Int,

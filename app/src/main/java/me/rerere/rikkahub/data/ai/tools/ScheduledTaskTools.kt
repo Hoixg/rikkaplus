@@ -264,6 +264,11 @@ internal fun taskConfiguration(task: ScheduledTaskEntity): JsonObject = buildJso
     put("mode", task.mode); put("target_conversation_id", task.targetConversationId)
     put("target_user_message_id", task.targetUserMessageId); put("model_override_id", task.modelOverrideId)
     put("enabled", task.enabled); put("notify", task.notify); put("show_preview", task.showPreview)
+    put("files_json", task.filesJson); put("created_files_json", task.createdFilesJson)
+    put("files_enabled", task.filesEnabled); put("creation_folder_uri", task.creationFolderUri)
+    put("allow_file_create", task.allowFileCreate); put("allow_file_read", task.allowFileRead)
+    put("allow_file_write", task.allowFileWrite); put("allow_file_delete", task.allowFileDelete)
+    put("reset_context_before_run", task.resetContextBeforeRun)
     put("created_at", task.createdAt); put("revision", task.revision); put("schedule", describe(task))
 }
 
@@ -280,7 +285,17 @@ internal fun taskFromConfiguration(obj: JsonObject): ScheduledTaskEntity {
         mode = text("mode"), targetConversationId = optional("target_conversation_id"),
         targetUserMessageId = optional("target_user_message_id"), modelOverrideId = optional("model_override_id"),
         enabled = text("enabled").toBooleanStrict(), notify = text("notify").toBooleanStrict(),
-        showPreview = text("show_preview").toBooleanStrict(), createdAt = text("created_at").toLong(),
+        showPreview = text("show_preview").toBooleanStrict(),
+        filesJson = optional("files_json") ?: "[]",
+        createdFilesJson = optional("created_files_json") ?: "[]",
+        filesEnabled = optional("files_enabled")?.toBooleanStrict() ?: false,
+        creationFolderUri = optional("creation_folder_uri"),
+        allowFileCreate = optional("allow_file_create")?.toBooleanStrict() ?: false,
+        allowFileRead = optional("allow_file_read")?.toBooleanStrict() ?: false,
+        allowFileWrite = optional("allow_file_write")?.toBooleanStrict() ?: false,
+        allowFileDelete = optional("allow_file_delete")?.toBooleanStrict() ?: false,
+        resetContextBeforeRun = optional("reset_context_before_run")?.toBooleanStrict() ?: false,
+        createdAt = text("created_at").toLong(),
         updatedAt = System.currentTimeMillis(), revision = text("revision"))
 }
 
@@ -511,5 +526,6 @@ internal fun applyExecutionFields(task: ScheduledTaskEntity, obj: JsonObject): S
     return task.copy(mode = mode,
         targetConversationId = if (mode == "NEW_CHAT") null else conversation,
         targetUserMessageId = if (mode != "REGENERATE") null else id("target_user_message_id", if (conversation == task.targetConversationId) task.targetUserMessageId else null),
-        modelOverrideId = id("model_override_id", task.modelOverrideId), enabled = flag("enabled", task.enabled), notify = flag("notify", task.notify), showPreview = flag("show_preview", task.showPreview))
+        modelOverrideId = id("model_override_id", task.modelOverrideId), enabled = flag("enabled", task.enabled), notify = flag("notify", task.notify), showPreview = flag("show_preview", task.showPreview),
+        resetContextBeforeRun = mode == "FOLLOW_UP" && task.resetContextBeforeRun)
 }

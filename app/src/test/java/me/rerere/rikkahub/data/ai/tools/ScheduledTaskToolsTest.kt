@@ -12,6 +12,9 @@ import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.model.Conversation
+import me.rerere.rikkahub.data.model.ScheduledTaskFile
+import me.rerere.rikkahub.data.model.encodeScheduledTaskFiles
+import me.rerere.rikkahub.data.model.scheduledTaskFiles
 import me.rerere.rikkahub.data.repository.ScheduledTaskSchedule
 
 class ScheduledTaskToolsTest {
@@ -116,8 +119,45 @@ class ScheduledTaskToolsTest {
     @Test fun fullConfigurationRoundTripsAllEditableSettings() {
         val original = task().copy(mode = "REGENERATE", scheduleType = "WEEKLY", weekdaysMask = 5,
             startDate = "2026-10-05", endDate = "2026-10-31", enabled = false, notify = false,
-            showPreview = false, targetConversationId = "conversation", targetUserMessageId = "message", modelOverrideId = "model")
+            showPreview = false, targetConversationId = "conversation", targetUserMessageId = "message", modelOverrideId = "model",
+            filesJson = encodeScheduledTaskFiles(listOf(ScheduledTaskFile("content://provider/task-a", "notes.md"))),
+            createdFilesJson = encodeScheduledTaskFiles(listOf(ScheduledTaskFile("content://provider/tree/generated", "new.md"))),
+            filesEnabled = true, creationFolderUri = "content://provider/tree", allowFileCreate = true,
+            allowFileRead = true, allowFileWrite = true, resetContextBeforeRun = true)
         assertEquals(taskConfiguration(original), taskConfiguration(taskFromConfiguration(taskConfiguration(original))))
+    }
+
+    @Test fun eachTaskHasItsOwnFileListAndPermissionSwitches() {
+        val first = task().copy(
+            filesJson = encodeScheduledTaskFiles(listOf(ScheduledTaskFile("content://provider/first", "first.md"))),
+            filesEnabled = true, allowFileRead = true,
+        )
+        val second = task().copy(
+            id = "second-task",
+            filesJson = encodeScheduledTaskFiles(listOf(ScheduledTaskFile("content://provider/second", "second.txt"))),
+            filesEnabled = true, allowFileDelete = true,
+        )
+
+        assertEquals(listOf("list", "read"), allowedScheduledTaskFileActions(first))
+        assertEquals(listOf("list", "delete"), allowedScheduledTaskFileActions(second))
+        assertEquals(first.filesJson, taskFromConfiguration(taskConfiguration(first)).filesJson)
+        assertEquals(second.filesJson, taskFromConfiguration(taskConfiguration(second)).filesJson)
+        assertEquals(emptyList<String>(), allowedScheduledTaskFileActions(first.copy(filesEnabled = false)))
+        assertEquals(emptyList<String>(), allowedScheduledTaskFileActions(first.copy(filesJson = "[]")))
+        val creator = first.copy(filesJson = "[]", creationFolderUri = "content://provider/tree", allowFileCreate = true)
+        assertEquals(listOf("list", "create", "read"), allowedScheduledTaskFileActions(creator))
+        assertEquals(emptyList<String>(), allowedScheduledTaskFileActions(creator.copy(creationFolderUri = null)))
+        val afterCreation = creator.copy(
+            createdFilesJson = encodeScheduledTaskFiles(listOf(
+                ScheduledTaskFile("content://provider/tree/document/new", "new.md", "content://provider/tree")
+            )),
+            creationFolderUri = null,
+        )
+        assertEquals(listOf("new.md"), scheduledTaskFiles(afterCreation).map { it.name })
+        assertEquals(listOf("list", "read"), allowedScheduledTaskFileActions(afterCreation))
+        val stableId = scheduledTaskFileId(first.id, "content://provider/first")
+        assertEquals(stableId, scheduledTaskFileId(first.id, "content://provider/first"))
+        assertNotEquals(stableId, scheduledTaskFileId(second.id, "content://provider/first"))
     }
 
     @Test fun scheduledExecutionRejectsEveryMutationAndAllowsReads() {

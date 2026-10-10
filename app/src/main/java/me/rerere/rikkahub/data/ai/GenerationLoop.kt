@@ -108,11 +108,12 @@ class GenerationLoop(
     ): Flow<GenerationChunk> = flow {
         val provider = model.findRequestProvider(settings.providers) ?: error("Provider not found")
         val providerImpl = providerManager.getProviderByType(provider)
-        val turnStartedAtMs = android.os.SystemClock.elapsedRealtime()
+        var toolExecutionStartedAtMs: Long? = null
         if (resetTurnTracker) AgentTurnTracker.reset()
         val remainingToolCalls = java.util.concurrent.atomic.AtomicInteger(maxToolCalls ?: Int.MAX_VALUE)
 
         var messages: List<UIMessage> = messages
+        var reachedStepLimit = true
 
         for (stepIndex in 0 until maxSteps) {
             Log.i(TAG, "streamText: start step #$stepIndex (${model.id})")
@@ -130,6 +131,7 @@ class GenerationLoop(
                 } == true
                 if (lastHasPending) {
                     Log.i(TAG, "generateText: last message has Pending tools; waiting for approval, not regenerating")
+                    reachedStepLimit = false
                     break
                 }
             }
@@ -199,6 +201,7 @@ class GenerationLoop(
                 val toolCalls = messages.last().getTools().filter { !it.isExecuted }
                 if (toolCalls.isEmpty()) {
                     // no tool calls, break
+                    reachedStepLimit = false
                     break
                 }
 
@@ -250,6 +253,7 @@ class GenerationLoop(
                 // If there are pending approvals, break and wait for user
                 if (hasPendingApproval) {
                     Log.i(TAG, "generateText: waiting for tool approval")
+                    reachedStepLimit = false
                     break
                 }
 
@@ -330,8 +334,12 @@ class GenerationLoop(
                                 )
                                 return@single
                             }
+                            val startedAtMs = toolExecutionStartedAtMs
+                                ?: android.os.SystemClock.elapsedRealtime().also {
+                                    toolExecutionStartedAtMs = it
+                                }
                             val remainingBudgetMs = remainingTurnBudgetMs(
-                                startedAtMs = turnStartedAtMs,
+                                startedAtMs = startedAtMs,
                                 budgetMs = ToolRuntimeLimits.turnBudgetMs,
                             )
                             if (remainingBudgetMs <= 0L) {
@@ -410,6 +418,7 @@ class GenerationLoop(
 
             if (executedTools.isEmpty()) {
                 // No results to add (all tools were pending)
+                reachedStepLimit = false
                 break
             }
 
@@ -437,21 +446,35 @@ class GenerationLoop(
             // A prioritized queued message can now start without waiting for another model request.
             if (shouldYieldAfterToolResults()) {
                 Log.i(TAG, "generateText: yielding after tool results for a prioritized message")
+                reachedStepLimit = false
                 break
             }
 
-            if (remainingTurnBudgetMs(
-                    startedAtMs = turnStartedAtMs,
-                    budgetMs = ToolRuntimeLimits.turnBudgetMs,
-                ) <= 0L
-            ) {
+            if (toolExecutionStartedAtMs?.let { startedAtMs ->
+                    remainingTurnBudgetMs(startedAtMs, ToolRuntimeLimits.turnBudgetMs) <= 0L
+                } == true) {
                 Log.w(TAG, "generateText: turn budget exhausted after tool execution")
-                break
+                throw IllegalStateException(
+                    context.getString(
+                        R.string.chat_generation_turn_budget_exceeded,
+                        ToolRuntimeLimits.turnBudgetMs / 60_000L,
+                    )
+                )
             }
             if (budgetExhausted.get()) {
                 Log.w(TAG, "generateText: turn budget reached before queued tools")
-                break
+                throw IllegalStateException(
+                    context.getString(
+                        R.string.chat_generation_turn_budget_exceeded,
+                        ToolRuntimeLimits.turnBudgetMs / 60_000L,
+                    )
+                )
             }
+        }
+        if (reachedStepLimit) {
+            throw IllegalStateException(
+                context.getString(R.string.chat_generation_tool_steps_exceeded, maxSteps)
+            )
         }
 
     }.flowOn(Dispatchers.IO)

@@ -121,6 +121,14 @@ class ContextWindowTest {
     }
 
     @Test
+    fun autoCompactionTargetStaysBelowCustomThreshold() {
+        assertEquals(640, autoCompactionTargetTokens(windowTokens = 1_000))
+        assertEquals(80, autoCompactionTargetTokens(windowTokens = 1_000, tokenLimit = 100))
+        assertEquals(400, autoCompactionTargetTokens(windowTokens = 1_000, thresholdPercent = 50))
+        assertNull(autoCompactionTargetTokens(windowTokens = 0))
+    }
+
+    @Test
     fun defaultAutoCompactionThresholdPreservesTheExistingContextWindowBehavior() {
         assertEquals(DEFAULT_AUTO_COMPACTION_THRESHOLD_PERCENT, Settings().autoCompactionThresholdPercent)
         assertNull(Settings().autoCompactionTokenLimit)
@@ -380,6 +388,32 @@ class ContextWindowTest {
         assertEquals(listOf(nodes.first()), selectNodesForCompaction(nodes, keepBudgetTokens = Int.MAX_VALUE))
         assertEquals(1, selectNodesForCompaction(nodes, keepBudgetTokens = Int.MAX_VALUE).size)
         assertTrue(selectNodesForCompaction(listOf(nodes.first()), keepBudgetTokens = 0).isNotEmpty())
+    }
+
+    @Test
+    fun completedTurnCompactsImmediatelyWithoutDiscardingRecentContextWhenItFits() {
+        val old = listOf(node(message("old request")), node(message("old reply", MessageRole.ASSISTANT)))
+        val recent = listOf(node(message("latest request")), node(message("latest reply", MessageRole.ASSISTANT)))
+        val nodes = old + recent
+        val recentTokens = recent.sumOf { estimateTokenCount(listOf(it.currentMessage)) }
+
+        assertEquals(old, selectNodesForAutomaticCompaction(nodes, recentTokens, true))
+        assertEquals(nodes, selectNodesForAutomaticCompaction(nodes, 0, true))
+        assertEquals(emptyList<MessageNode>(), selectNodesForAutomaticCompaction(recent, 0, false))
+        assertEquals(recent, selectNodesForAutomaticCompaction(recent, 0, true))
+    }
+
+    @Test
+    fun checkpointAfterLatestCompletedTurnKeepsHistoryVisible() {
+        val user = node(message("long request"))
+        val assistant = node(message("long reply", MessageRole.ASSISTANT))
+        val original = Conversation(assistantId = Uuid.random(), messageNodes = listOf(user, assistant))
+
+        val compacted = original.withContextCheckpoint(assistant.id, "concise summary")!!
+
+        assertEquals(listOf(user, assistant), compacted.messageNodes.take(2))
+        assertTrue(compacted.messageNodes.last().currentMessage.isContextCheckpoint)
+        assertEquals(listOf(compacted.messageNodes.last().currentMessage), compacted.requestWindowMessages())
     }
 
     @Test

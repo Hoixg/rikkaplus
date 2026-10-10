@@ -50,7 +50,7 @@ fun SettingPermissionsPage() {
     val battery = remember(refresh) { SystemPermissions.isIgnoringBatteryOptimizations(context) }
     val exact = remember(refresh) { SystemPermissions.canScheduleExactAlarms(context) }
     fun open(intent: Intent) { if (!SystemPermissions.openSettings(context, intent)) error = "无法打开系统设置" }
-    Scaffold(topBar = { TopAppBar(title = { Text("后台运行与通知") }, navigationIcon = { BackButton() }, colors = CustomColors.topBarColors) },
+    Scaffold(topBar = { TopAppBar(title = { Text("后台与通知") }, navigationIcon = { BackButton() }, colors = CustomColors.topBarColors) },
         containerColor = CustomColors.topBarColors.containerColor) { padding ->
         LazyColumn(contentPadding = padding + PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             item { Text("系统授权", style = MaterialTheme.typography.titleSmall) }

@@ -55,6 +55,14 @@ class ScheduledTasksVM(
         modelOverrideId: String? = null,
         notify: Boolean = true,
         showPreview: Boolean = true,
+        filesJson: String = "[]",
+        filesEnabled: Boolean = false,
+        creationFolderUri: String? = null,
+        allowFileCreate: Boolean = false,
+        allowFileRead: Boolean = false,
+        allowFileWrite: Boolean = false,
+        allowFileDelete: Boolean = false,
+        resetContextBeforeRun: Boolean = false,
         onDone: () -> Unit = {},
     ) {
         if (creating) return
@@ -78,6 +86,11 @@ class ScheduledTasksVM(
                         enabled = enabled,
                         mode = mode, targetConversationId = targetConversationId, targetUserMessageId = targetUserMessageId,
                         modelOverrideId = modelOverrideId, notify = notify, showPreview = showPreview,
+                        filesJson = filesJson, filesEnabled = filesEnabled,
+                        creationFolderUri = creationFolderUri, allowFileCreate = allowFileCreate,
+                        allowFileRead = allowFileRead,
+                        allowFileWrite = allowFileWrite, allowFileDelete = allowFileDelete,
+                        resetContextBeforeRun = resetContextBeforeRun,
                         revision = Uuid.random().toString(),
                         createdAt = now,
                         updatedAt = now,
@@ -95,6 +108,12 @@ class ScheduledTasksVM(
     fun update(task: ScheduledTaskEntity, onDone: () -> Unit = {}) {
         viewModelScope.launch {
             runCatching { repository.upsert(task.copy(updatedAt = System.currentTimeMillis())); onDone() }.onFailure { error.value = it.message }
+        }
+    }
+
+    fun forgetCreatedFile(task: ScheduledTaskEntity, uri: String) {
+        viewModelScope.launch {
+            runCatching { repository.forgetCreatedFile(task.id, uri) }.onFailure { error.value = it.message }
         }
     }
 

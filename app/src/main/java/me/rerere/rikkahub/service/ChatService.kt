@@ -109,6 +109,7 @@ import me.rerere.rikkahub.data.repository.MemoryRepository
 import me.rerere.rikkahub.data.repository.WorkspaceRepository
 import me.rerere.rikkahub.utils.applyPlaceholders
 import me.rerere.rikkahub.utils.getConversationChatModel
+import me.rerere.rikkahub.utils.autoCompactionTargetTokens
 import me.rerere.rikkahub.utils.shouldAutoCompact
 import me.rerere.rikkahub.utils.estimateTokenCount
 import me.rerere.rikkahub.utils.estimateTextTokenCount
@@ -116,7 +117,7 @@ import me.rerere.rikkahub.utils.effectiveContextLength
 import me.rerere.rikkahub.utils.chunkCompactionTexts
 import me.rerere.rikkahub.utils.toCompactionText
 import me.rerere.rikkahub.utils.estimateWindowTokens
-import me.rerere.rikkahub.utils.selectCompactionPrefixKeepingLatestTurn
+import me.rerere.rikkahub.utils.selectNodesForAutomaticCompaction
 import java.util.Locale
 import kotlin.uuid.Uuid
 
@@ -134,7 +135,6 @@ internal fun backgroundTextGenerationParams(
     sessionId = conversationId.toString(),
 )
 
-private const val AUTO_COMPRESS_TARGET_RATIO = 0.65f
 private const val AUTO_COMPRESS_TARGET_TOKENS = 2_000
 private const val AUTO_COMPRESS_INPUT_BUDGET_MAX = 12_000
 private const val AUTO_COMPRESS_CONCURRENCY = 2
@@ -382,7 +382,9 @@ class ChatService(
             destinationId = conversation.id
             val session = sessionManager.getOrCreate(conversation.id)
             if (sourceId != conversation.id) scheduledReservations.add(conversation.id)
-            if (!scheduledTaskRepository.bindConversation(task, conversation.id.toString())) return null
+            val contextStartIndex = if (mode == me.rerere.rikkahub.data.db.entity.ScheduledTaskMode.FOLLOW_UP &&
+                task.resetContextBeforeRun) conversation.messageNodes.size else null
+            if (!scheduledTaskRepository.bindConversation(task, conversation.id.toString(), contextStartIndex)) return null
             val completion = CompletableDeferred<String>()
             scheduledRunOwners[conversation.id] = task.activeRunId!!
             scheduledCompletions[conversation.id] = completion
@@ -792,12 +794,15 @@ class ChatService(
                 val processedContent = preprocessUserInputParts(content, assistant)
 
                 // 对齐 YuiHub：普通发送前压缩旧上下文，新输入始终保留为近期消息。
-                if (answer && settings.enableAutoCompaction) {
+                val scheduledTask = scheduledTaskRepository.getActiveByConversation(conversationId.toString())
+                if (answer && settings.enableAutoCompaction &&
+                    !(scheduledTask?.mode == "FOLLOW_UP" && scheduledTask.resetContextBeforeRun)) {
                     autoCompressIfNeeded(
                         conversationId = conversationId,
                         session = session,
                         pendingParts = processedContent,
                         processingStatus = session.processingStatus,
+                        modelOverrideId = scheduledTask?.modelOverrideId,
                     )
                 }
 
@@ -1034,21 +1039,34 @@ class ChatService(
     private suspend fun handleMessageComplete(conversationId: Uuid, messageRange: ClosedRange<Int>? = null) {
         val task = scheduledTaskRepository.getActiveByConversation(conversationId.toString())
         task?.activeRunId?.let { scheduledRunOwners[conversationId] = it }
-        if (task == null) handleMessageCompleteUnbounded(conversationId, messageRange)
+        val completed = if (task == null) handleMessageCompleteUnbounded(conversationId, messageRange)
         else try {
             kotlinx.coroutines.withTimeout(scheduledTaskRepository.remainingGenerationMs(task)) {
-                handleMessageCompleteUnbounded(conversationId, messageRange)
+                val generated = handleMessageCompleteUnbounded(conversationId, messageRange)
                 subagentManager.awaitChildren(conversationId)
+                generated
             }
         } finally {
             withContext(NonCancellable) { subagentManager.stopParent(conversationId) }
+        }
+        if (completed) {
+            autoCompressAfterTurnIfNeeded(conversationId, task)
+            val finalConversation = getConversationFlow(conversationId).value
+            if (sessionManager.get(conversationId)?.messageQueue?.state?.value?.priorityMessageId == null) {
+                sessionManager.launchWithSession(conversationId) {
+                    generateTitle(conversationId, finalConversation)
+                }
+                sessionManager.launchWithSession(conversationId) {
+                    generateSuggestion(conversationId, finalConversation)
+                }
+            }
         }
     }
 
     private suspend fun handleMessageCompleteUnbounded(
         conversationId: Uuid,
         messageRange: ClosedRange<Int>? = null
-    ) {
+    ): Boolean {
         val scheduledTask = scheduledTaskRepository.getActiveByConversation(conversationId.toString())
         val settings = settingsStore.awaitLoaded()
         val initialConversation = getConversationFlow(conversationId).value
@@ -1074,7 +1092,7 @@ class ChatService(
         }
         val useExternalWebSearch = shouldUseExternalWebSearch(assistant, model)
 
-        runCatching {
+        val result = runCatching {
 
             // reset suggestions
             updateConversation(conversationId, initialConversation.copy(chatSuggestions = emptyList()))
@@ -1096,7 +1114,11 @@ class ChatService(
             val conversation = getConversationFlow(conversationId).value
 
             val requestConversation = getConversationFlow(conversationId).value
-            val requestWindow = requestConversation.requestContextForGeneration(messageRange)
+            val requestWindow = if (scheduledTask?.mode == "FOLLOW_UP" && scheduledTask.resetContextBeforeRun) {
+                requestConversation.requestContextFromNode(
+                    requireNotNull(scheduledTask.activeContextStartIndex) { "定时任务的上下文起点未保存" }
+                )
+            } else requestConversation.requestContextForGeneration(messageRange)
 
             val tools = try {
                 chatToolFactory.createTools(
@@ -1106,6 +1128,7 @@ class ChatService(
                     workspaceCwd = conversation.workspaceCwd,
                     getMessages = { getConversationFlow(conversationId).value.currentMessages },
                     scheduledExecution = scheduledTask != null,
+                    scheduledTask = scheduledTask,
                     subagentTools = childAgentTools(settings, assistant, requestModel, conversation, scheduledTask != null),
                 )
             } catch (error: InvalidMcpServerNamesException) {
@@ -1120,7 +1143,7 @@ class ChatService(
                     ),
                     conversationId = conversationId,
                 )
-                return
+                return false
             }
 
             // start generating
@@ -1186,20 +1209,8 @@ class ChatService(
             addError(it, conversationId, title = context.getString(R.string.error_title_generation))
             Logging.log(TAG, "handleMessageComplete: $it")
             Logging.log(TAG, it.stackTraceToString())
-        }.onSuccess {
-            val finalConversation = getConversationFlow(conversationId).value
-
-            if (sessionManager.get(conversationId)?.messageQueue?.state?.value?.priorityMessageId != null) {
-                return@onSuccess
-            }
-
-            sessionManager.launchWithSession(conversationId) {
-                generateTitle(conversationId, finalConversation)
-            }
-            sessionManager.launchWithSession(conversationId) {
-                generateSuggestion(conversationId, finalConversation)
-            }
         }
+        return result.isSuccess
     }
 
     // ---- 检查无效消息 ----
@@ -1491,18 +1502,50 @@ class ChatService(
         saveConversation(conversationId, updatedConversation)
     }
 
+    private suspend fun autoCompressAfterTurnIfNeeded(
+        conversationId: Uuid,
+        scheduledTask: ScheduledTaskEntity?,
+    ) {
+        if (scheduledTask?.mode == "FOLLOW_UP" && scheduledTask.resetContextBeforeRun) return
+        val session = sessionManager.get(conversationId) ?: return
+        if (session.messageQueue.state.value.priorityMessageId != null) return
+        val messages = session.state.value.currentMessages
+        if (messages.lastOrNull()?.role != MessageRole.ASSISTANT) return
+        if (messages.any { message ->
+                message.getTools().any { it.isPending || it.canResumeExecution }
+            }) return
+
+        try {
+            autoCompressIfNeeded(
+                conversationId = conversationId,
+                session = session,
+                pendingParts = emptyList(),
+                processingStatus = session.processingStatus,
+                includeLatestCompletedTurn = true,
+                modelOverrideId = scheduledTask?.modelOverrideId,
+            )
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            addError(error, conversationId, title = context.getString(R.string.error_title_compress_context))
+        }
+    }
+
     private suspend fun autoCompressIfNeeded(
         conversationId: Uuid,
         session: ConversationSession,
         pendingParts: List<UIMessagePart>,
         processingStatus: MutableStateFlow<String?>,
+        includeLatestCompletedTurn: Boolean = false,
+        modelOverrideId: String? = null,
     ) {
-        val settings = settingsStore.settingsFlow.first()
+        val settings = settingsStore.awaitLoaded()
         if (!settings.enableAutoCompaction) return
         val conversation = session.state.value
-        val model = settings.getConversationChatModel(conversation) ?: return
+        val model = modelOverrideId?.let { settings.findModelById(Uuid.parse(it)) }
+            ?: settings.getConversationChatModel(conversation) ?: return
         val windowTokens = model.effectiveContextLength()
-        val pendingTokens = estimateTokenCount(
+        val pendingTokens = if (pendingParts.isEmpty()) 0 else estimateTokenCount(
             listOf(UIMessage(role = MessageRole.USER, parts = pendingParts)),
         )
         val usedTokens = conversation.estimateWindowTokens(model) + pendingTokens
@@ -1515,8 +1558,13 @@ class ChatService(
             )
         ) return
 
-        val targetTokens = (windowTokens * AUTO_COMPRESS_TARGET_RATIO).toInt()
-        val nodesToCompress = autoCompressNodes(conversation, windowTokens, pendingTokens)
+        val targetTokens = autoCompactionTargetTokens(
+            windowTokens, settings.autoCompactionThresholdPercent, settings.autoCompactionTokenLimit,
+        ) ?: return
+        val summaryTargetTokens = minOf(AUTO_COMPRESS_TARGET_TOKENS, targetTokens / 4).coerceAtLeast(128)
+        val nodesToCompress = autoCompressNodes(
+            conversation, windowTokens, pendingTokens, targetTokens, summaryTargetTokens, includeLatestCompletedTurn,
+        )
         if (nodesToCompress.isEmpty()) {
             throw ContextCompactionException(context.getString(R.string.error_compress_context_still_too_large))
         }
@@ -1531,6 +1579,7 @@ class ChatService(
                 settings = settings,
                 model = model,
                 processingStatus = processingStatus,
+                summaryTargetTokens = summaryTargetTokens,
             )
             val sourceTokens = nodesToCompress.sumOf { estimateTokenCount(listOf(it.currentMessage)) }
             if (estimateTextTokenCount(summary) >= sourceTokens) {
@@ -1551,7 +1600,7 @@ class ChatService(
                 expectedFingerprint = sourceFingerprint,
                 model = model,
                 pendingTokens = pendingTokens,
-                windowTokens = windowTokens,
+                targetTokens = targetTokens,
             )
         } catch (error: ContextCompactionException) {
             throw error
@@ -1571,16 +1620,20 @@ class ChatService(
         conversation: Conversation,
         windowTokens: Int,
         pendingTokens: Int,
+        targetTokens: Int,
+        summaryTargetTokens: Int,
+        includeLatestCompletedTurn: Boolean,
     ): List<MessageNode> {
         val nodes = conversation.windowNodes()
-        val summaryReserve = minOf(AUTO_COMPRESS_TARGET_TOKENS, (windowTokens * 0.08f).toInt())
-        val systemReserve = maxOf(512, (windowTokens * 0.08f).toInt())
+        val summaryReserve = summaryTargetTokens
+        val systemReserve = minOf(maxOf(512, (windowTokens * 0.08f).toInt()), targetTokens / 4)
         val keepBudget = (
-            windowTokens * AUTO_COMPRESS_TARGET_RATIO - pendingTokens - summaryReserve - systemReserve
-        ).toInt().coerceAtLeast(0)
-        return selectCompactionPrefixKeepingLatestTurn(
+            targetTokens - pendingTokens - summaryReserve - systemReserve
+        ).coerceAtLeast(0)
+        return selectNodesForAutomaticCompaction(
             nodes = nodes,
             keepBudgetTokens = keepBudget,
+            includeLatestCompletedTurn = includeLatestCompletedTurn,
         )
     }
 
@@ -1591,7 +1644,7 @@ class ChatService(
         expectedFingerprint: String,
         model: Model,
         pendingTokens: Int,
-        windowTokens: Int,
+        targetTokens: Int,
     ) {
         fun makeUpdatedConversation(conversation: Conversation): Conversation {
             if (conversation.compressionSourceFingerprint(boundaryNodeId) != expectedFingerprint) {
@@ -1599,9 +1652,7 @@ class ChatService(
             }
             val candidate = insertContextCheckpoint(conversation, boundaryNodeId, summary)
                 ?: throw ContextCompactionException(context.getString(R.string.error_compress_context_changed))
-            if (candidate.estimateWindowTokens(model) + pendingTokens >
-                (windowTokens * AUTO_COMPRESS_TARGET_RATIO).toInt()
-            ) {
+            if (candidate.estimateWindowTokens(model) + pendingTokens > targetTokens) {
                 throw ContextCompactionException(context.getString(R.string.error_compress_context_still_too_large))
             }
             return candidate
@@ -1633,6 +1684,7 @@ class ChatService(
         settings: Settings,
         model: Model,
         processingStatus: MutableStateFlow<String?>,
+        summaryTargetTokens: Int,
     ): String {
         if (nodesToCompress.isEmpty()) throw ContextCompactionException(
             context.getString(R.string.error_compress_context_failed),
@@ -1647,7 +1699,7 @@ class ChatService(
             if (contentBudget < 128) throw IllegalStateException("No room for a safe context summary")
 
             val mapTarget = (inputBudget / 6).coerceIn(128, 1_000)
-            val reduceTarget = contentBudget.coerceAtMost(AUTO_COMPRESS_TARGET_TOKENS).coerceAtLeast(128)
+            val reduceTarget = contentBudget.coerceAtMost(summaryTargetTokens).coerceAtLeast(128)
             val sourceChunks = chunkCompactionTexts(
                 nodesToCompress.map { it.currentMessage.toCompactionText() },
                 (inputBudget - 512).coerceAtLeast(1),

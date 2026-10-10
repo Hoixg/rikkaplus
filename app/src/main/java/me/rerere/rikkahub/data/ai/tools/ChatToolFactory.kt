@@ -1,5 +1,6 @@
 package me.rerere.rikkahub.data.ai.tools
 
+import android.content.Context
 import android.util.Log
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
@@ -12,6 +13,7 @@ import me.rerere.rikkahub.data.ai.mcp.McpManager
 import me.rerere.rikkahub.data.ai.tools.local.LocalTools
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.SettingsStore
+import me.rerere.rikkahub.data.db.entity.ScheduledTaskEntity
 import me.rerere.rikkahub.data.files.SkillManager
 import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.data.repository.ConversationRepository
@@ -30,6 +32,7 @@ class InvalidMcpServerNamesException(val names: List<String>) :
 
 /** Creates the complete tool set for one generation run, including approval resumption. */
 class ChatToolFactory(
+    private val context: Context,
     private val scheduledTaskRepository: me.rerere.rikkahub.data.repository.ScheduledTaskRepository,
     private val json: Json,
     private val memoryRepository: MemoryRepository,
@@ -47,11 +50,13 @@ class ChatToolFactory(
         workspaceCwd: String? = null,
         getMessages: () -> List<UIMessage> = { emptyList() },
         scheduledExecution: Boolean = false,
+        scheduledTask: ScheduledTaskEntity? = null,
         subagentTools: List<Tool> = emptyList(),
     ): List<Tool> = buildList {
         if (assistant.enableSubagents && ModelAbility.TOOL in model.abilities) addAll(subagentTools)
         addAll(createScheduledTaskTools(scheduledTaskRepository, assistant.id, conversationRepository,
             getSettings = { settingsStore.settingsFlow.value }, scheduledExecution = scheduledExecution, getMessages = getMessages))
+        if (scheduledTask != null) addAll(createScheduledTaskFileTools(context, scheduledTaskRepository, scheduledTask))
         if (assistant.enableMemory) {
             val memoryAssistantId = if (assistant.useGlobalMemory) {
                 MemoryRepository.GLOBAL_MEMORY_ID

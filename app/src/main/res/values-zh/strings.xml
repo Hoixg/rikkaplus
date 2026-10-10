@@ -1467,7 +1467,9 @@
   <string name="setting_termux_command_timeout">默认命令超时</string>
   <string name="setting_termux_command_timeout_desc">等待后台 shell 命令返回输出的时长。范围为 5 秒到 600 秒。</string>
   <string name="setting_termux_turn_budget">单轮总时间预算（所有工具）</string>
-  <string name="setting_termux_turn_budget_desc">单个用户回合内执行工具所能花费的总时间上限。范围为 1 分钟到 60 分钟。</string>
+  <string name="setting_termux_turn_budget_desc">单个用户回合内执行工具所能花费的总时间上限。范围为 1 分钟到 240 分钟。</string>
+  <string name="chat_generation_turn_budget_exceeded">生成达到单轮 %1$d 分钟上限后已停止，已有内容已保存。可在“设置 > Termux”中延长单轮时间预算。</string>
+  <string name="chat_generation_tool_steps_exceeded">生成达到单轮 %1$d 次工具步骤上限后已停止，已有内容已保存。可在“设置 > Termux”中增加每轮工具步骤数。</string>
   <string name="setting_termux_verify_timeout">冒烟测试验证超时</string>
   <string name="setting_termux_verify_timeout_desc">allow-external-apps echo 冒烟测试的超时时间。范围为 3 秒到 30 秒。</string>
   <string name="setting_termux_unit_seconds">秒</string>

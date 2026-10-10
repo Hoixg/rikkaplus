@@ -159,17 +159,13 @@ class TermuxDefaultsTest {
     }
 
     @Test
-    fun turnBudget_defaultIs10Minutes() {
-        // Pin that the default matches the original GenerationHandler constant (10 min),
-        // not the spec's 5 min — per the task override instruction.
-        assertEquals(10L * 60L * 1_000L, TermuxDefaults.DEFAULT_TURN_BUDGET_MS)
+    fun turnBudget_defaultIs60Minutes() {
+        assertEquals(60L * 60L * 1_000L, TermuxDefaults.DEFAULT_TURN_BUDGET_MS)
     }
 
     @Test
-    fun maxToolSteps_defaultMatchesTheOldHardcodedLimit() {
-        // 32 was GenerationHandler's hardcoded maxSteps before issue #22 made it configurable.
-        // Pinning it here keeps an existing user's behaviour identical until they change it.
-        assertEquals(32, TermuxDefaults.DEFAULT_MAX_TOOL_STEPS)
+    fun maxToolSteps_defaultSupportsLongTasks() {
+        assertEquals(128, TermuxDefaults.DEFAULT_MAX_TOOL_STEPS)
     }
 
     @Test

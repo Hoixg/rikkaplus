@@ -16,17 +16,14 @@ object TermuxDefaults {
     const val MAX_COMMAND_TIMEOUT_MS     = 600_000L  // 10 min
 
     // --- Per-turn wall-clock budget (app-wide) ---------------------------------------------
-    // Default is 10 min matching the constant that was in GenerationHandler.kt.
     /** Default per-turn wall-clock budget in ms. */
-    const val DEFAULT_TURN_BUDGET_MS = 10L * 60L * 1_000L  // 10 min
+    const val DEFAULT_TURN_BUDGET_MS = 60L * 60L * 1_000L  // 60 min
     const val MIN_TURN_BUDGET_MS     =  1L * 60L * 1_000L  //  1 min
-    const val MAX_TURN_BUDGET_MS     = 60L * 60L * 1_000L  // 60 min
+    const val MAX_TURN_BUDGET_MS     = 240L * 60L * 1_000L // 4 h
 
     // --- Per-turn tool-call step cap (app-wide) --------------------------------------------
-    // Default is the 32 that used to be GenerationHandler's hardcoded maxSteps. The ceiling is
-    // the backstop: the wall-clock turn budget is the primary limit, so this only has to stop a
-    // runaway loop from iterating without bound.
-    const val DEFAULT_MAX_TOOL_STEPS = 32
+    // The ceiling is a backstop for runaway loops; the wall-clock budget is the primary limit.
+    const val DEFAULT_MAX_TOOL_STEPS = 128
     const val MIN_MAX_TOOL_STEPS     =  1
     const val MAX_MAX_TOOL_STEPS     = 500
 

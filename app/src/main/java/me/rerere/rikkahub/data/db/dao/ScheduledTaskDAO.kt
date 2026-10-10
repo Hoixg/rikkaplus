@@ -33,6 +33,6 @@ interface ScheduledTaskDAO {
     @Query("DELETE FROM scheduled_task WHERE id = :id")
     suspend fun deleteById(id: String)
 
-    @Query("UPDATE scheduled_task SET lastRunStatus = :status, lastError = :error, activeRunId = CASE WHEN :waiting THEN activeRunId ELSE NULL END, activeConversationId = CASE WHEN :waiting THEN activeConversationId ELSE NULL END, activeScheduledAt = CASE WHEN :waiting THEN activeScheduledAt ELSE NULL END WHERE id = :id AND activeRunId = :runId")
+    @Query("UPDATE scheduled_task SET lastRunStatus = :status, lastError = :error, activeRunId = CASE WHEN :waiting THEN activeRunId ELSE NULL END, activeConversationId = CASE WHEN :waiting THEN activeConversationId ELSE NULL END, activeScheduledAt = CASE WHEN :waiting THEN activeScheduledAt ELSE NULL END, activeContextStartIndex = CASE WHEN :waiting THEN activeContextStartIndex ELSE NULL END WHERE id = :id AND activeRunId = :runId")
     suspend fun finish(id: String, runId: String, status: String, error: String, waiting: Boolean): Int
 }
