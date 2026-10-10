@@ -1,17 +1,7 @@
 package me.rerere.rikkahub.ui.components.ai
 
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -22,10 +12,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Slider
@@ -46,17 +36,15 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
+import androidx.graphics.shapes.RoundedPolygon
 import me.rerere.ai.core.ReasoningLevel
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Idea
@@ -70,6 +58,7 @@ import kotlin.math.roundToInt
 
 private val levels = ReasoningLevel.entries
 private val levelCount = levels.size
+private val reasoningShapes = levels.map { it.shape() }
 
 @Composable
 fun ReasoningButton(
@@ -137,14 +126,6 @@ fun ReasoningPicker(
     )
     val displayedLevel = levels[animatedSliderValue.roundToInt().coerceIn(0, levelCount - 1)]
     val levelLabels = levels.map { it.label() }
-    val levelLabelStyle = MaterialTheme.typography.titleSmall
-    val textMeasurer = rememberTextMeasurer()
-    val levelLabelWidthPx = remember(levelLabels, levelLabelStyle, textMeasurer) {
-        levelLabels.maxOf { label ->
-            textMeasurer.measure(AnnotatedString(label), style = levelLabelStyle).size.width
-        }
-    }
-    val levelLabelWidth = with(LocalDensity.current) { levelLabelWidthPx.toDp() }
 
     SideEffect {
         sliderState.value = animatedSliderValue
@@ -166,67 +147,28 @@ fun ReasoningPicker(
             horizontalAlignment = Alignment.Start,
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
+            PickerValueHeader(
+                title = stringResource(R.string.reasoning_picker_title),
+                value = displayedLevel,
+                hint = stringResource(R.string.reasoning_picker_hint),
+                modifier = Modifier.padding(bottom = 16.dp),
+                label = { it.label() },
             ) {
-                Text(
-                    text = stringResource(R.string.reasoning_picker_title),
-                    modifier = Modifier.weight(1f),
-                    style = MaterialTheme.typography.titleMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                PickerHero(
+                    shapes = reasoningShapes,
+                    index = displayedLevel.ordinal,
+                    icon = displayedLevel.icon(),
+                    containerColor = if (displayedLevel.isEnabled) {
+                        MaterialTheme.colorScheme.primaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.surfaceContainerHighest
+                    },
+                    contentColor = if (displayedLevel.isEnabled) {
+                        MaterialTheme.colorScheme.onPrimaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
                 )
-                Row(
-                    modifier = Modifier.width(26.dp + levelLabelWidth),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    AnimatedContent(
-                        targetState = displayedLevel,
-                        modifier = Modifier.size(20.dp),
-                        contentAlignment = Alignment.Center,
-                        transitionSpec = {
-                            (fadeIn(tween(150)) + scaleIn(tween(150), initialScale = 0.9f)) togetherWith
-                                (fadeOut(tween(100)) + scaleOut(tween(100), targetScale = 0.95f))
-                        },
-                        label = "reasoning_icon_switch",
-                    ) {
-                        level ->
-                        val iconColor = if (level.isEnabled) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.onSurfaceVariant
-                        ReasoningIcon(level = level, modifier = Modifier.size(20.dp), tint = iconColor)
-                    }
-                    AnimatedContent(
-                        targetState = displayedLevel,
-                        modifier = Modifier.width(levelLabelWidth),
-                        contentAlignment = Alignment.CenterStart,
-                        transitionSpec = {
-                            val direction = if (targetState.ordinal >= initialState.ordinal) 1 else -1
-                            (
-                                fadeIn(tween(150)) +
-                                    slideInVertically(tween(150, easing = FastOutSlowInEasing)) { direction * it / 6 }
-                                ).togetherWith(
-                                fadeOut(tween(100)) +
-                                    slideOutVertically(tween(100)) { -direction * it / 6 }
-                            )
-                        },
-                        label = "reasoning_level_switch",
-                    ) { level ->
-                        val labelColor = if (level.isEnabled) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.onSurfaceVariant
-                        Text(
-                            text = level.label(),
-                            modifier = Modifier.fillMaxWidth(),
-                            style = levelLabelStyle,
-                            color = labelColor,
-                            maxLines = 1,
-                            softWrap = false,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
             }
 
             Slider(
@@ -272,7 +214,11 @@ fun ReasoningPicker(
                     Text(
                         text = levelLabels[index],
                         modifier = Modifier.weight(1f),
-                        style = MaterialTheme.typography.labelSmall,
+                        style = if (level == displayedLevel) {
+                            MaterialTheme.typography.labelSmallEmphasized
+                        } else {
+                            MaterialTheme.typography.labelSmall
+                        },
                         color = if (level == displayedLevel) MaterialTheme.colorScheme.primary
                         else MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center,
@@ -281,14 +227,6 @@ fun ReasoningPicker(
                     )
                 }
             }
-
-            Text(
-                text = stringResource(R.string.reasoning_picker_hint),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
         }
     }
 }
@@ -366,16 +304,27 @@ private fun ReasoningIcon(
     modifier: Modifier = Modifier,
     tint: Color? = null,
 ) {
-    val icon = when (level) {
-        ReasoningLevel.OFF -> HugeIcons.Idea
-        ReasoningLevel.AUTO -> HugeIcons.Idea01
-        ReasoningLevel.LOW -> ReasoningLow
-        ReasoningLevel.MEDIUM -> ReasoningMedium
-        ReasoningLevel.HIGH -> ReasoningHigh
-        ReasoningLevel.XHIGH -> ReasoningHigh
-        ReasoningLevel.MAX -> ReasoningHigh
-    }
-    Icon(icon, contentDescription = null, modifier = modifier, tint = tint ?: LocalContentColor.current)
+    Icon(level.icon(), contentDescription = null, modifier = modifier, tint = tint ?: LocalContentColor.current)
+}
+
+private fun ReasoningLevel.icon(): ImageVector = when (this) {
+    ReasoningLevel.OFF -> HugeIcons.Idea
+    ReasoningLevel.AUTO -> HugeIcons.Idea01
+    ReasoningLevel.LOW -> ReasoningLow
+    ReasoningLevel.MEDIUM -> ReasoningMedium
+    ReasoningLevel.HIGH -> ReasoningHigh
+    ReasoningLevel.XHIGH -> ReasoningHigh
+    ReasoningLevel.MAX -> ReasoningHigh
+}
+
+private fun ReasoningLevel.shape(): RoundedPolygon = when (this) {
+    ReasoningLevel.OFF -> MaterialShapes.Circle
+    ReasoningLevel.AUTO -> MaterialShapes.Cookie4Sided
+    ReasoningLevel.LOW -> MaterialShapes.Cookie6Sided
+    ReasoningLevel.MEDIUM -> MaterialShapes.Pentagon
+    ReasoningLevel.HIGH -> MaterialShapes.Gem
+    ReasoningLevel.XHIGH -> MaterialShapes.Cookie9Sided
+    ReasoningLevel.MAX -> MaterialShapes.Sunny
 }
 
 @Composable
