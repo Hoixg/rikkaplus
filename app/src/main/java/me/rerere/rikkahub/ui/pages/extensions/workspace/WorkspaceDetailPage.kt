@@ -87,6 +87,7 @@ import me.rerere.hugeicons.stroke.Folder01
 import me.rerere.hugeicons.stroke.FolderAdd
 import me.rerere.hugeicons.stroke.MoreVertical
 import me.rerere.hugeicons.stroke.Play
+import me.rerere.hugeicons.stroke.PencilEdit01
 import me.rerere.hugeicons.stroke.Refresh01
 import me.rerere.hugeicons.stroke.Settings03
 import me.rerere.hugeicons.stroke.Share08
@@ -133,6 +134,9 @@ fun WorkspaceDetailPage(
     ) { 2 }
     val scope = rememberCoroutineScope()
     var deleteTarget by remember { mutableStateOf<WorkspaceFileEntry?>(null) }
+    var renameTarget by remember { mutableStateOf<WorkspaceFileEntry?>(null) }
+    var renameFileName by rememberSaveable { mutableStateOf("") }
+    var renamingFile by remember { mutableStateOf(false) }
     var showInstallDialog by remember { mutableStateOf(false) }
     var showMountDialog by remember { mutableStateOf(false) }
     var showCreateFileDialog by rememberSaveable { mutableStateOf(false) }
@@ -363,6 +367,10 @@ fun WorkspaceDetailPage(
                     },
                     highlightPath = state.highlightPath,
                     onDelete = { deleteTarget = it },
+                    onRename = {
+                        renameTarget = it
+                        renameFileName = it.name
+                    },
                     onBatchExport = { entries ->
                         if (vm.prepareBatchExport(entries)) directoryExportLauncher.launch(null)
                     },
@@ -466,6 +474,66 @@ fun WorkspaceDetailPage(
                         createFileName = ""
                     },
                     enabled = !creatingFile,
+                ) {
+                    Text(stringResource(R.string.common_cancel))
+                }
+            },
+        )
+    }
+
+    renameTarget?.let { entry ->
+        val normalizedName = renameFileName.trim()
+        val fileNameInvalid = normalizedName.isNotEmpty() && !isValidWorkspaceEntryName(normalizedName)
+        AlertDialog(
+            onDismissRequest = {
+                if (!renamingFile) {
+                    renameTarget = null
+                    renameFileName = ""
+                }
+            },
+            title = { Text(stringResource(R.string.common_rename)) },
+            text = {
+                OutlinedTextField(
+                    value = renameFileName,
+                    onValueChange = { renameFileName = it },
+                    label = { Text(stringResource(R.string.workspace_detail_file_name)) },
+                    singleLine = true,
+                    isError = fileNameInvalid,
+                    supportingText = if (fileNameInvalid) {
+                        { Text(stringResource(R.string.workspace_detail_file_name_invalid)) }
+                    } else {
+                        { Text(stringResource(R.string.workspace_detail_rename_file_desc)) }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        renamingFile = true
+                        vm.renameFile(entry, normalizedName) { error ->
+                            renamingFile = false
+                            if (error == null) {
+                                renameTarget = null
+                                renameFileName = ""
+                            } else {
+                                Toast.makeText(context, error, Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    },
+                    enabled = isValidWorkspaceEntryName(normalizedName) &&
+                        normalizedName != entry.name && !renamingFile,
+                ) {
+                    Text(stringResource(R.string.common_save))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        renameTarget = null
+                        renameFileName = ""
+                    },
+                    enabled = !renamingFile,
                 ) {
                     Text(stringResource(R.string.common_cancel))
                 }
@@ -1223,6 +1291,7 @@ private fun WorkspaceFilesPage(
     highlightPath: String?,
     onOpen: (WorkspaceFileEntry) -> Unit,
     onDelete: (WorkspaceFileEntry) -> Unit,
+    onRename: (WorkspaceFileEntry) -> Unit,
     onExport: (WorkspaceFileEntry) -> Unit,
     onBatchExport: (List<WorkspaceFileEntry>) -> Unit,
     onShare: (WorkspaceFileEntry) -> Unit,
@@ -1312,6 +1381,7 @@ private fun WorkspaceFilesPage(
                 expanded = row.entry.path in state.expandedPaths,
                 onToggleExpand = { onToggleExpand(row.entry) },
                 onDelete = { onDelete(row.entry) },
+                onRename = { onRename(row.entry) },
                 onExport = { onExport(row.entry) },
                 onShare = { onShare(row.entry) },
                 onRunScript = { onRunScript(row.entry) },
@@ -1396,6 +1466,7 @@ private fun WorkspaceFileCard(
     onOpen: () -> Unit,
     onToggleExpand: () -> Unit,
     onDelete: () -> Unit,
+    onRename: () -> Unit,
     onExport: () -> Unit,
     onShare: () -> Unit,
     onRunScript: () -> Unit,
@@ -1480,6 +1551,16 @@ private fun WorkspaceFileCard(
                     expanded = menuExpanded,
                     onDismissRequest = { menuExpanded = false },
                 ) {
+                    if (!entry.isDirectory && area == WorkspaceStorageArea.FILES) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.common_rename)) },
+                            leadingIcon = { Icon(HugeIcons.PencilEdit01, contentDescription = null) },
+                            onClick = {
+                                menuExpanded = false
+                                onRename()
+                            },
+                        )
+                    }
                     DropdownMenuItem(
                             text = { Text(stringResource(R.string.common_export)) },
                             leadingIcon = {

@@ -1158,6 +1158,7 @@
   <string name="workspace_detail_new_file">新建文本文件</string>
   <string name="workspace_detail_file_name">文件名（含扩展名）</string>
   <string name="workspace_detail_file_name_desc">创建的是空白文本文件，请自行填写扩展名（如 note.txt、README.md），不会自动补充后缀。</string>
+  <string name="workspace_detail_rename_file_desc">可同时修改文件名和扩展名，例如将 note.txt 改为 notes.md。</string>
   <string name="workspace_detail_create_file">创建</string>
   <string name="workspace_detail_file_name_invalid">文件名不能包含路径分隔符（/ 或 \\）。</string>
   <string name="workspace_detail_create_entry">新建文件或文件夹</string>

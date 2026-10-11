@@ -6,6 +6,7 @@ import java.nio.charset.Charset
 import java.nio.charset.StandardCharsets
 import java.nio.file.FileSystems
 import java.nio.file.Files
+import java.nio.file.LinkOption
 import java.nio.file.Path
 import kotlin.io.path.name
 
@@ -129,6 +130,39 @@ class WorkspaceFileSystem(
         }
         return targetFile.toEntry(root)
     }
+
+    fun renameFile(root: File, path: String, newName: String): WorkspaceFileEntry {
+        val normalizedPath = path.replace('\\', '/').trim().trimStart('/')
+        require(normalizedPath.isNotBlank() && normalizedPath != "." && !normalizedPath.endsWith('/')) {
+            "Refusing to rename workspace root"
+        }
+        val sourceName = normalizedPath.substringAfterLast('/')
+        require(isValidEntryName(sourceName)) { "Invalid file name: $sourceName" }
+        require(isValidEntryName(newName)) { "Invalid file name: $newName" }
+
+        val parentPath = normalizedPath.substringBeforeLast('/', missingDelimiterValue = "")
+        val parent = resolvePath(root, parentPath)
+        require(parent.isDirectory) { "Parent path is not a directory: $parentPath" }
+        val source = File(parent, sourceName)
+        require(Files.exists(source.toPath(), LinkOption.NOFOLLOW_LINKS)) { "File does not exist: $path" }
+        require(!Files.isDirectory(source.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+            "Path is not a file: $path"
+        }
+        if (sourceName == newName) return source.toEntry(root)
+
+        val target = File(parent, newName)
+        require(!Files.exists(target.toPath(), LinkOption.NOFOLLOW_LINKS)) {
+            "Target already exists: $newName"
+        }
+        Files.move(source.toPath(), target.toPath())
+        return target.toEntry(root)
+    }
+
+    private fun isValidEntryName(name: String): Boolean =
+        name.isNotBlank() &&
+            name != "." &&
+            name != ".." &&
+            name.none { it == '/' || it == '\\' || it == '\u0000' }
 
     fun glob(root: File, pattern: String, path: String = ""): List<WorkspaceFileEntry> {
         require(pattern.isNotBlank()) { "Glob pattern is required" }

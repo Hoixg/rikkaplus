@@ -1098,6 +1098,7 @@
   <string name="workspace_detail_new_file">新增文字檔</string>
   <string name="workspace_detail_file_name">檔案名稱（含副檔名）</string>
   <string name="workspace_detail_file_name_desc">建立空白文字檔。請自行輸入副檔名，例如 note.txt 或 README.md；系統不會自動補上副檔名。</string>
+  <string name="workspace_detail_rename_file_desc">可同時修改檔案名稱和副檔名，例如將 note.txt 改為 notes.md。</string>
   <string name="workspace_detail_create_file">建立</string>
   <string name="workspace_detail_file_name_invalid">檔案名稱不能包含路徑分隔符號（/ 或 \\）。</string>
   <string name="workspace_detail_create_entry">新增檔案或資料夾</string>

@@ -260,6 +260,46 @@ class WorkspaceDetailVM(
         }
     }
 
+    fun renameFile(entry: WorkspaceFileEntry, newName: String, onResult: (String?) -> Unit) {
+        if (state.value.area != WorkspaceStorageArea.FILES) {
+            onResult("Files can only be renamed in the workspace files area")
+            return
+        }
+        if (entry.isDirectory) {
+            onResult("Directories cannot be renamed here")
+            return
+        }
+        val name = newName.trim()
+        if (!isValidWorkspaceEntryName(name)) {
+            onResult("Invalid file name")
+            return
+        }
+        if (name == entry.name) {
+            onResult(null)
+            return
+        }
+
+        viewModelScope.launch {
+            try {
+                val renamedEntry = repository.renameFile(id, entry.path, name)
+                _state.update { current ->
+                    current.copy(
+                        entries = current.entries.map { if (it.path == entry.path) renamedEntry else it },
+                        childrenCache = current.childrenCache.mapValues { (_, children) ->
+                            children.map { if (it.path == entry.path) renamedEntry else it }
+                        },
+                    )
+                }
+                refresh()
+                onResult(null)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                onResult(error.message ?: "Rename failed")
+            }
+        }
+    }
+
     fun createFolder(folderName: String, onResult: (String?) -> Unit) {
         val current = state.value
         val name = folderName.trim()
