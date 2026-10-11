@@ -156,8 +156,8 @@ fun WorkspaceDetailPage(
     var previewImageUri by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
 
-    LaunchedEffect(initialPath, highlightPath) {
-        vm.openPath(initialPath.orEmpty(), highlightPath)
+    LaunchedEffect(vm, initialPath, highlightPath) {
+        vm.onPageEntered(initialPath, highlightPath)
     }
     val filePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
@@ -323,6 +323,7 @@ fun WorkspaceDetailPage(
                 )
 
                 1 -> WorkspaceFilesPage(
+                    workspaceId = id,
                     state = state,
                     isActive = pagerState.currentPage == 1,
                     contentPadding = PaddingValues(),
@@ -378,7 +379,7 @@ fun WorkspaceDetailPage(
                         renameTarget = it
                         renameFileName = it.name
                     },
-                    onReorderFile = vm::setWorkspaceFileOrder,
+                    onReorderFile = vm::moveWorkspaceFile,
                     onBatchExport = { entries ->
                         if (vm.prepareBatchExport(entries)) directoryExportLauncher.launch(null)
                     },
@@ -1289,6 +1290,7 @@ private fun InstallRootfsDialog(
 
 @Composable
 private fun WorkspaceFilesPage(
+    workspaceId: String,
     state: WorkspaceDetailState,
     isActive: Boolean,
     contentPadding: PaddingValues,
@@ -1300,19 +1302,25 @@ private fun WorkspaceFilesPage(
     onOpen: (WorkspaceFileEntry) -> Unit,
     onDelete: (WorkspaceFileEntry) -> Unit,
     onRename: (WorkspaceFileEntry) -> Unit,
-    onReorderFile: (WorkspaceStorageArea, String, List<String>) -> Unit,
+    onReorderFile: (WorkspaceStorageArea, String, String) -> Unit,
     onExport: (WorkspaceFileEntry) -> Unit,
     onBatchExport: (List<WorkspaceFileEntry>) -> Unit,
     onShare: (WorkspaceFileEntry) -> Unit,
     onRunScript: (WorkspaceFileEntry) -> Unit,
 ) {
     var sortMenuExpanded by remember { mutableStateOf(false) }
-    var sortMode by rememberSaveable(state.workspace?.id) {
+    var sortMode by rememberSaveable(workspaceId) {
         mutableStateOf(WorkspaceFileSortMode.MANUAL)
     }
-    var descending by rememberSaveable(state.workspace?.id) { mutableStateOf(false) }
+    var descending by rememberSaveable(workspaceId) { mutableStateOf(false) }
     var selecting by remember(state.area, state.path) { mutableStateOf(false) }
     var selectedPaths by remember(state.area, state.path) { mutableStateOf(emptySet<String>()) }
+    var draggingPath by remember(state.area, state.path) { mutableStateOf<String?>(null) }
+    val showDragHandle = sortMode == WorkspaceFileSortMode.MANUAL && !selecting
+    val manualSortEnabled = showDragHandle && !state.loading && state.loadingPaths.isEmpty()
+    LaunchedEffect(manualSortEnabled) {
+        if (!manualSortEnabled) draggingPath = null
+    }
     val lazyListState = rememberLazyListState()
     val rows = remember(
         state.entries,
@@ -1344,7 +1352,7 @@ private fun WorkspaceFilesPage(
     val files = rows.map { it.entry }.filterNot { it.isDirectory }
     val selectedFiles = files.filter { it.path in selectedPaths }
     val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
-        if (sortMode != WorkspaceFileSortMode.MANUAL || selecting) {
+        if (!manualSortEnabled) {
             return@rememberReorderableLazyListState
         }
         val keyPrefix = "${state.area.name}:"
@@ -1355,22 +1363,7 @@ private fun WorkspaceFilesPage(
         }
         val fromPath = fromKey.removePrefix(keyPrefix)
         val toPath = toKey.removePrefix(keyPrefix)
-        val fromParent = fromPath.substringBeforeLast('/', missingDelimiterValue = "")
-        val toParent = toPath.substringBeforeLast('/', missingDelimiterValue = "")
-        if (fromParent != toParent) return@rememberReorderableLazyListState
-
-        val siblings = if (fromParent == state.path) {
-            state.entries
-        } else {
-            state.childrenCache[fromParent] ?: return@rememberReorderableLazyListState
-        }
-        val fromIndex = siblings.indexOfFirst { it.path == fromPath }
-        val toIndex = siblings.indexOfFirst { it.path == toPath }
-        if (fromIndex < 0 || toIndex < 0 || fromIndex == toIndex) {
-            return@rememberReorderableLazyListState
-        }
-        val reordered = siblings.toMutableList().apply { add(toIndex, removeAt(fromIndex)) }
-        onReorderFile(state.area, fromParent, reordered.map { it.path })
+        onReorderFile(state.area, fromPath, toPath)
     }
     fun toggleSelection(entry: WorkspaceFileEntry) {
         selectedPaths = if (entry.path in selectedPaths) selectedPaths - entry.path else selectedPaths + entry.path
@@ -1510,7 +1503,7 @@ private fun WorkspaceFilesPage(
             }
         }
 
-        if (!state.loading && state.entries.isEmpty() && state.error == null) {
+        if ((!state.loading || state.hasLoadedDirectory) && state.entries.isEmpty() && state.error == null) {
             item {
                 EmptyDirectoryState()
             }
@@ -1518,8 +1511,8 @@ private fun WorkspaceFilesPage(
 
         items(rows, key = { "${state.area.name}:${it.entry.path}" }) { row ->
             val itemKey = "${state.area.name}:${row.entry.path}"
-            ReorderableItem(state = reorderableState, key = itemKey) { isDragging ->
-                val manualSortEnabled = sortMode == WorkspaceFileSortMode.MANUAL && !selecting
+            val reorderEnabled = manualSortEnabled && isWorkspaceReorderTarget(row.entry.path, draggingPath)
+            ReorderableItem(state = reorderableState, key = itemKey, enabled = reorderEnabled) { isDragging ->
                 WorkspaceFileCard(
                     entry = row.entry,
                     depth = row.depth,
@@ -1531,14 +1524,18 @@ private fun WorkspaceFilesPage(
                     onShare = { onShare(row.entry) },
                     onRunScript = { onRunScript(row.entry) },
                     highlighted = row.entry.path == highlightPath,
-                    workspaceId = state.workspace?.id.orEmpty(),
+                    workspaceId = workspaceId,
                     area = state.area,
                     onResolvePreview = onResolvePreview,
                     selecting = selecting,
                     selected = row.entry.path in selectedPaths,
-                    manualSortEnabled = manualSortEnabled,
+                    showDragHandle = showDragHandle,
                     isDragging = isDragging,
-                    dragHandleModifier = if (manualSortEnabled) Modifier.longPressDraggableHandle() else Modifier,
+                    dragHandleModifier = if (showDragHandle) Modifier.longPressDraggableHandle(
+                        enabled = reorderEnabled,
+                        onDragStarted = { draggingPath = row.entry.path },
+                        onDragStopped = { draggingPath = null },
+                    ) else Modifier,
                     onToggleSelection = { toggleSelection(row.entry) },
                     onLongClick = {
                         selecting = true
@@ -1619,7 +1616,7 @@ private fun WorkspaceFileCard(
     onExport: () -> Unit,
     onShare: () -> Unit,
     onRunScript: () -> Unit,
-    manualSortEnabled: Boolean,
+    showDragHandle: Boolean,
     isDragging: Boolean,
     dragHandleModifier: Modifier,
     highlighted: Boolean,
@@ -1696,7 +1693,7 @@ private fun WorkspaceFileCard(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            if (manualSortEnabled) {
+            if (showDragHandle) {
                 Box(
                     modifier = Modifier.size(40.dp).then(dragHandleModifier),
                     contentAlignment = Alignment.Center,

@@ -9,6 +9,7 @@ import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
@@ -17,7 +18,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
@@ -39,12 +41,18 @@ class WorkspaceDetailVM(
     private val appScope: AppScope,
     private val terminalSessionManager: WorkspaceTerminalSessionManager,
 ) : ViewModel() {
-    private val _state = MutableStateFlow(WorkspaceDetailState())
+    private val _state = MutableStateFlow(WorkspaceDetailState(loading = true))
     val state = _state.asStateFlow()
+    private val fileOrdersLoaded = CompletableDeferred<Unit>()
+    private val directoryLoader = WorkspaceDirectoryLoader(viewModelScope, _state, fileOrdersLoaded) { area, path ->
+        repository.listFiles(id = id, area = area, path = path)
+    }
     private val _folderExportResult = MutableStateFlow<WorkspaceFolderExportResult?>(null)
     val folderExportResult = _folderExportResult.asStateFlow()
 
     private var pendingExport: Pair<WorkspaceStorageArea, List<WorkspaceFileEntry>>? = null
+    private val fileOrderSaveMutex = Mutex()
+    private val pendingFileOrders = mutableMapOf<String, List<String>>()
 
     fun prepareBatchExport(entries: List<WorkspaceFileEntry>): Boolean {
         val files = entries.filterNot { it.isDirectory }
@@ -136,12 +144,20 @@ class WorkspaceDetailVM(
             }
         }
         viewModelScope.launch {
-            settingsStore.workspaceFileOrdersFlow(id).collect { orders ->
-                _state.update { it.copy(customFileOrders = orders) }
+            try {
+                settingsStore.workspaceFileOrdersFlow(id).collect { orders ->
+                    // Keep newer drag positions while an older DataStore write is being delivered.
+                    _state.update { it.copy(customFileOrders = orders + pendingFileOrders) }
+                    fileOrdersLoaded.complete(Unit)
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                fileOrdersLoaded.completeExceptionally(error)
+                Log.w(TAG, "Failed to load workspace file orders", error)
             }
         }
         loadWorkspace()
-        refresh()
     }
 
     fun setToolApprovalExpanded(expanded: Boolean) {
@@ -152,47 +168,50 @@ class WorkspaceDetailVM(
         }
     }
 
-    fun setWorkspaceFileOrder(area: WorkspaceStorageArea, directoryPath: String, orderedPaths: List<String>) {
+    fun moveWorkspaceFile(area: WorkspaceStorageArea, fromPath: String, toPath: String) {
+        val current = state.value
+        if (current.area != area || current.loading || current.loadingPaths.isNotEmpty()) return
+        val parentPath = fromPath.substringBeforeLast('/', missingDelimiterValue = "")
+        val siblings = if (parentPath == current.path) current.entries else current.childrenCache[parentPath] ?: return
+        val order = reorderWorkspaceEntries(
+            entries = siblings,
+            manualOrder = current.customFileOrders[workspaceFileOrderKey(area, parentPath)].orEmpty(),
+            fromPath = fromPath,
+            toPath = toPath,
+        ) ?: return
+        setWorkspaceFileOrder(area, parentPath, order)
+    }
+
+    private fun setWorkspaceFileOrder(area: WorkspaceStorageArea, directoryPath: String, orderedPaths: List<String>) {
         val key = workspaceFileOrderKey(area, directoryPath)
         val order = orderedPaths.distinct()
+        pendingFileOrders[key] = order
         _state.update { it.copy(customFileOrders = it.customFileOrders + (key to order)) }
         appScope.launch {
-            runCatching { settingsStore.setWorkspaceFileOrder(id, key, order) }
-                .onFailure { error -> Log.w(TAG, "Failed to save workspace file order", error) }
+            fileOrderSaveMutex.withLock {
+                if (pendingFileOrders[key] !== order) return@withLock
+                runCatching { settingsStore.setWorkspaceFileOrder(id, key, order) }
+                    .onSuccess {
+                        if (pendingFileOrders[key] === order) pendingFileOrders.remove(key)
+                    }
+                    .onFailure { error -> Log.w(TAG, "Failed to save workspace file order", error) }
+            }
         }
     }
 
     fun selectArea(area: WorkspaceStorageArea) {
-        _state.update {
-            it.copy(
-                area = area,
-                path = "",
-                entries = emptyList(),
-                error = null,
-            )
-        }
+        if (state.value.area == area) return
+        _state.update { it.forStorageArea(area) }
         refresh()
     }
 
     fun open(entry: WorkspaceFileEntry) {
         if (!entry.isDirectory) return
-        _state.update { it.copy(path = entry.path, entries = emptyList(), error = null) }
+        _state.update { it.copy(path = entry.path, entries = emptyList(), hasLoadedDirectory = false, error = null) }
         refresh()
     }
 
-    fun openPath(path: String, highlightPath: String? = null) {
-        val normalizedPath = path.trim().trim('/').replace('\\', '/')
-        val normalizedHighlight = highlightPath?.trim()?.trim('/')?.replace('\\', '/')
-        _state.update {
-            it.copy(
-                path = normalizedPath,
-                highlightPath = normalizedHighlight,
-                entries = emptyList(),
-                error = null,
-            )
-        }
-        refresh()
-    }
+    fun onPageEntered(initialPath: String?, highlightPath: String?) = directoryLoader.enter(initialPath, highlightPath)
 
     fun goUp() {
         val path = state.value.path
@@ -201,46 +220,26 @@ class WorkspaceDetailVM(
             it.copy(
                 path = path.substringBeforeLast('/', missingDelimiterValue = ""),
                 entries = emptyList(),
+                hasLoadedDirectory = false,
                 error = null,
             )
         }
         refresh()
     }
 
-    fun refresh() {
-        viewModelScope.launch {
-            _state.update { it.copy(loading = true, error = null) }
-            runCatching {
-                repository.listFiles(
-                    id = id,
-                    area = state.value.area,
-                    path = state.value.path,
-                )
-            }.onSuccess { entries ->
-                _state.update { it.copy(entries = entries, loading = false) }
-            }.onFailure { error ->
-                _state.update {
-                    it.copy(
-                        entries = emptyList(),
-                        loading = false,
-                        error = error.message ?: "加载工作区文件失败",
-                    )
-                }
-            }
-        }
-    }
+    fun refresh() = directoryLoader.refresh()
 
     fun delete(entry: WorkspaceFileEntry) {
+        val area = state.value.area
         viewModelScope.launch {
-            runCatching {
+            try {
                 repository.deleteFile(
                     id = id,
-                    area = state.value.area,
+                    area = area,
                     path = entry.path,
                     recursive = entry.isDirectory,
                 )
-            }.onSuccess {
-                val area = state.value.area
+                _state.update { if (it.area == area) it.withoutWorkspaceEntry(entry.path) else it }
                 val parentPath = entry.path.substringBeforeLast('/', missingDelimiterValue = "")
                 val orderKey = workspaceFileOrderKey(area, parentPath)
                 state.value.customFileOrders[orderKey]?.let { order ->
@@ -248,9 +247,11 @@ class WorkspaceDetailVM(
                         setWorkspaceFileOrder(area, parentPath, order.filterNot { it == entry.path })
                     }
                 }
-                refresh()
-            }.onFailure { error ->
-                _state.update { it.copy(error = error.message ?: "删除失败") }
+                if (state.value.area == area) refresh()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                _state.update { if (it.area == area) it.copy(error = error.message ?: "删除失败") else it }
             }
         }
     }
@@ -306,7 +307,7 @@ class WorkspaceDetailVM(
             try {
                 val renamedEntry = repository.renameFile(id, entry.path, name)
                 _state.update { current ->
-                    current.copy(
+                    if (current.area != WorkspaceStorageArea.FILES) current else current.copy(
                         entries = current.entries.map { if (it.path == entry.path) renamedEntry else it },
                         childrenCache = current.childrenCache.mapValues { (_, children) ->
                             children.map { if (it.path == entry.path) renamedEntry else it }
@@ -324,7 +325,7 @@ class WorkspaceDetailVM(
                         )
                     }
                 }
-                refresh()
+                if (state.value.area == WorkspaceStorageArea.FILES) refresh()
                 onResult(null)
             } catch (error: CancellationException) {
                 throw error
@@ -467,30 +468,7 @@ class WorkspaceDetailVM(
         }
     }
 
-    fun toggleExpand(entry: WorkspaceFileEntry) {
-        if (!entry.isDirectory) return
-        val path = entry.path
-        if (path in state.value.expandedPaths) {
-            _state.update { it.copy(expandedPaths = it.expandedPaths - path) }
-            return
-        }
-        _state.update { it.copy(expandedPaths = it.expandedPaths + path) }
-        if (path in state.value.childrenCache) return
-        viewModelScope.launch {
-            runCatching {
-                repository.listFiles(id = id, area = state.value.area, path = path)
-            }.onSuccess { children ->
-                _state.update { it.copy(childrenCache = it.childrenCache + (path to children)) }
-            }.onFailure { error ->
-                _state.update {
-                    it.copy(
-                        expandedPaths = it.expandedPaths - path,
-                        error = error.message ?: "加载工作区文件失败",
-                    )
-                }
-            }
-        }
-    }
+    fun toggleExpand(entry: WorkspaceFileEntry) = directoryLoader.toggleExpand(entry)
 
     fun dismissFolderExportResult() {
         _folderExportResult.value = null
@@ -701,6 +679,7 @@ data class WorkspaceDetailState(
     val highlightPath: String? = null,
     val entries: List<WorkspaceFileEntry> = emptyList(),
     val loading: Boolean = false,
+    val hasLoadedDirectory: Boolean = false,
     val error: String? = null,
     val exporting: Boolean = false,
     val exportCompleted: Int = 0,
@@ -708,6 +687,7 @@ data class WorkspaceDetailState(
     val exportResult: String? = null,
     val expandedPaths: Set<String> = emptySet(),
     val childrenCache: Map<String, List<WorkspaceFileEntry>> = emptyMap(),
+    val loadingPaths: Set<String> = emptySet(),
     val customFileOrders: Map<String, List<String>> = emptyMap(),
     // Null until the persisted preference has loaded; avoid replaying a collapse animation on entry.
     val toolApprovalExpanded: Boolean? = null,
@@ -770,6 +750,26 @@ internal enum class WorkspaceFileSortMode {
 
 internal fun workspaceFileOrderKey(area: WorkspaceStorageArea, directoryPath: String): String =
     "${area.name}:${directoryPath.trim('/')}"
+
+internal fun isWorkspaceReorderTarget(path: String, draggingPath: String?): Boolean =
+    draggingPath == null || path.substringBeforeLast('/', "") == draggingPath.substringBeforeLast('/', "")
+
+internal fun reorderWorkspaceEntries(
+    entries: List<WorkspaceFileEntry>,
+    manualOrder: List<String>,
+    fromPath: String,
+    toPath: String,
+): List<String>? {
+    if (fromPath.substringBeforeLast('/', "") != toPath.substringBeforeLast('/', "")) return null
+    val orderedPaths = sortWorkspaceEntries(
+        entries, WorkspaceFileSortMode.MANUAL, descending = false, manualOrder = manualOrder,
+    ).map { it.path }.toMutableList()
+    val fromIndex = orderedPaths.indexOf(fromPath)
+    val toIndex = orderedPaths.indexOf(toPath)
+    if (fromIndex < 0 || toIndex < 0 || fromIndex == toIndex) return null
+    orderedPaths.add(toIndex, orderedPaths.removeAt(fromIndex))
+    return orderedPaths
+}
 
 internal fun sortWorkspaceEntries(
     entries: List<WorkspaceFileEntry>,
