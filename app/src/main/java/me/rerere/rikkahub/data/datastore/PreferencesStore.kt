@@ -32,6 +32,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
 import me.rerere.ai.core.ReasoningLevel
 import me.rerere.rikkahub.AppScope
 import me.rerere.rikkahub.data.datastore.migration.PreferenceStoreV1Migration
@@ -39,6 +41,7 @@ import me.rerere.rikkahub.data.datastore.migration.PreferenceStoreV2Migration
 import me.rerere.rikkahub.data.datastore.migration.PreferenceStoreV3Migration
 import me.rerere.rikkahub.data.datastore.migration.PreferenceStoreV4Migration
 import me.rerere.rikkahub.data.model.Assistant
+import me.rerere.rikkahub.utils.JsonInstant
 import java.io.File
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.uuid.Uuid
@@ -304,6 +307,43 @@ class SettingsStore internal constructor(
 
     suspend fun clearWorkspaceToolApprovalExpanded(workspaceId: String) {
         val key = booleanPreferencesKey("workspace_tool_approval_expanded_$workspaceId")
+        dataStore.edit { preferences -> preferences.remove(key) }
+    }
+
+    fun workspaceFileOrdersFlow(workspaceId: String): Flow<Map<String, List<String>>> {
+        val key = stringPreferencesKey("workspace_file_orders_$workspaceId")
+        return dataStore.data
+            .map { preferences ->
+                preferences[key]?.let { encoded ->
+                    runCatching { JsonInstant.decodeFromString<Map<String, List<String>>>(encoded) }
+                        .getOrDefault(emptyMap())
+                } ?: emptyMap()
+            }
+            .distinctUntilChanged()
+    }
+
+    suspend fun setWorkspaceFileOrder(workspaceId: String, directoryKey: String, orderedPaths: List<String>) {
+        val key = stringPreferencesKey("workspace_file_orders_$workspaceId")
+        dataStore.edit { preferences ->
+            val current = preferences[key]?.let { encoded ->
+                runCatching { JsonInstant.decodeFromString<Map<String, List<String>>>(encoded) }
+                    .getOrDefault(emptyMap())
+            } ?: emptyMap()
+            val updated = if (orderedPaths.isEmpty()) {
+                current - directoryKey
+            } else {
+                current + (directoryKey to orderedPaths.distinct())
+            }
+            if (updated.isEmpty()) {
+                preferences.remove(key)
+            } else {
+                preferences[key] = JsonInstant.encodeToString(updated)
+            }
+        }
+    }
+
+    suspend fun clearWorkspaceFileOrders(workspaceId: String) {
+        val key = stringPreferencesKey("workspace_file_orders_$workspaceId")
         dataStore.edit { preferences -> preferences.remove(key) }
     }
 

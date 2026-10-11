@@ -1177,6 +1177,14 @@
   <string name="workspace_detail_new_file">New text file</string>
   <string name="workspace_detail_file_name">File name (including extension)</string>
   <string name="workspace_detail_file_name_desc">Creates a blank text file. Enter its extension yourself, such as note.txt or README.md; no extension is added automatically.</string>
+  <string name="workspace_detail_sort">Sort</string>
+  <string name="workspace_detail_sort_manual">Manual</string>
+  <string name="workspace_detail_sort_name">Name</string>
+  <string name="workspace_detail_sort_modified">Modified time</string>
+  <string name="workspace_detail_sort_size">File size</string>
+  <string name="workspace_detail_sort_type">File type</string>
+  <string name="workspace_detail_sort_direction">Change sort direction</string>
+  <string name="workspace_detail_reorder_file">Reorder item</string>
   <string name="workspace_detail_rename_file_desc">Change the file name or extension, for example note.txt to notes.md.</string>
   <string name="workspace_detail_create_file">Create</string>
   <string name="workspace_detail_file_name_invalid">File name cannot contain path separators (/ or \\).</string>

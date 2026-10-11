@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
@@ -61,6 +62,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
@@ -80,6 +82,7 @@ import me.rerere.hugeicons.stroke.Add01
 import me.rerere.hugeicons.stroke.Bash
 import me.rerere.hugeicons.stroke.ComputerTerminal01
 import me.rerere.hugeicons.stroke.Delete01
+import me.rerere.hugeicons.stroke.DragDropHorizontal
 import me.rerere.hugeicons.stroke.File02
 import me.rerere.hugeicons.stroke.FileAdd
 import me.rerere.hugeicons.stroke.FileImport
@@ -91,6 +94,8 @@ import me.rerere.hugeicons.stroke.PencilEdit01
 import me.rerere.hugeicons.stroke.Refresh01
 import me.rerere.hugeicons.stroke.Settings03
 import me.rerere.hugeicons.stroke.Share08
+import me.rerere.hugeicons.stroke.Sorting01
+import me.rerere.hugeicons.stroke.Tick01
 import me.rerere.rikkahub.Screen
 import me.rerere.rikkahub.data.ai.tools.local.PermissionHelper
 import me.rerere.rikkahub.data.ai.tools.resolveWorkspaceToolApproval
@@ -112,6 +117,8 @@ import me.rerere.workspace.WorkspaceShellStatus
 import me.rerere.workspace.WorkspaceStorageArea
 import org.koin.androidx.compose.koinViewModel
 import org.koin.core.parameter.parametersOf
+import sh.calvin.reorderable.ReorderableItem
+import sh.calvin.reorderable.rememberReorderableLazyListState
 import java.io.File
 
 @Composable
@@ -371,6 +378,7 @@ fun WorkspaceDetailPage(
                         renameTarget = it
                         renameFileName = it.name
                     },
+                    onReorderFile = vm::setWorkspaceFileOrder,
                     onBatchExport = { entries ->
                         if (vm.prepareBatchExport(entries)) directoryExportLauncher.launch(null)
                     },
@@ -1292,21 +1300,78 @@ private fun WorkspaceFilesPage(
     onOpen: (WorkspaceFileEntry) -> Unit,
     onDelete: (WorkspaceFileEntry) -> Unit,
     onRename: (WorkspaceFileEntry) -> Unit,
+    onReorderFile: (WorkspaceStorageArea, String, List<String>) -> Unit,
     onExport: (WorkspaceFileEntry) -> Unit,
     onBatchExport: (List<WorkspaceFileEntry>) -> Unit,
     onShare: (WorkspaceFileEntry) -> Unit,
     onRunScript: (WorkspaceFileEntry) -> Unit,
 ) {
-    val rows = remember(state.entries, state.expandedPaths, state.childrenCache) {
-        flattenWorkspaceTree(state.entries, state.expandedPaths, state.childrenCache)
+    var sortMenuExpanded by remember { mutableStateOf(false) }
+    var sortMode by rememberSaveable(state.workspace?.id) {
+        mutableStateOf(WorkspaceFileSortMode.MANUAL)
     }
-
+    var descending by rememberSaveable(state.workspace?.id) { mutableStateOf(false) }
     var selecting by remember(state.area, state.path) { mutableStateOf(false) }
     var selectedPaths by remember(state.area, state.path) { mutableStateOf(emptySet<String>()) }
-    val files = flattenWorkspaceTree(state.entries, state.expandedPaths, state.childrenCache)
-        .map { it.entry }
-        .filterNot { it.isDirectory }
+    val lazyListState = rememberLazyListState()
+    val rows = remember(
+        state.entries,
+        state.expandedPaths,
+        state.childrenCache,
+        state.customFileOrders,
+        state.area,
+        state.path,
+        sortMode,
+        descending,
+    ) {
+        flattenWorkspaceTree(
+            entries = state.entries,
+            expandedPaths = state.expandedPaths,
+            childrenCache = state.childrenCache,
+            parentPath = state.path,
+            sortEntries = { directoryPath, entries ->
+                sortWorkspaceEntries(
+                    entries = entries,
+                    mode = sortMode,
+                    descending = descending,
+                    manualOrder = state.customFileOrders[
+                        workspaceFileOrderKey(state.area, directoryPath)
+                    ].orEmpty(),
+                )
+            },
+        )
+    }
+    val files = rows.map { it.entry }.filterNot { it.isDirectory }
     val selectedFiles = files.filter { it.path in selectedPaths }
+    val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
+        if (sortMode != WorkspaceFileSortMode.MANUAL || selecting) {
+            return@rememberReorderableLazyListState
+        }
+        val keyPrefix = "${state.area.name}:"
+        val fromKey = from.key as? String ?: return@rememberReorderableLazyListState
+        val toKey = to.key as? String ?: return@rememberReorderableLazyListState
+        if (!fromKey.startsWith(keyPrefix) || !toKey.startsWith(keyPrefix)) {
+            return@rememberReorderableLazyListState
+        }
+        val fromPath = fromKey.removePrefix(keyPrefix)
+        val toPath = toKey.removePrefix(keyPrefix)
+        val fromParent = fromPath.substringBeforeLast('/', missingDelimiterValue = "")
+        val toParent = toPath.substringBeforeLast('/', missingDelimiterValue = "")
+        if (fromParent != toParent) return@rememberReorderableLazyListState
+
+        val siblings = if (fromParent == state.path) {
+            state.entries
+        } else {
+            state.childrenCache[fromParent] ?: return@rememberReorderableLazyListState
+        }
+        val fromIndex = siblings.indexOfFirst { it.path == fromPath }
+        val toIndex = siblings.indexOfFirst { it.path == toPath }
+        if (fromIndex < 0 || toIndex < 0 || fromIndex == toIndex) {
+            return@rememberReorderableLazyListState
+        }
+        val reordered = siblings.toMutableList().apply { add(toIndex, removeAt(fromIndex)) }
+        onReorderFile(state.area, fromParent, reordered.map { it.path })
+    }
     fun toggleSelection(entry: WorkspaceFileEntry) {
         selectedPaths = if (entry.path in selectedPaths) selectedPaths - entry.path else selectedPaths + entry.path
     }
@@ -1318,6 +1383,7 @@ private fun WorkspaceFilesPage(
         modifier = Modifier.fillMaxSize(),
         contentPadding = contentPadding + PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
+        state = lazyListState,
     ) {
         item {
             WorkspaceAreaSelector(
@@ -1332,6 +1398,82 @@ private fun WorkspaceFilesPage(
                 canGoUp = state.path.isNotBlank(),
                 onGoUp = onGoUp,
             )
+        }
+
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = stringResource(R.string.workspace_detail_sort),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box {
+                        TextButton(onClick = { sortMenuExpanded = true }) {
+                            Icon(HugeIcons.Sorting01, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.size(6.dp))
+                            Text(
+                                stringResource(
+                                    when (sortMode) {
+                                        WorkspaceFileSortMode.MANUAL -> R.string.workspace_detail_sort_manual
+                                        WorkspaceFileSortMode.NAME -> R.string.workspace_detail_sort_name
+                                        WorkspaceFileSortMode.MODIFIED_TIME -> R.string.workspace_detail_sort_modified
+                                        WorkspaceFileSortMode.SIZE -> R.string.workspace_detail_sort_size
+                                        WorkspaceFileSortMode.TYPE -> R.string.workspace_detail_sort_type
+                                    }
+                                )
+                            )
+                            Icon(HugeIcons.ArrowDown01, contentDescription = null, modifier = Modifier.size(16.dp))
+                        }
+                        DropdownMenu(
+                            expanded = sortMenuExpanded,
+                            onDismissRequest = { sortMenuExpanded = false },
+                        ) {
+                            WorkspaceFileSortMode.entries.forEach { option ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            stringResource(
+                                                when (option) {
+                                                    WorkspaceFileSortMode.MANUAL -> R.string.workspace_detail_sort_manual
+                                                    WorkspaceFileSortMode.NAME -> R.string.workspace_detail_sort_name
+                                                    WorkspaceFileSortMode.MODIFIED_TIME -> R.string.workspace_detail_sort_modified
+                                                    WorkspaceFileSortMode.SIZE -> R.string.workspace_detail_sort_size
+                                                    WorkspaceFileSortMode.TYPE -> R.string.workspace_detail_sort_type
+                                                }
+                                            )
+                                        )
+                                    },
+                                    trailingIcon = {
+                                        if (option == sortMode) Icon(HugeIcons.Tick01, contentDescription = null)
+                                    },
+                                    onClick = {
+                                        sortMode = option
+                                        descending = option == WorkspaceFileSortMode.MODIFIED_TIME ||
+                                            option == WorkspaceFileSortMode.SIZE
+                                        sortMenuExpanded = false
+                                    },
+                                )
+                            }
+                        }
+                    }
+                    if (sortMode != WorkspaceFileSortMode.MANUAL) {
+                        IconButton(
+                            onClick = { descending = !descending },
+                            modifier = Modifier.size(40.dp),
+                        ) {
+                            Icon(
+                                imageVector = if (descending) HugeIcons.ArrowDown01 else HugeIcons.ArrowUp01,
+                                contentDescription = stringResource(R.string.workspace_detail_sort_direction),
+                            )
+                        }
+                    }
+                }
+            }
         }
 
         if (selecting || state.exporting) item {
@@ -1375,31 +1517,38 @@ private fun WorkspaceFilesPage(
         }
 
         items(rows, key = { "${state.area.name}:${it.entry.path}" }) { row ->
-            WorkspaceFileCard(
-                entry = row.entry,
-                depth = row.depth,
-                expanded = row.entry.path in state.expandedPaths,
-                onToggleExpand = { onToggleExpand(row.entry) },
-                onDelete = { onDelete(row.entry) },
-                onRename = { onRename(row.entry) },
-                onExport = { onExport(row.entry) },
-                onShare = { onShare(row.entry) },
-                onRunScript = { onRunScript(row.entry) },
-                highlighted = row.entry.path == highlightPath,
-                workspaceId = state.workspace?.id.orEmpty(),
-                area = state.area,
-                onResolvePreview = onResolvePreview,
-                selecting = selecting,
-                selected = row.entry.path in selectedPaths,
-                onToggleSelection = { toggleSelection(row.entry) },
-                onLongClick = {
-                    selecting = true
-                    selectedPaths = selectedPaths + row.entry.path
-                },
-                onOpen = {
-                    if (selecting && !row.entry.isDirectory) toggleSelection(row.entry) else onOpen(row.entry)
-                },
-            )
+            val itemKey = "${state.area.name}:${row.entry.path}"
+            ReorderableItem(state = reorderableState, key = itemKey) { isDragging ->
+                val manualSortEnabled = sortMode == WorkspaceFileSortMode.MANUAL && !selecting
+                WorkspaceFileCard(
+                    entry = row.entry,
+                    depth = row.depth,
+                    expanded = row.entry.path in state.expandedPaths,
+                    onToggleExpand = { onToggleExpand(row.entry) },
+                    onDelete = { onDelete(row.entry) },
+                    onRename = { onRename(row.entry) },
+                    onExport = { onExport(row.entry) },
+                    onShare = { onShare(row.entry) },
+                    onRunScript = { onRunScript(row.entry) },
+                    highlighted = row.entry.path == highlightPath,
+                    workspaceId = state.workspace?.id.orEmpty(),
+                    area = state.area,
+                    onResolvePreview = onResolvePreview,
+                    selecting = selecting,
+                    selected = row.entry.path in selectedPaths,
+                    manualSortEnabled = manualSortEnabled,
+                    isDragging = isDragging,
+                    dragHandleModifier = if (manualSortEnabled) Modifier.longPressDraggableHandle() else Modifier,
+                    onToggleSelection = { toggleSelection(row.entry) },
+                    onLongClick = {
+                        selecting = true
+                        selectedPaths = selectedPaths + row.entry.path
+                    },
+                    onOpen = {
+                        if (selecting && !row.entry.isDirectory) toggleSelection(row.entry) else onOpen(row.entry)
+                    },
+                )
+            }
         }
     }
 }
@@ -1470,6 +1619,9 @@ private fun WorkspaceFileCard(
     onExport: () -> Unit,
     onShare: () -> Unit,
     onRunScript: () -> Unit,
+    manualSortEnabled: Boolean,
+    isDragging: Boolean,
+    dragHandleModifier: Modifier,
     highlighted: Boolean,
     workspaceId: String,
     area: WorkspaceStorageArea,
@@ -1480,6 +1632,7 @@ private fun WorkspaceFileCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
+            .graphicsLayer { alpha = if (isDragging) 0.85f else 1f }
             .combinedClickable(
                 onClick = onOpen,
                 onLongClick = if (entry.isDirectory) null else onLongClick,
@@ -1542,6 +1695,19 @@ private fun WorkspaceFileCard(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+            }
+            if (manualSortEnabled) {
+                Box(
+                    modifier = Modifier.size(40.dp).then(dragHandleModifier),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = HugeIcons.DragDropHorizontal,
+                        contentDescription = stringResource(R.string.workspace_detail_reorder_file),
+                        modifier = Modifier.size(20.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
             if (!selecting) Box {
                 IconButton(onClick = { menuExpanded = true }) {

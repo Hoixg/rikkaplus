@@ -135,6 +135,11 @@ class WorkspaceDetailVM(
                 _state.update { it.copy(toolApprovalExpanded = expanded) }
             }
         }
+        viewModelScope.launch {
+            settingsStore.workspaceFileOrdersFlow(id).collect { orders ->
+                _state.update { it.copy(customFileOrders = orders) }
+            }
+        }
         loadWorkspace()
         refresh()
     }
@@ -144,6 +149,16 @@ class WorkspaceDetailVM(
         appScope.launch {
             runCatching { settingsStore.setWorkspaceToolApprovalExpanded(id, expanded) }
                 .onFailure { error -> Log.w(TAG, "Failed to save workspace tool approval state", error) }
+        }
+    }
+
+    fun setWorkspaceFileOrder(area: WorkspaceStorageArea, directoryPath: String, orderedPaths: List<String>) {
+        val key = workspaceFileOrderKey(area, directoryPath)
+        val order = orderedPaths.distinct()
+        _state.update { it.copy(customFileOrders = it.customFileOrders + (key to order)) }
+        appScope.launch {
+            runCatching { settingsStore.setWorkspaceFileOrder(id, key, order) }
+                .onFailure { error -> Log.w(TAG, "Failed to save workspace file order", error) }
         }
     }
 
@@ -225,6 +240,14 @@ class WorkspaceDetailVM(
                     recursive = entry.isDirectory,
                 )
             }.onSuccess {
+                val area = state.value.area
+                val parentPath = entry.path.substringBeforeLast('/', missingDelimiterValue = "")
+                val orderKey = workspaceFileOrderKey(area, parentPath)
+                state.value.customFileOrders[orderKey]?.let { order ->
+                    if (entry.path in order) {
+                        setWorkspaceFileOrder(area, parentPath, order.filterNot { it == entry.path })
+                    }
+                }
                 refresh()
             }.onFailure { error ->
                 _state.update { it.copy(error = error.message ?: "删除失败") }
@@ -289,6 +312,17 @@ class WorkspaceDetailVM(
                             children.map { if (it.path == entry.path) renamedEntry else it }
                         },
                     )
+                }
+                val parentPath = entry.path.substringBeforeLast('/', missingDelimiterValue = "")
+                val orderKey = workspaceFileOrderKey(WorkspaceStorageArea.FILES, parentPath)
+                state.value.customFileOrders[orderKey]?.let { order ->
+                    if (entry.path in order) {
+                        setWorkspaceFileOrder(
+                            WorkspaceStorageArea.FILES,
+                            parentPath,
+                            order.map { if (it == entry.path) renamedEntry.path else it },
+                        )
+                    }
                 }
                 refresh()
                 onResult(null)
@@ -674,6 +708,7 @@ data class WorkspaceDetailState(
     val exportResult: String? = null,
     val expandedPaths: Set<String> = emptySet(),
     val childrenCache: Map<String, List<WorkspaceFileEntry>> = emptyMap(),
+    val customFileOrders: Map<String, List<String>> = emptyMap(),
     // Null until the persisted preference has loaded; avoid replaying a collapse animation on entry.
     val toolApprovalExpanded: Boolean? = null,
 )
@@ -725,12 +760,55 @@ data class WorkspaceTreeRow(
     val depth: Int,
 )
 
+internal enum class WorkspaceFileSortMode {
+    MANUAL,
+    NAME,
+    MODIFIED_TIME,
+    SIZE,
+    TYPE,
+}
+
+internal fun workspaceFileOrderKey(area: WorkspaceStorageArea, directoryPath: String): String =
+    "${area.name}:${directoryPath.trim('/')}"
+
+internal fun sortWorkspaceEntries(
+    entries: List<WorkspaceFileEntry>,
+    mode: WorkspaceFileSortMode,
+    descending: Boolean,
+    manualOrder: List<String>,
+): List<WorkspaceFileEntry> {
+    if (mode == WorkspaceFileSortMode.MANUAL) {
+        val orderIndex = manualOrder.withIndex().associate { it.value to it.index }
+        return entries.sortedWith(
+            compareBy<WorkspaceFileEntry> { orderIndex[it.path] ?: Int.MAX_VALUE }
+                .thenBy { !it.isDirectory }
+                .thenBy { it.name.lowercase() },
+        )
+    }
+
+    val valueComparator: Comparator<WorkspaceFileEntry> = when (mode) {
+        WorkspaceFileSortMode.NAME -> compareBy { it.name.lowercase() }
+        WorkspaceFileSortMode.MODIFIED_TIME -> compareBy { it.updatedAt }
+        WorkspaceFileSortMode.SIZE -> compareBy { it.sizeBytes }
+        WorkspaceFileSortMode.TYPE -> compareBy { it.name.substringAfterLast('.', "").lowercase() }
+        WorkspaceFileSortMode.MANUAL -> error("Handled above")
+    }
+    val sortedValueComparator = if (descending) valueComparator.reversed() else valueComparator
+    return entries.sortedWith(
+        compareBy<WorkspaceFileEntry> { !it.isDirectory }
+            .then(sortedValueComparator)
+            .thenBy { it.name.lowercase() },
+    )
+}
+
 internal fun flattenWorkspaceTree(
     entries: List<WorkspaceFileEntry>,
     expandedPaths: Set<String>,
     childrenCache: Map<String, List<WorkspaceFileEntry>>,
     depth: Int = 0,
-): List<WorkspaceTreeRow> = entries.flatMap { entry ->
+    parentPath: String = "",
+    sortEntries: (String, List<WorkspaceFileEntry>) -> List<WorkspaceFileEntry> = { _, list -> list },
+): List<WorkspaceTreeRow> = sortEntries(parentPath, entries).flatMap { entry ->
     val row = WorkspaceTreeRow(entry, depth)
     if (entry.isDirectory && entry.path in expandedPaths) {
         listOf(row) + flattenWorkspaceTree(
@@ -738,6 +816,8 @@ internal fun flattenWorkspaceTree(
             expandedPaths,
             childrenCache,
             depth + 1,
+            entry.path,
+            sortEntries,
         )
     } else {
         listOf(row)

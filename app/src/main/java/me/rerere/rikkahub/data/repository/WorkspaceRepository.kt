@@ -413,6 +413,7 @@ class WorkspaceRepository(
         }
         cleanupAssistantReferences(id)
         settingsStore.clearWorkspaceToolApprovalExpanded(id)
+        settingsStore.clearWorkspaceFileOrders(id)
         return true
     }
 
