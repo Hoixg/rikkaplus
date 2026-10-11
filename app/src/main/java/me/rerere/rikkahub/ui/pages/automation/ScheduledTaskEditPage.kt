@@ -397,8 +397,8 @@ fun ScheduledTaskEditPage(
                             }
                             if (mode == "FOLLOW_UP") {
                                 TaskToggleRow(
-                                    label = "每次重置模型上下文",
-                                    description = "保留会话记录，但本次执行只向模型发送当前任务的内容。",
+                                    label = "每次清空上下文和记录",
+                                    description = "每次执行前删除目标会话的旧消息和压缩摘要，仅保留本轮记录。",
                                     checked = resetContextBeforeRun,
                                     onCheckedChange = { resetContextBeforeRun = it },
                                 )

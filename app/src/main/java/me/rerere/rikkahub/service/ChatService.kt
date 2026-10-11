@@ -346,6 +346,7 @@ class ChatService(
         val settings = settingsStore.awaitLoaded()
         val assistant = settings.getAssistantById(Uuid.parse(task.assistantId)) ?: error("任务所属助手已删除")
         val mode = me.rerere.rikkahub.data.db.entity.ScheduledTaskMode.valueOf(task.mode)
+        val resetHistory = mode == me.rerere.rikkahub.data.db.entity.ScheduledTaskMode.FOLLOW_UP && task.resetContextBeforeRun
         val sourceId = if (mode == me.rerere.rikkahub.data.db.entity.ScheduledTaskMode.NEW_CHAT) null
             else Uuid.parse(task.targetConversationId ?: error("目标会话未设置"))
         val source = sourceId?.let { id ->
@@ -372,7 +373,8 @@ class ChatService(
                 me.rerere.rikkahub.data.db.entity.ScheduledTaskMode.NEW_CHAT ->
                     Conversation.ofId(conversationId, assistant.id, newConversation = true)
                         .copy(title = task.name).updateCurrentMessages(assistant.presetMessages)
-                me.rerere.rikkahub.data.db.entity.ScheduledTaskMode.FOLLOW_UP -> source!!
+                me.rerere.rikkahub.data.db.entity.ScheduledTaskMode.FOLLOW_UP ->
+                    if (resetHistory) source!!.withoutHistory() else source!!
                 me.rerere.rikkahub.data.db.entity.ScheduledTaskMode.REGENERATE -> {
                     val messageId = Uuid.parse(task.targetUserMessageId ?: error("目标用户消息未设置"))
                     require(source!!.currentMessages.any { it.id == messageId && it.role == MessageRole.USER }) { "目标用户消息已删除或分支已改变" }
@@ -382,15 +384,18 @@ class ChatService(
             destinationId = conversation.id
             val session = sessionManager.getOrCreate(conversation.id)
             if (sourceId != conversation.id) scheduledReservations.add(conversation.id)
-            val contextStartIndex = if (mode == me.rerere.rikkahub.data.db.entity.ScheduledTaskMode.FOLLOW_UP &&
-                task.resetContextBeforeRun) conversation.messageNodes.size else null
+            val contextStartIndex = if (resetHistory) 0 else null
             if (!scheduledTaskRepository.bindConversation(task, conversation.id.toString(), contextStartIndex)) return null
             val completion = CompletableDeferred<String>()
             scheduledRunOwners[conversation.id] = task.activeRunId!!
             scheduledCompletions[conversation.id] = completion
             scheduledWorkerConversations.add(conversation.id)
-            session.updateConversation(conversation)
-            if (mode == me.rerere.rikkahub.data.db.entity.ScheduledTaskMode.NEW_CHAT) conversationRepo.insertConversation(conversation)
+            if (resetHistory) {
+                saveConversation(conversation.id, conversation)
+            } else {
+                session.updateConversation(conversation)
+                if (mode == me.rerere.rikkahub.data.db.entity.ScheduledTaskMode.NEW_CHAT) conversationRepo.insertConversation(conversation)
+            }
             synchronized(session) {
                 if (mode == me.rerere.rikkahub.data.db.entity.ScheduledTaskMode.REGENERATE) {
                     regenerateAtMessage(conversation.id, conversation.currentMessages.last { it.role == MessageRole.USER })

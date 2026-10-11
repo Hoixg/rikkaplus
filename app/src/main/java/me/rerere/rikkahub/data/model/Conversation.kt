@@ -59,6 +59,12 @@ data class Conversation(
             return messageNodes.map { node -> node.messages[node.selectIndex] }
         }
 
+    internal fun withoutHistory(): Conversation = copy(
+        messageNodes = emptyList(),
+        chatSuggestions = emptyList(),
+        compressionSummaries = emptyList(),
+    )
+
     /** Reads a checkpoint sidecar written by older app versions. */
     fun activeCompression(): CompressionSummary? {
         val checkpoint = compressionSummaries.lastOrNull() ?: return null
