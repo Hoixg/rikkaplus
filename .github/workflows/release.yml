@@ -131,5 +131,5 @@ jobs:
             SHA256SUMS.txt
           fail_on_unmatched_files: true
           draft: false
-          prerelease: false
-          make_latest: true
+          prerelease: ${{ github.ref_name == '2.5.75' }}
+          make_latest: ${{ github.ref_name != '2.5.75' }}
