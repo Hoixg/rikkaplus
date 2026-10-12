@@ -1289,7 +1289,7 @@ private fun InstallRootfsDialog(
 }
 
 @Composable
-private fun WorkspaceFilesPage(
+internal fun WorkspaceFilesPage(
     workspaceId: String,
     state: WorkspaceDetailState,
     isActive: Boolean,
@@ -1629,12 +1629,7 @@ private fun WorkspaceFileCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .graphicsLayer { alpha = if (isDragging) 0.85f else 1f }
-            .combinedClickable(
-                onClick = onOpen,
-                onLongClick = if (entry.isDirectory) null else onLongClick,
-                onLongClickLabel = if (entry.isDirectory) null else "选择文件",
-            ),
+            .graphicsLayer { alpha = if (isDragging) 0.85f else 1f },
         colors = if (highlighted) {
             CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.secondaryContainer,
@@ -1646,52 +1641,65 @@ private fun WorkspaceFileCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 16.dp + (depth * 20).dp, top = 12.dp, bottom = 12.dp, end = 4.dp),
+                .padding(end = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (selecting && !entry.isDirectory) {
-                Checkbox(checked = selected, onCheckedChange = { onToggleSelection() })
-            }
-            if (entry.isDirectory) {
-                IconButton(
-                    onClick = onToggleExpand,
-                    modifier = Modifier.size(28.dp),
-                ) {
-                    Icon(
-                        imageVector = if (expanded) HugeIcons.ArrowDown01 else HugeIcons.ArrowRight01,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            } else {
-                Spacer(modifier = Modifier.size(28.dp))
-            }
-            WorkspaceFileLeadingVisual(
-                entry = entry,
-                workspaceId = workspaceId,
-                area = area,
-                onResolvePreview = onResolvePreview,
-            )
-            Column(
+            // Keep selection gestures outside the drag handle's pointer-input ancestry.
+            Row(
                 modifier = Modifier
                     .weight(1f)
-                    .padding(horizontal = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
+                    .combinedClickable(
+                        onClick = onOpen,
+                        onLongClick = if (entry.isDirectory) null else onLongClick,
+                        onLongClickLabel = if (entry.isDirectory) null else "选择文件",
+                    )
+                    .padding(start = 16.dp + (depth * 20).dp, top = 12.dp, bottom = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    text = entry.name,
-                    style = MaterialTheme.typography.titleSmallEmphasized,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                if (selecting && !entry.isDirectory) {
+                    Checkbox(checked = selected, onCheckedChange = { onToggleSelection() })
+                }
+                if (entry.isDirectory) {
+                    IconButton(
+                        onClick = onToggleExpand,
+                        modifier = Modifier.size(28.dp),
+                    ) {
+                        Icon(
+                            imageVector = if (expanded) HugeIcons.ArrowDown01 else HugeIcons.ArrowRight01,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                } else {
+                    Spacer(modifier = Modifier.size(28.dp))
+                }
+                WorkspaceFileLeadingVisual(
+                    entry = entry,
+                    workspaceId = workspaceId,
+                    area = area,
+                    onResolvePreview = onResolvePreview,
                 )
-                Text(
-                    text = if (entry.isDirectory) entry.path else "${entry.path} · ${entry.sizeBytes.fileSizeToString()}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Text(
+                        text = entry.name,
+                        style = MaterialTheme.typography.titleSmallEmphasized,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = if (entry.isDirectory) entry.path else "${entry.path} · ${entry.sizeBytes.fileSizeToString()}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
             if (showDragHandle) {
                 Box(
