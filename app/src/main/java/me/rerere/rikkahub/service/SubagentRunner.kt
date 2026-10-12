@@ -18,6 +18,7 @@ import me.rerere.rikkahub.data.model.Conversation
 import me.rerere.rikkahub.data.model.toMessageNode
 import me.rerere.rikkahub.data.repository.ConversationRepository
 import me.rerere.rikkahub.data.repository.MemoryRepository
+import me.rerere.rikkahub.data.repository.memoryId
 import me.rerere.rikkahub.data.repository.WorkspaceRepository
 import java.io.File
 import kotlin.uuid.Uuid
@@ -93,7 +94,7 @@ internal class SubagentRunner(
                     compactionContext = window.checkpointContent,
                     workspaceCwd = base.workspaceCwd,
                     processingStatus = session.processingStatus,
-                    memories = if (assistant.useGlobalMemory) memoryRepository.getGlobalMemories() else memoryRepository.getMemoriesOfAssistant(assistant.id.toString()),
+                    memories = memoryRepository.getFiles(assistant.memoryId),
                     inputTransformers = listOf(TimeReminderTransformer, PromptInjectionTransformer, PlaceholderTransformer, DocumentAsPromptTransformer, OcrTransformer, templateTransformer, WorkspaceReminderTransformer(workspaceRepository), ImageToolResultTransformer),
                     outputTransformers = listOf(ThinkTagTransformer, Base64ImageToLocalFileTransformer, RegexOutputTransformer),
                     tools = tools,

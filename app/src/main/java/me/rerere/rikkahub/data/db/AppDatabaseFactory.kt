@@ -19,6 +19,7 @@ import me.rerere.rikkahub.data.db.migrations.Migration_25_26
 import me.rerere.rikkahub.data.db.migrations.Migration_26_27
 import me.rerere.rikkahub.data.db.migrations.Migration_27_28
 import me.rerere.rikkahub.data.db.migrations.Migration_30_31
+import me.rerere.rikkahub.data.db.migrations.Migration_37_38
 import androidx.work.WorkManager
 
 /** Shared schema, migrations and extensions for the app and staged backup validation. */
@@ -40,6 +41,7 @@ internal object AppDatabaseFactory {
                 me.rerere.rikkahub.data.db.migrations.Migration_32_33,
                 me.rerere.rikkahub.data.db.migrations.Migration_33_34,
                 me.rerere.rikkahub.data.db.migrations.Migration_34_35,
+                Migration_37_38,
             )
             .addCallback(object : RoomDatabase.Callback() {
                 override fun onOpen(db: SupportSQLiteDatabase) {

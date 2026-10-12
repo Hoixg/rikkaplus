@@ -2,7 +2,6 @@ package me.rerere.rikkahub.data.ai.tools
 
 import android.content.Context
 import android.util.Log
-import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import me.rerere.ai.core.Tool
 import me.rerere.ai.provider.BuiltInTools
@@ -19,6 +18,7 @@ import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.data.repository.ConversationRepository
 import me.rerere.rikkahub.data.repository.MemoryRepository
 import me.rerere.rikkahub.data.repository.WorkspaceRepository
+import me.rerere.rikkahub.data.repository.memoryId
 import me.rerere.workspace.WorkspaceShellStatus
 
 private const val TAG = "ChatToolFactory"
@@ -34,7 +34,6 @@ class InvalidMcpServerNamesException(val names: List<String>) :
 class ChatToolFactory(
     private val context: Context,
     private val scheduledTaskRepository: me.rerere.rikkahub.data.repository.ScheduledTaskRepository,
-    private val json: Json,
     private val memoryRepository: MemoryRepository,
     private val conversationRepository: ConversationRepository,
     private val localTools: LocalTools,
@@ -57,19 +56,7 @@ class ChatToolFactory(
         addAll(createScheduledTaskTools(scheduledTaskRepository, assistant.id, conversationRepository,
             getSettings = { settingsStore.settingsFlow.value }, scheduledExecution = scheduledExecution, getMessages = getMessages))
         if (assistant.enableMemory) {
-            val memoryAssistantId = if (assistant.useGlobalMemory) {
-                MemoryRepository.GLOBAL_MEMORY_ID
-            } else {
-                assistant.id.toString()
-            }
-            addAll(
-                buildMemoryTools(
-                    json = json,
-                    onCreation = { content -> memoryRepository.addMemory(memoryAssistantId, content) },
-                    onUpdate = { id, content -> memoryRepository.updateContent(id, content) },
-                    onDelete = { id -> memoryRepository.deleteMemory(id) },
-                )
-            )
+            addAll(buildMemoryTools(memoryRepository, assistant.memoryId))
         }
         if (shouldUseExternalWebSearch(assistant, model)) {
             addAll(createSearchTools(settings))

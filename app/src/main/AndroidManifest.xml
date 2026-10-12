@@ -161,6 +161,10 @@
       android:name="androidx.work.impl.foreground.SystemForegroundService"
       android:foregroundServiceType="dataSync"
       tools:node="merge" />
+    <service
+      android:name=".service.MemoryDreamForegroundService"
+      android:exported="false"
+      android:foregroundServiceType="dataSync" />
     <provider
       android:name="androidx.core.content.FileProvider"
       android:authorities="${applicationId}.fileprovider"
