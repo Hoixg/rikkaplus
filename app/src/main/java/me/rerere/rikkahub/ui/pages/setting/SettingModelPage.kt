@@ -1,68 +1,26 @@
 package me.rerere.rikkahub.ui.pages.setting
 
+import androidx.annotation.StringRes
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.snap
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.material3.BottomAppBar
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Icon
-import androidx.compose.material3.LargeFlexibleTopAppBar
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
-import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import kotlinx.coroutines.launch
-import me.rerere.ai.core.ReasoningLevel
-import me.rerere.ai.provider.Model
-import me.rerere.ai.provider.ModelType
-import me.rerere.ai.provider.ProviderSetting
-import me.rerere.hugeicons.HugeIcons
-import me.rerere.hugeicons.stroke.AiBrain01
-import me.rerere.hugeicons.stroke.AiEditing
-import me.rerere.hugeicons.stroke.ArrowRight01
-import me.rerere.rikkahub.R
-import me.rerere.rikkahub.data.datastore.Settings
-import me.rerere.rikkahub.ui.components.ai.ModelListSheet
-import me.rerere.rikkahub.ui.components.ai.ReasoningButton
-import me.rerere.rikkahub.ui.components.ai.rememberModelListState
-import me.rerere.rikkahub.ui.components.nav.BackButton
-import me.rerere.rikkahub.ui.components.ui.CardGroup
-import me.rerere.rikkahub.ui.theme.CustomColors
 import me.rerere.rikkahub.utils.AUTO_COMPACTION_THRESHOLD_STEP_PERCENT
 import me.rerere.rikkahub.utils.MAX_AUTO_COMPACTION_THRESHOLD_PERCENT
 import me.rerere.rikkahub.utils.MIN_AUTO_COMPACTION_THRESHOLD_PERCENT
@@ -70,16 +28,68 @@ import me.rerere.rikkahub.utils.formatContextLength
 import me.rerere.rikkahub.utils.normalizeAutoCompactionThresholdPercent
 import me.rerere.rikkahub.utils.parseContextLengthInput
 import me.rerere.rikkahub.utils.plus
-import org.koin.androidx.compose.koinViewModel
 import kotlin.math.roundToInt
-import kotlin.uuid.Uuid
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.material3.LargeFlexibleTopAppBar
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import me.rerere.ai.provider.ModelType
+import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.AiBrain01
+import me.rerere.hugeicons.stroke.AiEditing
+import me.rerere.hugeicons.stroke.BubbleChat
+import me.rerere.hugeicons.stroke.ScanText
+import me.rerere.hugeicons.stroke.Translate
+import me.rerere.hugeicons.stroke.Zap
+import me.rerere.rikkahub.R
+import me.rerere.rikkahub.data.datastore.Settings
+import me.rerere.rikkahub.ui.components.ai.ModelField
+import me.rerere.rikkahub.ui.components.ai.ModelListSheet
+import me.rerere.rikkahub.ui.components.ai.ModelListState
+import me.rerere.rikkahub.ui.components.ai.ReasoningButton
+import me.rerere.rikkahub.ui.components.ai.rememberModelListState
+import me.rerere.rikkahub.ui.components.nav.BackButton
+import me.rerere.rikkahub.ui.components.ui.CardGroup
+import me.rerere.rikkahub.ui.components.ui.CardGroupIcon
+import me.rerere.rikkahub.ui.components.ui.CardGroupScope
+import me.rerere.rikkahub.ui.components.ui.PagerTab
+import me.rerere.rikkahub.ui.components.ui.PagerTabs
+import me.rerere.rikkahub.ui.components.ui.switchItem
+import me.rerere.rikkahub.ui.theme.CustomColors
+import org.koin.androidx.compose.koinViewModel
+
+private enum class ModelSettingTab(
+    override val icon: ImageVector,
+    @param:StringRes override val label: Int,
+) : PagerTab {
+    MODEL(HugeIcons.AiBrain01, R.string.setting_model_page_tab_model),
+    PROMPT(HugeIcons.AiEditing, R.string.setting_model_page_tab_prompt),
+}
 
 @Composable
 fun SettingModelPage(vm: SettingVM = koinViewModel()) {
     val settings by vm.settings.collectAsStateWithLifecycle()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
-    val pagerState = rememberPagerState { 2 }
-    val scope = rememberCoroutineScope()
+    val pagerState = rememberPagerState { ModelSettingTab.entries.size }
 
     Scaffold(
         containerColor = CustomColors.topBarColors.containerColor,
@@ -91,33 +101,46 @@ fun SettingModelPage(vm: SettingVM = koinViewModel()) {
                 colors = CustomColors.topBarColors,
             )
         },
-        bottomBar = {
-            BottomAppBar(
-                containerColor = CustomColors.cardColorsOnSurfaceContainer.containerColor
-            ) {
-                NavigationBarItem(
-                    selected = pagerState.currentPage == 0,
-                    onClick = { scope.launch { pagerState.animateScrollToPage(0) } },
-                    icon = { Icon(HugeIcons.AiBrain01, null) },
-                    label = { Text(stringResource(R.string.setting_model_page_tab_model)) }
-                )
-                NavigationBarItem(
-                    selected = pagerState.currentPage == 1,
-                    onClick = { scope.launch { pagerState.animateScrollToPage(1) } },
-                    icon = { Icon(HugeIcons.AiEditing, null) },
-                    label = { Text(stringResource(R.string.setting_model_page_tab_prompt)) }
-                )
-            }
-        },
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
-    ) { contentPadding ->
-        HorizontalPager(
-            state = pagerState,
-            modifier = Modifier.fillMaxSize(),
-        ) { page ->
-            when (page) {
-                0 -> ModelSettingsPage(settings = settings, vm = vm, contentPadding = contentPadding)
-                1 -> PromptSettingsPage(settings = settings, vm = vm, contentPadding = contentPadding)
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(top = innerPadding.calculateTopPadding())
+        ) {
+            PagerTabs(
+                pagerState = pagerState,
+                tabs = ModelSettingTab.entries,
+                modifier = Modifier.padding(bottom = 4.dp),
+                contentPadding = PaddingValues(horizontal = 16.dp),
+            )
+
+            // 导航条的位置留在列表的内边距里，内容可以滚到它下面
+            val contentPadding = PaddingValues(
+                start = 16.dp,
+                top = 8.dp,
+                end = 16.dp,
+                bottom = innerPadding.calculateBottomPadding() + 16.dp,
+            )
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+            ) { page ->
+                when (ModelSettingTab.entries[page]) {
+                    ModelSettingTab.MODEL -> ModelSettingsPage(
+                        settings = settings,
+                        vm = vm,
+                        contentPadding = contentPadding,
+                    )
+
+                    ModelSettingTab.PROMPT -> PromptSettingsPage(
+                        settings = settings,
+                        vm = vm,
+                        contentPadding = contentPadding,
+                    )
+                }
             }
         }
     }
@@ -125,6 +148,28 @@ fun SettingModelPage(vm: SettingVM = koinViewModel()) {
 
 @Composable
 private fun ModelSettingsPage(settings: Settings, vm: SettingVM, contentPadding: PaddingValues) {
+    // CardGroup 里放不了弹窗，各项的选择状态先在这里建好，弹窗统一放在列表后面
+    val chatModel = rememberModelListState(
+        modelId = settings.chatModelId,
+        providers = settings.providers,
+        type = ModelType.CHAT,
+    )
+    val fastModel = rememberModelListState(
+        modelId = settings.fastModelId,
+        providers = settings.providers,
+        type = ModelType.CHAT,
+    )
+    val translateModel = rememberModelListState(
+        modelId = settings.translateModeId,
+        providers = settings.providers,
+        type = ModelType.CHAT,
+    )
+    val ocrModel = rememberModelListState(
+        modelId = settings.ocrModelId,
+        providers = settings.providers,
+        type = ModelType.CHAT,
+    )
+
     var thresholdSliderValue by remember(settings.autoCompactionThresholdPercent) {
         mutableFloatStateOf(settings.autoCompactionThresholdPercent.toFloat())
     }
@@ -146,54 +191,77 @@ private fun ModelSettingsPage(settings: Settings, vm: SettingVM, contentPadding:
     var showTokenLimitDialog by rememberSaveable { mutableStateOf(false) }
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = contentPadding + PaddingValues(horizontal = 16.dp),
+        contentPadding = contentPadding,
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item {
-            ModelSettingItem(
-                title = stringResource(R.string.setting_model_page_chat_model),
-                description = stringResource(R.string.setting_model_page_chat_model_desc),
-                modelId = settings.chatModelId,
-                providers = settings.providers,
-                onSelect = { vm.updateSettings { latest -> latest.copy(chatModelId = it.id) } },
-            )
+            val containerColor = MaterialTheme.colorScheme.primaryContainer
+            val contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+            CardGroup {
+                modelItem(
+                    icon = HugeIcons.BubbleChat,
+                    title = R.string.setting_model_page_chat_model,
+                    description = R.string.setting_model_page_chat_model_desc,
+                    state = chatModel,
+                    iconContainerColor = containerColor,
+                    iconContentColor = contentColor,
+                )
+            }
         }
         item {
-            ModelSettingItem(
-                title = stringResource(R.string.setting_model_page_fast_model),
-                description = stringResource(R.string.setting_model_page_fast_model_desc),
-                modelId = settings.fastModelId,
-                providers = settings.providers,
-                onSelect = { vm.updateSettings { latest -> latest.copy(fastModelId = it.id) } },
-                reasoningLevel = settings.fastModelReasoningLevel,
-                onUpdateReasoningLevel = {
-                    vm.updateSettings { latest -> latest.copy(fastModelReasoningLevel = it) }
-                },
-            )
+            val containerColor = MaterialTheme.colorScheme.tertiaryContainer
+            val contentColor = MaterialTheme.colorScheme.onTertiaryContainer
+            // 标题和聊天建议都由快速模型生成，相关的选项跟它放在一组
+            CardGroup {
+                modelItem(
+                    icon = HugeIcons.Zap,
+                    title = R.string.setting_model_page_fast_model,
+                    description = R.string.setting_model_page_fast_model_desc,
+                    state = fastModel,
+                    iconContainerColor = containerColor,
+                    iconContentColor = contentColor,
+                )
+                item(
+                    headlineContent = { Text(stringResource(R.string.assistant_page_thinking_budget)) },
+                    trailingContent = {
+                        ReasoningButton(
+                            reasoningLevel = settings.fastModelReasoningLevel,
+                            onUpdateReasoningLevel = {
+                                vm.updateSettings { latest -> latest.copy(fastModelReasoningLevel = it) }
+                            },
+                        )
+                    },
+                )
+                switchItem(
+                    checked = settings.enableSuggestion,
+                    onCheckedChange = {
+                        vm.updateSettings { latest -> latest.copy(enableSuggestion = it) }
+                    },
+                    headlineContent = { Text(stringResource(R.string.setting_model_page_enable_suggestion)) },
+                )
+            }
         }
         item {
-            SuggestionSettingItem(
-                settings = settings,
-                vm = vm,
-            )
-        }
-        item {
-            ModelSettingItem(
-                title = stringResource(R.string.setting_model_page_translate_model),
-                description = stringResource(R.string.setting_model_page_translate_model_desc),
-                modelId = settings.translateModeId,
-                providers = settings.providers,
-                onSelect = { vm.updateSettings { latest -> latest.copy(translateModeId = it.id) } },
-            )
-        }
-        item {
-            ModelSettingItem(
-                title = stringResource(R.string.setting_model_page_ocr_model),
-                description = stringResource(R.string.setting_model_page_ocr_model_desc),
-                modelId = settings.ocrModelId,
-                providers = settings.providers,
-                onSelect = { vm.updateSettings { latest -> latest.copy(ocrModelId = it.id) } },
-            )
+            val containerColor = MaterialTheme.colorScheme.secondaryContainer
+            val contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+            CardGroup {
+                modelItem(
+                    icon = HugeIcons.Translate,
+                    title = R.string.setting_model_page_translate_model,
+                    description = R.string.setting_model_page_translate_model_desc,
+                    state = translateModel,
+                    iconContainerColor = containerColor,
+                    iconContentColor = contentColor,
+                )
+                modelItem(
+                    icon = HugeIcons.ScanText,
+                    title = R.string.setting_model_page_ocr_model,
+                    description = R.string.setting_model_page_ocr_model_desc,
+                    state = ocrModel,
+                    iconContainerColor = containerColor,
+                    iconContentColor = contentColor,
+                )
+            }
         }
         item {
             CardGroup {
@@ -359,6 +427,19 @@ private fun ModelSettingsPage(settings: Settings, vm: SettingVM, contentPadding:
             onDismiss = { showTokenLimitDialog = false },
         )
     }
+
+    ModelListSheet(state = chatModel) {
+        vm.updateSettings { latest -> latest.copy(chatModelId = it.id) }
+    }
+    ModelListSheet(state = fastModel) {
+        vm.updateSettings { latest -> latest.copy(fastModelId = it.id) }
+    }
+    ModelListSheet(state = translateModel) {
+        vm.updateSettings { latest -> latest.copy(translateModeId = it.id) }
+    }
+    ModelListSheet(state = ocrModel) {
+        vm.updateSettings { latest -> latest.copy(ocrModelId = it.id) }
+    }
 }
 
 @Composable
@@ -418,87 +499,23 @@ private fun AutoCompactionTokenLimitDialog(
     )
 }
 
-@Composable
-private fun SuggestionSettingItem(
-    settings: Settings,
-    vm: SettingVM,
+// 一项默认模型：图标、用途说明，下面是显示当前模型的选择按钮
+private fun CardGroupScope.modelItem(
+    icon: ImageVector,
+    @StringRes title: Int,
+    @StringRes description: Int,
+    state: ModelListState,
+    iconContainerColor: Color,
+    iconContentColor: Color,
+) = formItem(
+    headlineContent = { Text(stringResource(title)) },
+    supportingContent = { Text(stringResource(description)) },
+    leadingContent = {
+        CardGroupIcon(icon, containerColor = iconContainerColor, contentColor = iconContentColor)
+    },
 ) {
-    CardGroup {
-        item(
-            headlineContent = { Text(stringResource(R.string.setting_model_page_enable_suggestion)) },
-            trailingContent = {
-                Switch(
-                    checked = settings.enableSuggestion,
-                    onCheckedChange = {
-                        vm.updateSettings { latest -> latest.copy(enableSuggestion = it) }
-                    }
-                )
-            },
-        )
-    }
-}
-
-@Composable
-private fun ModelSettingItem(
-    title: String,
-    description: String,
-    modelId: Uuid?,
-    providers: List<ProviderSetting>,
-    onSelect: (Model) -> Unit,
-    reasoningLevel: ReasoningLevel? = null,
-    onUpdateReasoningLevel: ((ReasoningLevel) -> Unit)? = null,
-) {
-    val state = rememberModelListState(
-        modelId = modelId,
-        providers = providers,
-        type = ModelType.CHAT,
+    ModelField(
+        model = state.currentModel,
+        onClick = { state.open() },
     )
-
-    Column {
-        CardGroup(title = { Text(title) }) {
-            item(
-                onClick = { state.open() },
-                headlineContent = { Text(title) },
-                trailingContent = {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    ) {
-                        Text(
-                            text = state.currentModel?.displayName
-                                ?: stringResource(R.string.model_list_select_model),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        Icon(
-                            HugeIcons.ArrowRight01,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp),
-                        )
-                    }
-                },
-            )
-            if (reasoningLevel != null && onUpdateReasoningLevel != null) {
-                item(
-                    headlineContent = { Text(stringResource(R.string.assistant_page_thinking_budget)) },
-                    trailingContent = {
-                        ReasoningButton(
-                            reasoningLevel = reasoningLevel,
-                            onUpdateReasoningLevel = onUpdateReasoningLevel,
-                        )
-                    },
-                )
-            }
-        }
-        Text(
-            text = description,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
-        )
-    }
-
-    ModelListSheet(state = state, onSelect = onSelect)
 }

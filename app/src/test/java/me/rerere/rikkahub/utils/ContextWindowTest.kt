@@ -50,10 +50,11 @@ class ContextWindowTest {
     }
 
     @Test
-    fun effectiveWindowPrefersUserConfiguredThenNullModelDefault() {
+    fun effectiveWindowPrefersUserConfiguredThenModelDefaultThenRegistryFallback() {
         val modelId = "context-indicator-model"
         assertEquals(8_192, Model(modelId = modelId, contextLength = 8_192).effectiveContextLength())
-        assertEquals(262_144, Model(modelId = modelId).effectiveContextLength())
+        assertEquals(1_000_000, Model(modelId = modelId).effectiveContextLength())
+        assertEquals(262_144, Model(modelId = modelId, contextLength = null).effectiveContextLength())
         assertEquals(262_144, null.effectiveContextLength())
     }
 

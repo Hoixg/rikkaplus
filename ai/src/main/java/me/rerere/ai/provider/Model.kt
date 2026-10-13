@@ -18,8 +18,8 @@ data class Model(
     val outputModalities: List<Modality> = listOf(Modality.TEXT),
     val abilities: List<ModelAbility> = emptyList(),
     val tools: Set<BuiltInTools> = emptySet(),
-    /** User-configured context window in tokens; null falls back to the model registry. */
-    val contextLength: Int? = null,
+    /** Context window in tokens; null falls back to the model registry. */
+    val contextLength: Int? = 1_000_000,
     val providerOverwrite: ProviderSetting? = null,
 )
 
