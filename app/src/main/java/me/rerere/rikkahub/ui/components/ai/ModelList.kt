@@ -314,6 +314,8 @@ fun ModelListSheet(
             state.close()
         },
         sheetState = sheetState,
+        sheetGesturesEnabled = false,
+        dragHandle = null,
     ) {
         Column(
             modifier = Modifier
@@ -509,33 +511,44 @@ private fun ColumnScope.ModelList(
     val showPinnedHeader = activeHeaderIndex != null &&
         activeHeaderIndex <= firstVisibleItemIndex && !headerIsAlreadyAtTop
 
-    Surface(
-        shape = RoundedCornerShape(50),
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 8.dp),
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        OutlinedTextField(
-            value = searchKeywords,
-            onValueChange = { searchKeywords = it },
-            modifier = Modifier.fillMaxWidth(),
-            placeholder = {
-                Text(
-                    text = stringResource(R.string.model_list_search_placeholder),
-                )
-            },
+        Surface(
             shape = RoundedCornerShape(50),
-            colors = TextFieldDefaults.colors(
-                unfocusedIndicatorColor = Color.Transparent,
-                focusedIndicatorColor = Color.Transparent,
-                focusedContainerColor = Color.Transparent,
-                unfocusedContainerColor = Color.Transparent,
-            ),
-            leadingIcon = {
-                Icon(HugeIcons.Search01, null)
-            },
-            maxLines = 1,
-        )
+            modifier = Modifier
+                .weight(1f)
+                .padding(start = 8.dp),
+        ) {
+            OutlinedTextField(
+                value = searchKeywords,
+                onValueChange = { searchKeywords = it },
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = {
+                    Text(
+                        text = stringResource(R.string.model_list_search_placeholder),
+                    )
+                },
+                shape = RoundedCornerShape(50),
+                colors = TextFieldDefaults.colors(
+                    unfocusedIndicatorColor = Color.Transparent,
+                    focusedIndicatorColor = Color.Transparent,
+                    focusedContainerColor = Color.Transparent,
+                    unfocusedContainerColor = Color.Transparent,
+                ),
+                leadingIcon = {
+                    Icon(HugeIcons.Search01, null)
+                },
+                maxLines = 1,
+            )
+        }
+        IconButton(
+            onClick = onDismiss,
+            modifier = Modifier.padding(end = 8.dp),
+        ) {
+            Icon(HugeIcons.Cancel01, contentDescription = stringResource(R.string.cancel))
+        }
     }
 
     Box(
