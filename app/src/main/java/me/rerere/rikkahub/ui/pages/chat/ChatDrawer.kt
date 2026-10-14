@@ -66,6 +66,7 @@ import me.rerere.hugeicons.stroke.LanguageCircle
 import me.rerere.hugeicons.stroke.MagicWand01
 import me.rerere.hugeicons.stroke.MoreVertical
 import me.rerere.hugeicons.stroke.PencilEdit01
+import me.rerere.hugeicons.stroke.Search01
 import me.rerere.hugeicons.stroke.Settings03
 import me.rerere.hugeicons.stroke.Sorting01
 import me.rerere.hugeicons.stroke.Sparkles
@@ -429,6 +430,14 @@ fun ChatDrawerContent(
                         expanded = moreActionsExpanded,
                         onDismissRequest = { moreActionsExpanded = false },
                     ) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.chat_page_search_chats)) },
+                            leadingIcon = { Icon(HugeIcons.Search01, null) },
+                            onClick = {
+                                moreActionsExpanded = false
+                                navController.navigate(Screen.MessageSearch)
+                            },
+                        )
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.favorite_page_title)) },
                             leadingIcon = { Icon(HugeIcons.InLove, null) },
