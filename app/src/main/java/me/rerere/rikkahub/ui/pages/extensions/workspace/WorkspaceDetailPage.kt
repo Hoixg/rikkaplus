@@ -10,7 +10,6 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -32,7 +31,6 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
@@ -42,10 +40,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.FloatingToolbarDefaults.ScreenOffset
@@ -53,7 +52,6 @@ import androidx.compose.material3.HorizontalFloatingToolbar
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -89,6 +87,7 @@ import me.rerere.hugeicons.stroke.ArrowDown01
 import me.rerere.hugeicons.stroke.ArrowRight01
 import me.rerere.hugeicons.stroke.ArrowUp01
 import me.rerere.hugeicons.stroke.Add01
+import me.rerere.hugeicons.stroke.Alert02
 import me.rerere.hugeicons.stroke.Bash
 import me.rerere.hugeicons.stroke.ComputerTerminal01
 import me.rerere.hugeicons.stroke.Copy01
@@ -102,6 +101,7 @@ import me.rerere.hugeicons.stroke.FileImport
 import me.rerere.hugeicons.stroke.FileExport
 import me.rerere.hugeicons.stroke.Folder01
 import me.rerere.hugeicons.stroke.FolderAdd
+import me.rerere.hugeicons.stroke.FolderOpen
 import me.rerere.hugeicons.stroke.Play
 import me.rerere.hugeicons.stroke.PencilEdit01
 import me.rerere.hugeicons.stroke.Refresh01
@@ -117,6 +117,7 @@ import me.rerere.rikkahub.data.ai.tools.resolveWorkspaceToolApproval
 import me.rerere.rikkahub.data.db.entity.WorkspaceEntity
 import androidx.compose.ui.res.stringResource
 import me.rerere.rikkahub.R
+import me.rerere.rikkahub.ui.components.ai.ExtensionEmptyState
 import me.rerere.rikkahub.ui.components.nav.BackButton
 import me.rerere.rikkahub.ui.components.ui.CardGroup
 import me.rerere.rikkahub.ui.components.ui.CardGroupIcon
@@ -270,7 +271,7 @@ fun WorkspaceDetailPage(
                 actions = {
                     if (pagerState.currentPage == 1 && state.area == WorkspaceStorageArea.FILES) {
                         Box {
-                            IconButton(onClick = { showCreateMenu = true }) {
+                            FilledTonalIconButton(onClick = { showCreateMenu = true }) {
                                 Icon(
                                     HugeIcons.Add01,
                                     contentDescription = stringResource(R.string.workspace_detail_create_entry),
@@ -488,7 +489,7 @@ fun WorkspaceDetailPage(
                 )
             },
             confirmButton = {
-                TextButton(
+                Button(
                     onClick = {
                         creatingFile = true
                         vm.createFile(normalizedName) { entry, error ->
@@ -551,7 +552,7 @@ fun WorkspaceDetailPage(
                 )
             },
             confirmButton = {
-                TextButton(
+                Button(
                     onClick = {
                         renamingFile = true
                         vm.renameFile(entry, normalizedName) { error ->
@@ -609,7 +610,7 @@ fun WorkspaceDetailPage(
                 )
             },
             confirmButton = {
-                TextButton(
+                Button(
                     onClick = {
                         creatingFolder = true
                         vm.createFolder(normalizedName) { error ->
@@ -862,76 +863,38 @@ private fun WorkspaceToolApprovalCard(
     onToolApprovalChange: (String, Boolean) -> Unit,
 ) {
     val overrides = workspace?.toolApprovalOverrides().orEmpty()
+    val tools = workspaceToolApprovalItems()
 
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CustomColors.cardColorsOnSurfaceContainer,
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
-                .animateContentSize(),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    Text(
-                        text = stringResource(R.string.workspace_detail_tool_approval),
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                    Text(
-                        text = stringResource(R.string.workspace_detail_tool_approval_desc),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+    CardGroup {
+        item(
+            onClick = { onExpandedChange(!expanded) },
+            headlineContent = { Text(stringResource(R.string.workspace_detail_tool_approval)) },
+            supportingContent = { Text(stringResource(R.string.workspace_detail_tool_approval_desc)) },
+            leadingContent = { CardGroupIcon(HugeIcons.Settings03) },
+            trailingContent = {
+                Icon(
+                    imageVector = if (expanded) HugeIcons.ArrowUp01 else HugeIcons.ArrowDown01,
+                    contentDescription = stringResource(
+                        if (expanded) R.string.code_block_collapse else R.string.code_block_expand
+                    ),
+                )
+            },
+        )
+        if (expanded) {
+            tools.forEach { (toolName, label) ->
+                val icon = when (toolName) {
+                    "workspace_read_file" -> HugeIcons.File02
+                    "workspace_write_file", "workspace_edit_file" -> HugeIcons.PencilEdit01
+                    else -> HugeIcons.ComputerTerminal01
                 }
-                IconButton(onClick = { onExpandedChange(!expanded) }) {
-                    Icon(
-                        imageVector = if (expanded) HugeIcons.ArrowUp01 else HugeIcons.ArrowDown01,
-                        contentDescription = stringResource(
-                            if (expanded) R.string.code_block_collapse else R.string.code_block_expand
-                        ),
-                    )
-                }
-            }
-
-            if (expanded) {
-                workspaceToolApprovalItems().forEach { (toolName, label) ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Column(
-                            modifier = Modifier.weight(1f),
-                            verticalArrangement = Arrangement.spacedBy(2.dp),
-                        ) {
-                            Text(
-                                text = label,
-                                style = MaterialTheme.typography.bodyMedium,
-                            )
-                            Text(
-                                text = toolName,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-                        Switch(
-                            checked = resolveWorkspaceToolApproval(toolName, overrides),
-                            onCheckedChange = { onToolApprovalChange(toolName, it) },
-                            enabled = workspace != null,
-                        )
-                    }
-                }
+                switchItem(
+                    checked = resolveWorkspaceToolApproval(toolName, overrides),
+                    onCheckedChange = { onToolApprovalChange(toolName, it) },
+                    enabled = workspace != null,
+                    headlineContent = { Text(label) },
+                    supportingContent = { Text(toolName, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    leadingContent = { CardGroupIcon(icon) },
+                )
             }
         }
     }
@@ -954,85 +917,59 @@ private fun WorkspaceMountDirCard(
         contract = ActivityResultContracts.StartActivityForResult(),
     ) { permissionRefreshKey++ }
 
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CustomColors.cardColorsOnSurfaceContainer,
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
+    CardGroup(
+        title = {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(
-                    text = stringResource(R.string.workspace_detail_mount_dirs),
-                    style = MaterialTheme.typography.titleMedium,
-                )
+                Text(stringResource(R.string.workspace_detail_mount_dirs))
                 Text(
                     text = stringResource(R.string.workspace_detail_mount_dirs_desc),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-
-            if (mounts.isEmpty()) {
-                Text(
-                    text = stringResource(R.string.workspace_detail_mount_empty),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+        },
+    ) {
+        if (mounts.isEmpty()) {
+            item(
+                headlineContent = { Text(stringResource(R.string.workspace_detail_mount_empty)) },
+                leadingContent = { CardGroupIcon(HugeIcons.Folder01) },
+            )
+        } else {
+            mounts.forEach { mount ->
+                item(
+                    headlineContent = { Text(mount.target, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    supportingContent = { Text(mount.sourcePath, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+                    leadingContent = { CardGroupIcon(HugeIcons.Folder01) },
+                    trailingContent = {
+                        ItemActionMenu(
+                            actions = listOf(
+                                ItemAction(
+                                    text = stringResource(R.string.common_delete),
+                                    icon = HugeIcons.Delete01,
+                                    destructive = true,
+                                    onClick = { onRemove(mount.target) },
+                                )
+                            ),
+                        )
+                    },
                 )
-            } else {
-                mounts.forEach { mount ->
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Column(
-                                modifier = Modifier.weight(1f),
-                                verticalArrangement = Arrangement.spacedBy(2.dp),
-                            ) {
-                                Text(
-                                    text = mount.target,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                                Text(
-                                    text = mount.sourcePath,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                            }
-                            IconButton(onClick = { onRemove(mount.target) }) {
-                                Icon(HugeIcons.Delete01, contentDescription = null)
-                            }
-                        }
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                text = stringResource(R.string.workspace_detail_mount_read_only),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.weight(1f),
-                            )
-                            Switch(
-                                checked = mount.readOnly,
-                                onCheckedChange = { onReadOnlyChange(mount.target, it) },
-                            )
-                        }
-                    }
-                }
+                switchItem(
+                    checked = mount.readOnly,
+                    onCheckedChange = { onReadOnlyChange(mount.target, it) },
+                    headlineContent = { Text(stringResource(R.string.workspace_detail_mount_read_only)) },
+                    supportingContent = { Text(mount.target, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    leadingContent = { CardGroupIcon(HugeIcons.Wrench01) },
+                )
             }
-
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        }
+        item(
+            onClick = {
+                runCatching {
+                    allFilesAccessLauncher.launch(PermissionHelper.allFilesAccessIntent(context))
+                }
+            },
+            headlineContent = { Text(stringResource(R.string.workspace_detail_mount_all_files_access)) },
+            supportingContent = {
                 Text(
                     text = stringResource(
                         if (hasAllFilesAccess) {
@@ -1041,36 +978,24 @@ private fun WorkspaceMountDirCard(
                             R.string.workspace_detail_mount_all_files_access_missing
                         }
                     ),
-                    style = MaterialTheme.typography.bodySmall,
                     color = if (hasAllFilesAccess) {
                         MaterialTheme.colorScheme.primary
                     } else {
                         MaterialTheme.colorScheme.error
                     },
                 )
-                TextButton(
-                    onClick = {
-                        runCatching {
-                            allFilesAccessLauncher.launch(PermissionHelper.allFilesAccessIntent(context))
-                        }
-                    },
-                ) {
-                    Text(stringResource(R.string.workspace_detail_mount_all_files_access))
-                }
-            }
-
-            Button(
-                onClick = onAdd,
-                enabled = workspace != null,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Icon(HugeIcons.Folder01, contentDescription = null)
-                Text(
-                    text = stringResource(R.string.workspace_detail_mount_add),
-                    modifier = Modifier.padding(start = 8.dp),
-                )
-            }
-        }
+            },
+            leadingContent = { CardGroupIcon(HugeIcons.Settings03) },
+            trailingContent = {
+                Icon(HugeIcons.ArrowRight01, contentDescription = null)
+            },
+        )
+        item(
+            onClick = if (workspace != null) onAdd else null,
+            headlineContent = { Text(stringResource(R.string.workspace_detail_mount_add)) },
+            leadingContent = { CardGroupIcon(HugeIcons.FolderAdd) },
+            trailingContent = { Icon(HugeIcons.ArrowRight01, contentDescription = null) },
+        )
     }
 }
 
@@ -1112,7 +1037,9 @@ private fun AddMountDirDialog(
                     placeholder = { Text("/storage/emulated/0/Documents") },
                     modifier = Modifier.fillMaxWidth(),
                 )
-                OutlinedButton(onClick = { treeLauncher.launch(null) }) {
+                FilledTonalButton(onClick = { treeLauncher.launch(null) }) {
+                    Icon(HugeIcons.Folder01, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
+                    Spacer(Modifier.width(ButtonDefaults.IconSpacing))
                     Text(stringResource(R.string.workspace_detail_mount_pick_directory))
                 }
                 OutlinedTextField(
@@ -1146,7 +1073,7 @@ private fun AddMountDirDialog(
             }
         },
         confirmButton = {
-            TextButton(
+            Button(
                 onClick = {
                     onConfirm(
                         WorkspaceMountDir(
@@ -1393,173 +1320,184 @@ internal fun WorkspaceFilesPage(
         exitSelection()
     }
     Box(modifier = Modifier.fillMaxSize()) {
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = contentPadding + PaddingValues(
-            start = 16.dp,
-            top = 16.dp,
-            end = 16.dp,
-            bottom = if (selecting) 128.dp else 16.dp,
-        ),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-        state = lazyListState,
-    ) {
-        item {
-            WorkspaceAreaSelector(
-                selected = state.area,
-                onSelected = onSelectArea,
-            )
-        }
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = contentPadding + PaddingValues(
+                start = 16.dp,
+                top = 16.dp,
+                end = 16.dp,
+                bottom = if (selecting) 128.dp else 16.dp,
+            ),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+            state = lazyListState,
+        ) {
+            item {
+                Box(modifier = Modifier.padding(bottom = 10.dp)) {
+                    WorkspaceAreaSelector(
+                        selected = state.area,
+                        onSelected = onSelectArea,
+                    )
+                }
+            }
 
-        item {
-            WorkspacePathBar(
-                path = state.path,
-                canGoUp = state.path.isNotBlank(),
-                onGoUp = onGoUp,
-            )
-        }
+            item {
+                Box(modifier = Modifier.padding(bottom = 10.dp)) {
+                    WorkspacePathBar(
+                        path = state.path,
+                        canGoUp = state.path.isNotBlank(),
+                        onGoUp = onGoUp,
+                    )
+                }
+            }
 
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = stringResource(R.string.workspace_detail_sort),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box {
-                        TextButton(onClick = { sortMenuExpanded = true }) {
-                            Icon(HugeIcons.Sorting01, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.size(6.dp))
-                            Text(
-                                stringResource(
-                                    when (sortMode) {
-                                        WorkspaceFileSortMode.MANUAL -> R.string.workspace_detail_sort_manual
-                                        WorkspaceFileSortMode.NAME -> R.string.workspace_detail_sort_name
-                                        WorkspaceFileSortMode.MODIFIED_TIME -> R.string.workspace_detail_sort_modified
-                                        WorkspaceFileSortMode.SIZE -> R.string.workspace_detail_sort_size
-                                        WorkspaceFileSortMode.TYPE -> R.string.workspace_detail_sort_type
-                                    }
-                                )
-                            )
-                            Icon(HugeIcons.ArrowDown01, contentDescription = null, modifier = Modifier.size(16.dp))
-                        }
-                        DropdownMenu(
-                            expanded = sortMenuExpanded,
-                            onDismissRequest = { sortMenuExpanded = false },
+            item {
+                Surface(
+                    modifier = Modifier.padding(bottom = 10.dp),
+                    shape = RoundedCornerShape(20.dp),
+                    color = CustomColors.listItemColors.containerColor,
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = stringResource(R.string.workspace_detail_sort),
+                            style = MaterialTheme.typography.bodyLarge,
+                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
-                            WorkspaceFileSortMode.entries.forEach { option ->
-                                DropdownMenuItem(
-                                    text = {
-                                        Text(
-                                            stringResource(
-                                                when (option) {
-                                                    WorkspaceFileSortMode.MANUAL -> R.string.workspace_detail_sort_manual
-                                                    WorkspaceFileSortMode.NAME -> R.string.workspace_detail_sort_name
-                                                    WorkspaceFileSortMode.MODIFIED_TIME -> R.string.workspace_detail_sort_modified
-                                                    WorkspaceFileSortMode.SIZE -> R.string.workspace_detail_sort_size
-                                                    WorkspaceFileSortMode.TYPE -> R.string.workspace_detail_sort_type
-                                                }
-                                            )
+                            Box {
+                                FilledTonalButton(onClick = { sortMenuExpanded = true }) {
+                                    Icon(HugeIcons.Sorting01, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.size(6.dp))
+                                    Text(
+                                        stringResource(
+                                            when (sortMode) {
+                                                WorkspaceFileSortMode.MANUAL -> R.string.workspace_detail_sort_manual
+                                                WorkspaceFileSortMode.NAME -> R.string.workspace_detail_sort_name
+                                                WorkspaceFileSortMode.MODIFIED_TIME -> R.string.workspace_detail_sort_modified
+                                                WorkspaceFileSortMode.SIZE -> R.string.workspace_detail_sort_size
+                                                WorkspaceFileSortMode.TYPE -> R.string.workspace_detail_sort_type
+                                            }
                                         )
-                                    },
-                                    trailingIcon = {
-                                        if (option == sortMode) Icon(HugeIcons.Tick01, contentDescription = null)
-                                    },
-                                    onClick = {
-                                        sortMode = option
-                                        descending = option == WorkspaceFileSortMode.MODIFIED_TIME ||
-                                            option == WorkspaceFileSortMode.SIZE
-                                        sortMenuExpanded = false
-                                    },
-                                )
+                                    )
+                                    Icon(HugeIcons.ArrowDown01, contentDescription = null, modifier = Modifier.size(16.dp))
+                                }
+                                DropdownMenu(
+                                    expanded = sortMenuExpanded,
+                                    onDismissRequest = { sortMenuExpanded = false },
+                                ) {
+                                    WorkspaceFileSortMode.entries.forEach { option ->
+                                        DropdownMenuItem(
+                                            text = {
+                                                Text(
+                                                    stringResource(
+                                                        when (option) {
+                                                            WorkspaceFileSortMode.MANUAL -> R.string.workspace_detail_sort_manual
+                                                            WorkspaceFileSortMode.NAME -> R.string.workspace_detail_sort_name
+                                                            WorkspaceFileSortMode.MODIFIED_TIME -> R.string.workspace_detail_sort_modified
+                                                            WorkspaceFileSortMode.SIZE -> R.string.workspace_detail_sort_size
+                                                            WorkspaceFileSortMode.TYPE -> R.string.workspace_detail_sort_type
+                                                        }
+                                                    )
+                                                )
+                                            },
+                                            trailingIcon = {
+                                                if (option == sortMode) Icon(HugeIcons.Tick01, contentDescription = null)
+                                            },
+                                            onClick = {
+                                                sortMode = option
+                                                descending = option == WorkspaceFileSortMode.MODIFIED_TIME ||
+                                                    option == WorkspaceFileSortMode.SIZE
+                                                sortMenuExpanded = false
+                                            },
+                                        )
+                                    }
+                                }
+                            }
+                            if (sortMode != WorkspaceFileSortMode.MANUAL) {
+                                FilledTonalIconButton(
+                                    onClick = { descending = !descending },
+                                ) {
+                                    Icon(
+                                        imageVector = if (descending) HugeIcons.ArrowDown01 else HugeIcons.ArrowUp01,
+                                        contentDescription = stringResource(R.string.workspace_detail_sort_direction),
+                                    )
+                                }
                             }
                         }
                     }
-                    if (sortMode != WorkspaceFileSortMode.MANUAL) {
-                        IconButton(
-                            onClick = { descending = !descending },
-                            modifier = Modifier.size(40.dp),
-                        ) {
-                            Icon(
-                                imageVector = if (descending) HugeIcons.ArrowDown01 else HugeIcons.ArrowUp01,
-                                contentDescription = stringResource(R.string.workspace_detail_sort_direction),
-                            )
-                        }
+                }
+            }
+
+            if (state.exporting) item {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp),
+                    color = CustomColors.listItemColors.containerColor,
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text("正在导出 ${state.exportCompleted}/${state.exportTotal}")
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                     }
                 }
             }
-        }
 
-        if (state.exporting) item {
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(20.dp),
-                color = CustomColors.listItemColors.containerColor,
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text("正在导出 ${state.exportCompleted}/${state.exportTotal}")
-                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            state.error?.let { error ->
+                item {
+                    ErrorCard(error)
+                }
+            }
+
+            if ((!state.loading || state.hasLoadedDirectory) && state.entries.isEmpty() && state.error == null) {
+                item {
+                    EmptyDirectoryState()
+                }
+            }
+
+            itemsIndexed(rows, key = { _, row -> "${state.area.name}:${row.entry.path}" }) { index, row ->
+                val itemKey = "${state.area.name}:${row.entry.path}"
+                val reorderEnabled = manualSortEnabled && isWorkspaceReorderTarget(row.entry.path, draggingPath)
+                ReorderableItem(state = reorderableState, key = itemKey, enabled = reorderEnabled) { isDragging ->
+                    WorkspaceFileCard(
+                        entry = row.entry,
+                        shape = cardGroupItemShape(index, rows.size),
+                        depth = row.depth,
+                        expanded = row.entry.path in state.expandedPaths,
+                        onToggleExpand = { onToggleExpand(row.entry) },
+                        onDelete = { onDelete(row.entry) },
+                        onRename = { onRename(row.entry) },
+                        onExport = { onExport(row.entry) },
+                        onShare = { onShare(row.entry) },
+                        onRunScript = { onRunScript(row.entry) },
+                        highlighted = row.entry.path == highlightPath,
+                        workspaceId = workspaceId,
+                        area = state.area,
+                        onResolvePreview = onResolvePreview,
+                        selecting = selecting,
+                        selected = row.entry.path in selectedPaths,
+                        showDragHandle = showDragHandle,
+                        isDragging = isDragging,
+                        dragHandleModifier = if (showDragHandle) Modifier.longPressDraggableHandle(
+                            enabled = reorderEnabled,
+                            onDragStarted = { draggingPath = row.entry.path },
+                            onDragStopped = { draggingPath = null },
+                        ) else Modifier,
+                        onToggleSelection = { toggleSelection(row.entry) },
+                        onLongClick = {
+                            selecting = true
+                            selectedPaths = selectedPaths + row.entry.path
+                        },
+                        onOpen = {
+                            if (selecting && !row.entry.isDirectory) toggleSelection(row.entry) else onOpen(row.entry)
+                        },
+                    )
                 }
             }
         }
-
-        state.error?.let { error ->
-            item {
-                ErrorCard(error)
-            }
-        }
-
-        if ((!state.loading || state.hasLoadedDirectory) && state.entries.isEmpty() && state.error == null) {
-            item {
-                EmptyDirectoryState()
-            }
-        }
-
-        itemsIndexed(rows, key = { _, row -> "${state.area.name}:${row.entry.path}" }) { index, row ->
-            val itemKey = "${state.area.name}:${row.entry.path}"
-            val reorderEnabled = manualSortEnabled && isWorkspaceReorderTarget(row.entry.path, draggingPath)
-            ReorderableItem(state = reorderableState, key = itemKey, enabled = reorderEnabled) { isDragging ->
-                WorkspaceFileCard(
-                    entry = row.entry,
-                    shape = cardGroupItemShape(index, rows.size),
-                    depth = row.depth,
-                    expanded = row.entry.path in state.expandedPaths,
-                    onToggleExpand = { onToggleExpand(row.entry) },
-                    onDelete = { onDelete(row.entry) },
-                    onRename = { onRename(row.entry) },
-                    onExport = { onExport(row.entry) },
-                    onShare = { onShare(row.entry) },
-                    onRunScript = { onRunScript(row.entry) },
-                    highlighted = row.entry.path == highlightPath,
-                    workspaceId = workspaceId,
-                    area = state.area,
-                    onResolvePreview = onResolvePreview,
-                    selecting = selecting,
-                    selected = row.entry.path in selectedPaths,
-                    showDragHandle = showDragHandle,
-                    isDragging = isDragging,
-                    dragHandleModifier = if (showDragHandle) Modifier.longPressDraggableHandle(
-                        enabled = reorderEnabled,
-                        onDragStarted = { draggingPath = row.entry.path },
-                        onDragStopped = { draggingPath = null },
-                    ) else Modifier,
-                    onToggleSelection = { toggleSelection(row.entry) },
-                    onLongClick = {
-                        selecting = true
-                        selectedPaths = selectedPaths + row.entry.path
-                    },
-                    onOpen = {
-                        if (selecting && !row.entry.isDirectory) toggleSelection(row.entry) else onOpen(row.entry)
-                    },
-                )
-            }
-        }
-    }
         AnimatedVisibility(
             visible = selecting,
             modifier = Modifier
@@ -1684,7 +1622,6 @@ private fun WorkspaceFileCard(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(bottom = 2.dp)
             .graphicsLayer { alpha = if (isDragging) 0.85f else 1f },
         shape = shape,
         color = if (highlighted || selected) {
@@ -1882,39 +1819,28 @@ private fun WorkspaceFileLeadingVisual(
 
 @Composable
 private fun EmptyDirectoryState() {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 48.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Icon(
-            imageVector = HugeIcons.Folder01,
-            contentDescription = null,
-            modifier = Modifier.size(48.dp),
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Text(
-            text = stringResource(R.string.workspace_detail_empty_directory),
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
+    ExtensionEmptyState(
+        message = stringResource(R.string.workspace_detail_empty_directory),
+        icon = HugeIcons.FolderOpen,
+    )
 }
 
 @Composable
 private fun ErrorCard(message: String) {
-    Card(
+    Surface(
         modifier = Modifier.fillMaxWidth(),
-        colors = CustomColors.cardColorsOnSurfaceContainer,
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.errorContainer,
+        contentColor = MaterialTheme.colorScheme.onErrorContainer,
     ) {
-        Text(
-            text = message,
+        Row(
             modifier = Modifier.padding(16.dp),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.error,
-        )
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Icon(HugeIcons.Alert02, contentDescription = null, modifier = Modifier.size(20.dp))
+            Text(message, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+        }
     }
 }
 
