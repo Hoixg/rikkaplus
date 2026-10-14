@@ -1,27 +1,39 @@
 package me.rerere.rikkahub.ui.pages.extensions.workspace
 
 import android.content.Intent
+import android.os.Build
 import android.provider.OpenableColumns
 import android.widget.Toast
 import android.webkit.MimeTypeMap
+import androidx.annotation.StringRes
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -29,23 +41,21 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.FloatingToolbarDefaults.ScreenOffset
+import androidx.compose.material3.HorizontalFloatingToolbar
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -56,11 +66,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
@@ -72,7 +83,6 @@ import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
-import kotlinx.coroutines.launch
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.ArrowTurnBackward
 import me.rerere.hugeicons.stroke.ArrowDown01
@@ -81,21 +91,26 @@ import me.rerere.hugeicons.stroke.ArrowUp01
 import me.rerere.hugeicons.stroke.Add01
 import me.rerere.hugeicons.stroke.Bash
 import me.rerere.hugeicons.stroke.ComputerTerminal01
+import me.rerere.hugeicons.stroke.Copy01
+import me.rerere.hugeicons.stroke.Cancel01
+import me.rerere.hugeicons.stroke.CheckList
 import me.rerere.hugeicons.stroke.Delete01
 import me.rerere.hugeicons.stroke.DragDropHorizontal
 import me.rerere.hugeicons.stroke.File02
 import me.rerere.hugeicons.stroke.FileAdd
 import me.rerere.hugeicons.stroke.FileImport
+import me.rerere.hugeicons.stroke.FileExport
 import me.rerere.hugeicons.stroke.Folder01
 import me.rerere.hugeicons.stroke.FolderAdd
-import me.rerere.hugeicons.stroke.MoreVertical
 import me.rerere.hugeicons.stroke.Play
 import me.rerere.hugeicons.stroke.PencilEdit01
 import me.rerere.hugeicons.stroke.Refresh01
 import me.rerere.hugeicons.stroke.Settings03
 import me.rerere.hugeicons.stroke.Share08
 import me.rerere.hugeicons.stroke.Sorting01
+import me.rerere.hugeicons.stroke.Tag01
 import me.rerere.hugeicons.stroke.Tick01
+import me.rerere.hugeicons.stroke.Wrench01
 import me.rerere.rikkahub.Screen
 import me.rerere.rikkahub.data.ai.tools.local.PermissionHelper
 import me.rerere.rikkahub.data.ai.tools.resolveWorkspaceToolApproval
@@ -103,15 +118,27 @@ import me.rerere.rikkahub.data.db.entity.WorkspaceEntity
 import androidx.compose.ui.res.stringResource
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.ui.components.nav.BackButton
+import me.rerere.rikkahub.ui.components.ui.CardGroup
+import me.rerere.rikkahub.ui.components.ui.CardGroupIcon
+import me.rerere.rikkahub.ui.components.ui.ConnectedChoiceButtons
+import me.rerere.rikkahub.ui.components.ui.ConnectedChoiceLabel
 import me.rerere.rikkahub.ui.components.ui.ImagePreviewDialog
+import me.rerere.rikkahub.ui.components.ui.ItemAction
+import me.rerere.rikkahub.ui.components.ui.ItemActionMenu
+import me.rerere.rikkahub.ui.components.ui.PagerTab
+import me.rerere.rikkahub.ui.components.ui.PagerTabs
+import me.rerere.rikkahub.ui.components.ui.cardGroupItemShape
+import me.rerere.rikkahub.ui.components.ui.switchItem
 import me.rerere.rikkahub.ui.context.LocalNavController
 import me.rerere.rikkahub.ui.theme.CustomColors
 import me.rerere.rikkahub.utils.fileSizeToString
 import me.rerere.rikkahub.utils.plus
+import me.rerere.rikkahub.utils.writeClipboardText
 import me.rerere.ui.components.RikkaConfirmDialog
 import me.rerere.workspace.RootfsInstallProgress
 import me.rerere.workspace.RootfsInstallStage
 import me.rerere.workspace.WorkspaceFileEntry
+import me.rerere.workspace.WorkspaceManager
 import me.rerere.workspace.WorkspaceMountDir
 import me.rerere.workspace.WorkspaceShellStatus
 import me.rerere.workspace.WorkspaceStorageArea
@@ -120,6 +147,17 @@ import org.koin.core.parameter.parametersOf
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
 import java.io.File
+
+private enum class WorkspaceDetailTab(
+    override val icon: ImageVector,
+    @param:StringRes private val labelRes: Int,
+) : PagerTab {
+    BASIC(HugeIcons.Settings03, R.string.workspace_detail_tab_basic),
+    FILES(HugeIcons.File02, R.string.workspace_detail_tab_files);
+
+    override val label: String
+        @Composable get() = stringResource(labelRes)
+}
 
 @Composable
 fun WorkspaceDetailPage(
@@ -139,7 +177,6 @@ fun WorkspaceDetailPage(
     val pagerState = rememberPagerState(
         initialPage = if (openFiles) 1 else 0,
     ) { 2 }
-    val scope = rememberCoroutineScope()
     var deleteTarget by remember { mutableStateOf<WorkspaceFileEntry?>(null) }
     var renameTarget by remember { mutableStateOf<WorkspaceFileEntry?>(null) }
     var renameFileName by rememberSaveable { mutableStateOf("") }
@@ -284,31 +321,27 @@ fun WorkspaceDetailPage(
                 colors = CustomColors.topBarColors,
             )
         },
-        bottomBar = {
-            NavigationBar {
-                NavigationBarItem(
-                    selected = pagerState.currentPage == 0,
-                    label = { Text(stringResource(R.string.workspace_detail_tab_basic)) },
-                    icon = { Icon(HugeIcons.Settings03, contentDescription = null) },
-                    onClick = { scope.launch { pagerState.animateScrollToPage(0) } },
-                )
-                NavigationBarItem(
-                    selected = pagerState.currentPage == 1,
-                    label = { Text(stringResource(R.string.workspace_detail_tab_files)) },
-                    icon = { Icon(HugeIcons.File02, contentDescription = null) },
-                    onClick = { scope.launch { pagerState.animateScrollToPage(1) } },
-                )
-            }
-        },
         containerColor = CustomColors.topBarColors.containerColor,
     ) { innerPadding ->
-        HorizontalPager(
-            state = pagerState,
+        Column(
             modifier = Modifier
                 .padding(innerPadding)
+                .consumeWindowInsets(innerPadding)
                 .fillMaxSize(),
-        ) { page ->
-            when (page) {
+        ) {
+            PagerTabs(
+                pagerState = pagerState,
+                tabs = WorkspaceDetailTab.entries,
+                modifier = Modifier.padding(vertical = 4.dp),
+                contentPadding = PaddingValues(horizontal = 16.dp),
+            )
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+            ) { page ->
+                when (page) {
                 0 -> WorkspaceBasicPage(
                     workspace = state.workspace,
                     toolApprovalExpanded = state.toolApprovalExpanded,
@@ -412,6 +445,7 @@ fun WorkspaceDetailPage(
                         vm.runScriptInTerminal(entry)
                     },
                 )
+                }
             }
         }
     }
@@ -718,101 +752,61 @@ private fun WorkspaceBasicPage(
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CustomColors.cardColorsOnSurfaceContainer,
+            CardGroup(
+                title = { Text(stringResource(R.string.workspace_detail_workspace_info)) },
             ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                ) {
-                    Text(
-                        text = stringResource(R.string.workspace_detail_workspace_info),
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                    WorkspaceInfoRow(stringResource(R.string.workspace_detail_name), workspace?.name ?: stringResource(R.string.workspace_detail_loading))
-                    WorkspaceInfoRow(stringResource(R.string.workspace_detail_shell_status), workspace?.shellStatus?.toShellStatusLabel() ?: "-")
-                }
+                item(
+                    headlineContent = { Text(stringResource(R.string.workspace_detail_name)) },
+                    supportingContent = {
+                        Text(workspace?.name ?: stringResource(R.string.workspace_detail_loading))
+                    },
+                    leadingContent = { CardGroupIcon(HugeIcons.Tag01) },
+                )
+                item(
+                    headlineContent = { Text(stringResource(R.string.workspace_detail_shell_status)) },
+                    leadingContent = { CardGroupIcon(HugeIcons.ComputerTerminal01) },
+                    trailingContent = { ShellStatusBadge(shellStatus) },
+                )
             }
         }
 
         item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CustomColors.cardColorsOnSurfaceContainer,
+            CardGroup(
+                title = { Text(stringResource(R.string.workspace_detail_enable_shell)) },
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                formItem(
+                    headlineContent = { Text(stringResource(R.string.workspace_detail_area_rootfs)) },
+                    supportingContent = { Text(stringResource(R.string.workspace_detail_enable_shell_desc)) },
+                    leadingContent = { CardGroupIcon(HugeIcons.Bash) },
                 ) {
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
-                    ) {
-                        Text(
-                            text = stringResource(R.string.workspace_detail_compatibility_mode),
-                            style = MaterialTheme.typography.titleSmall,
-                        )
-                        Text(
-                            text = stringResource(R.string.workspace_detail_compatibility_mode_desc),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    Switch(
-                        checked = workspace?.shellCompatibilityMode ?: false,
-                        onCheckedChange = onShellCompatibilityModeChange,
-                        enabled = workspace != null,
-                    )
-                }
-            }
-        }
-
-        item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CustomColors.cardColorsOnSurfaceContainer,
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                ) {
-                    Text(
-                        text = stringResource(R.string.workspace_detail_enable_shell),
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                    Text(
-                        text = stringResource(R.string.workspace_detail_enable_shell_desc),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-
                     Button(
                         onClick = onInstallRootfs,
                         enabled = workspace != null && !installing,
                         modifier = Modifier.fillMaxWidth(),
                     ) {
-                        Icon(HugeIcons.Bash, contentDescription = null)
-                        Text(
-                            text = installButtonText,
-                            modifier = Modifier.padding(start = 8.dp),
+                        Icon(
+                            imageVector = HugeIcons.Bash,
+                            contentDescription = null,
+                            modifier = Modifier.size(ButtonDefaults.IconSize),
                         )
+                        Spacer(Modifier.width(ButtonDefaults.IconSpacing))
+                        Text(installButtonText)
                     }
-
-                    installProgress?.let { progress ->
-                        RootfsProgress(progress)
-                    }
+                    installProgress?.let { RootfsProgress(it) }
                 }
+                switchItem(
+                    checked = workspace?.shellCompatibilityMode ?: false,
+                    onCheckedChange = onShellCompatibilityModeChange,
+                    enabled = workspace != null,
+                    supportingContent = {
+                        Text(stringResource(R.string.workspace_detail_compatibility_mode_desc))
+                    },
+                    leadingContent = { CardGroupIcon(HugeIcons.Wrench01) },
+                    headlineContent = { Text(stringResource(R.string.workspace_detail_compatibility_mode)) },
+                )
             }
         }
 
@@ -835,6 +829,28 @@ private fun WorkspaceBasicPage(
                 onReadOnlyChange = onMountReadOnlyChange,
             )
         }
+    }
+}
+
+@Composable
+private fun ShellStatusBadge(status: String?) {
+    val colorScheme = MaterialTheme.colorScheme
+    val (containerColor, contentColor) = when (status) {
+        WorkspaceShellStatus.READY.name -> colorScheme.primaryContainer to colorScheme.onPrimaryContainer
+        WorkspaceShellStatus.BROKEN.name -> colorScheme.errorContainer to colorScheme.onErrorContainer
+        else -> colorScheme.secondaryContainer to colorScheme.onSecondaryContainer
+    }
+    Surface(
+        shape = CircleShape,
+        color = containerColor,
+        contentColor = contentColor,
+    ) {
+        Text(
+            text = status?.toShellStatusLabel() ?: "-",
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+            style = MaterialTheme.typography.labelLarge,
+            maxLines = 1,
+        )
     }
 }
 
@@ -1351,6 +1367,7 @@ internal fun WorkspaceFilesPage(
     }
     val files = rows.map { it.entry }.filterNot { it.isDirectory }
     val selectedFiles = files.filter { it.path in selectedPaths }
+    val allSelected = files.isNotEmpty() && selectedFiles.size == files.size
     val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
         if (!manualSortEnabled) {
             return@rememberReorderableLazyListState
@@ -1368,13 +1385,22 @@ internal fun WorkspaceFilesPage(
     fun toggleSelection(entry: WorkspaceFileEntry) {
         selectedPaths = if (entry.path in selectedPaths) selectedPaths - entry.path else selectedPaths + entry.path
     }
-    BackHandler(enabled = selecting && isActive) {
+    fun exitSelection() {
         selecting = false
         selectedPaths = emptySet()
     }
+    BackHandler(enabled = selecting && isActive) {
+        exitSelection()
+    }
+    Box(modifier = Modifier.fillMaxSize()) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = contentPadding + PaddingValues(16.dp),
+        contentPadding = contentPadding + PaddingValues(
+            start = 16.dp,
+            top = 16.dp,
+            end = 16.dp,
+            bottom = if (selecting) 128.dp else 16.dp,
+        ),
         verticalArrangement = Arrangement.spacedBy(12.dp),
         state = lazyListState,
     ) {
@@ -1469,30 +1495,15 @@ internal fun WorkspaceFilesPage(
             }
         }
 
-        if (selecting || state.exporting) item {
-            Column {
-                if (selecting) Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    TextButton(
-                        onClick = {
-                            selecting = false
-                            selectedPaths = emptySet()
-                        },
-                    ) { Text("取消多选") }
-                    TextButton(onClick = {
-                        selectedPaths = if (selectedFiles.size == files.size) emptySet() else files.map { it.path }.toSet()
-                    }) { Text(if (files.isNotEmpty() && selectedFiles.size == files.size) "取消全选" else "全选") }
-                    TextButton(
-                        onClick = { onBatchExport(selectedFiles) },
-                        enabled = selectedFiles.isNotEmpty() && !state.exporting,
-                    ) { Text("导出 (${selectedFiles.size})") }
-                }
-                if (state.exporting) {
-                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+        if (state.exporting) item {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
+                color = CustomColors.listItemColors.containerColor,
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
                     Text("正在导出 ${state.exportCompleted}/${state.exportTotal}")
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                 }
             }
         }
@@ -1509,12 +1520,13 @@ internal fun WorkspaceFilesPage(
             }
         }
 
-        items(rows, key = { "${state.area.name}:${it.entry.path}" }) { row ->
+        itemsIndexed(rows, key = { _, row -> "${state.area.name}:${row.entry.path}" }) { index, row ->
             val itemKey = "${state.area.name}:${row.entry.path}"
             val reorderEnabled = manualSortEnabled && isWorkspaceReorderTarget(row.entry.path, draggingPath)
             ReorderableItem(state = reorderableState, key = itemKey, enabled = reorderEnabled) { isDragging ->
                 WorkspaceFileCard(
                     entry = row.entry,
+                    shape = cardGroupItemShape(index, rows.size),
                     depth = row.depth,
                     expanded = row.entry.path in state.expandedPaths,
                     onToggleExpand = { onToggleExpand(row.entry) },
@@ -1548,6 +1560,41 @@ internal fun WorkspaceFilesPage(
             }
         }
     }
+        AnimatedVisibility(
+            visible = selecting,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .offset(y = -ScreenOffset),
+            enter = fadeIn() + scaleIn(initialScale = 0.8f),
+            exit = fadeOut() + scaleOut(targetScale = 0.8f),
+        ) {
+            HorizontalFloatingToolbar(
+                expanded = true,
+                colors = CustomColors.floatingToolbarColors,
+                leadingContent = {
+                    IconButton(onClick = { exitSelection() }) {
+                        Icon(HugeIcons.Cancel01, contentDescription = "取消多选")
+                    }
+                },
+                trailingContent = {
+                    IconButton(onClick = {
+                        selectedPaths = if (allSelected) emptySet() else files.map { it.path }.toSet()
+                    }) {
+                        Icon(HugeIcons.CheckList, contentDescription = if (allSelected) "取消全选" else "全选")
+                    }
+                },
+            ) {
+                Button(
+                    onClick = { onBatchExport(selectedFiles) },
+                    enabled = selectedFiles.isNotEmpty() && !state.exporting,
+                ) {
+                    Icon(HugeIcons.FileExport, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
+                    Spacer(Modifier.width(ButtonDefaults.IconSpacing))
+                    Text("导出 (${selectedFiles.size})")
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -1555,20 +1602,20 @@ private fun WorkspaceAreaSelector(
     selected: WorkspaceStorageArea,
     onSelected: (WorkspaceStorageArea) -> Unit,
 ) {
-    val areas = listOf(
-        WorkspaceStorageArea.FILES to stringResource(R.string.workspace_detail_area_files),
-        WorkspaceStorageArea.LINUX to stringResource(R.string.workspace_detail_area_rootfs),
-    )
-    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-        areas.forEachIndexed { index, (area, label) ->
-            SegmentedButton(
-                selected = selected == area,
-                onClick = { onSelected(area) },
-                shape = SegmentedButtonDefaults.itemShape(index, areas.size),
-            ) {
-                Text(label)
-            }
-        }
+    ConnectedChoiceButtons(
+        options = WorkspaceStorageArea.entries,
+        selected = selected,
+        onSelect = onSelected,
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+    ) { area, isSelected ->
+        ConnectedChoiceLabel(
+            text = when (area) {
+                WorkspaceStorageArea.FILES -> stringResource(R.string.workspace_detail_area_files)
+                WorkspaceStorageArea.LINUX -> stringResource(R.string.workspace_detail_area_rootfs)
+            },
+            selected = isSelected,
+            icon = HugeIcons.Tick01,
+        )
     }
 }
 
@@ -1578,31 +1625,39 @@ private fun WorkspacePathBar(
     canGoUp: Boolean,
     onGoUp: () -> Unit,
 ) {
-    Row(
+    Surface(
         modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        shape = androidx.compose.foundation.shape.CircleShape,
+        color = CustomColors.listItemColors.containerColor,
     ) {
-        IconButton(
-            enabled = canGoUp,
-            onClick = onGoUp,
+        Row(
+            modifier = Modifier.padding(start = 4.dp, top = 4.dp, bottom = 4.dp, end = 20.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Icon(HugeIcons.ArrowTurnBackward, contentDescription = null)
+            androidx.compose.material3.FilledTonalIconButton(
+                enabled = canGoUp,
+                onClick = onGoUp,
+            ) {
+                Icon(HugeIcons.ArrowTurnBackward, contentDescription = null)
+            }
+            Text(
+                text = path.ifBlank { "/" },
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.bodyMedium,
+                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.StartEllipsis,
+            )
         }
-        Text(
-            text = path.ifBlank { "/" },
-            modifier = Modifier.weight(1f),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
     }
 }
 
 @Composable
 private fun WorkspaceFileCard(
     entry: WorkspaceFileEntry,
+    shape: Shape,
     depth: Int,
     expanded: Boolean,
     selecting: Boolean,
@@ -1624,18 +1679,18 @@ private fun WorkspaceFileCard(
     area: WorkspaceStorageArea,
     onResolvePreview: (WorkspaceFileEntry, (File?) -> Unit) -> Unit,
 ) {
-    var menuExpanded by remember { mutableStateOf(false) }
+    val context = LocalContext.current
 
-    Card(
+    Surface(
         modifier = Modifier
             .fillMaxWidth()
+            .padding(bottom = 2.dp)
             .graphicsLayer { alpha = if (isDragging) 0.85f else 1f },
-        colors = if (highlighted) {
-            CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.secondaryContainer,
-            )
+        shape = shape,
+        color = if (highlighted || selected) {
+            MaterialTheme.colorScheme.secondaryContainer
         } else {
-            CustomColors.cardColorsOnSurfaceContainer
+            CustomColors.listItemColors.containerColor
         },
     ) {
         Row(
@@ -1683,18 +1738,18 @@ private fun WorkspaceFileCard(
                 Column(
                     modifier = Modifier
                         .weight(1f)
-                        .padding(horizontal = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                        .padding(horizontal = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
                     Text(
                         text = entry.name,
-                        style = MaterialTheme.typography.titleSmallEmphasized,
+                        style = MaterialTheme.typography.bodyLarge,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
                         text = if (entry.isDirectory) entry.path else "${entry.path} · ${entry.sizeBytes.fileSizeToString()}",
-                        style = MaterialTheme.typography.bodySmall,
+                        style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -1714,77 +1769,53 @@ private fun WorkspaceFileCard(
                     )
                 }
             }
-            if (!selecting) Box {
-                IconButton(onClick = { menuExpanded = true }) {
-                    Icon(HugeIcons.MoreVertical, contentDescription = null)
-                }
-                DropdownMenu(
-                    expanded = menuExpanded,
-                    onDismissRequest = { menuExpanded = false },
-                ) {
-                    if (!entry.isDirectory && area == WorkspaceStorageArea.FILES) {
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.common_rename)) },
-                            leadingIcon = { Icon(HugeIcons.PencilEdit01, contentDescription = null) },
+            if (!selecting) {
+                ItemActionMenu(
+                    actions = buildList {
+                        add(ItemAction(
+                            text = stringResource(R.string.workspace_detail_copy_path),
+                            icon = HugeIcons.Copy01,
                             onClick = {
-                                menuExpanded = false
-                                onRename()
+                                context.writeClipboardText(entry.rootfsPath(area))
+                                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+                                    Toast.makeText(context, R.string.workspace_detail_path_copied, Toast.LENGTH_SHORT).show()
+                                }
                             },
-                        )
-                    }
-                    DropdownMenuItem(
-                            text = { Text(stringResource(R.string.common_export)) },
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = HugeIcons.FileImport,
-                                    contentDescription = null,
-                                )
-                            },
-                            onClick = {
-                                menuExpanded = false
-                                onExport()
-                            },
-                        )
-                    if (!entry.isDirectory) {
-                        if (area == WorkspaceStorageArea.FILES && isRunnableScript(entry.name)) {
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.workspace_script_run)) },
-                                leadingIcon = { Icon(HugeIcons.Play, contentDescription = null) },
-                                onClick = {
-                                    menuExpanded = false
-                                    onRunScript()
-                                },
-                            )
+                        ))
+                        if (!entry.isDirectory && area == WorkspaceStorageArea.FILES) {
+                            add(ItemAction(
+                                text = stringResource(R.string.common_rename),
+                                icon = HugeIcons.PencilEdit01,
+                                onClick = onRename,
+                            ))
                         }
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.common_share)) },
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = HugeIcons.Share08,
-                                    contentDescription = null,
-                                )
-                            },
-                            onClick = {
-                                menuExpanded = false
-                                onShare()
-                            },
-                        )
-                    }
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.common_delete), color = MaterialTheme.colorScheme.error) },
-                        leadingIcon = {
-                            Icon(
-                                imageVector = HugeIcons.Delete01,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.error,
-                            )
-                        },
-                        onClick = {
-                            menuExpanded = false
-                            onDelete()
-                        },
-                    )
-                }
+                        add(ItemAction(
+                            text = stringResource(R.string.common_export),
+                            icon = HugeIcons.FileImport,
+                            onClick = onExport,
+                        ))
+                        if (!entry.isDirectory) {
+                            if (area == WorkspaceStorageArea.FILES && isRunnableScript(entry.name)) {
+                                add(ItemAction(
+                                    text = stringResource(R.string.workspace_script_run),
+                                    icon = HugeIcons.Play,
+                                    onClick = onRunScript,
+                                ))
+                            }
+                            add(ItemAction(
+                                text = stringResource(R.string.common_share),
+                                icon = HugeIcons.Share08,
+                                onClick = onShare,
+                            ))
+                        }
+                        add(ItemAction(
+                            text = stringResource(R.string.common_delete),
+                            icon = HugeIcons.Delete01,
+                            destructive = true,
+                            onClick = onDelete,
+                        ))
+                    },
+                )
             }
         }
     }
@@ -1794,6 +1825,11 @@ private fun isRunnableScript(name: String): Boolean =
     name.substringAfterLast('.', "").lowercase() in setOf(
         "sh", "bash", "zsh", "py", "js", "mjs", "cjs", "kts", "kt", "rb", "pl", "php",
     ) || name.equals("makefile", ignoreCase = true)
+
+private fun WorkspaceFileEntry.rootfsPath(area: WorkspaceStorageArea): String = when (area) {
+    WorkspaceStorageArea.FILES -> "${WorkspaceManager.ROOTFS_WORKSPACE_DIR}/$path"
+    WorkspaceStorageArea.LINUX -> "/$path"
+}
 
 
 @Composable
@@ -1825,8 +1861,8 @@ private fun WorkspaceFileLeadingVisual(
                     .build(),
                 contentDescription = entry.name,
                 modifier = Modifier
-                    .size(48.dp)
-                    .clip(RoundedCornerShape(4.dp)),
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(12.dp)),
                 contentScale = ContentScale.Crop,
                 onError = { failed = true },
             )
@@ -1834,21 +1870,14 @@ private fun WorkspaceFileLeadingVisual(
         }
     }
 
-    Box(
-        modifier = Modifier.size(if (isImage) 48.dp else 22.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(
-            imageVector = if (entry.isDirectory) HugeIcons.Folder01 else HugeIcons.File02,
-            contentDescription = null,
-            modifier = Modifier.size(22.dp),
-            tint = if (entry.isDirectory) {
-                MaterialTheme.colorScheme.primary
-            } else {
-                MaterialTheme.colorScheme.onSurfaceVariant
-            },
-        )
-    }
+    CardGroupIcon(
+        icon = if (entry.isDirectory) HugeIcons.Folder01 else HugeIcons.File02,
+        containerColor = if (entry.isDirectory) {
+            MaterialTheme.colorScheme.primaryContainer
+        } else {
+            MaterialTheme.colorScheme.secondaryContainer
+        },
+    )
 }
 
 @Composable

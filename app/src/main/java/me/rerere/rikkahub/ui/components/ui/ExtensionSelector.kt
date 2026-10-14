@@ -23,8 +23,8 @@ import me.rerere.hugeicons.stroke.Puzzle
 import me.rerere.hugeicons.stroke.Zap
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.datastore.Settings
-import me.rerere.rikkahub.data.files.SkillManager
-import me.rerere.rikkahub.data.files.SkillMetadata
+import me.rerere.rikkahub.data.skills.SkillManager
+import me.rerere.rikkahub.data.skills.SkillMetadata
 import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.ui.components.ai.ExtensionEmptyState
 import me.rerere.rikkahub.ui.components.ai.LorebooksContent
@@ -35,12 +35,15 @@ import org.koin.compose.koinInject
 
 internal enum class ExtensionTab(
     override val icon: ImageVector,
-    @param:StringRes override val label: Int,
+    @param:StringRes private val labelRes: Int,
 ) : PagerTab {
     QUICK_MESSAGES(HugeIcons.Zap, R.string.extension_selector_tab_quick_messages),
     MODE_INJECTIONS(HugeIcons.MagicWand01, R.string.extension_selector_tab_mode_injections),
     LOREBOOKS(HugeIcons.Book01, R.string.extension_selector_tab_lorebooks),
-    SKILLS(HugeIcons.Puzzle, R.string.extension_selector_tab_skills),
+    SKILLS(HugeIcons.Puzzle, R.string.extension_selector_tab_skills);
+
+    override val label: String
+        @Composable get() = stringResource(labelRes)
 }
 
 

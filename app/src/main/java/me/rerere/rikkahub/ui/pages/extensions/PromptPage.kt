@@ -87,8 +87,8 @@ import me.rerere.hugeicons.stroke.Share03
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.export.LorebookSerializer
 import me.rerere.rikkahub.data.export.ModeInjectionSerializer
-import me.rerere.rikkahub.data.export.rememberExporter
-import me.rerere.rikkahub.data.export.rememberImporter
+import me.rerere.rikkahub.ui.hooks.rememberExporter
+import me.rerere.rikkahub.ui.hooks.rememberImporter
 import me.rerere.rikkahub.data.model.InjectionPosition
 import me.rerere.rikkahub.data.model.Lorebook
 import me.rerere.rikkahub.data.model.PromptInjection
@@ -119,10 +119,13 @@ import sh.calvin.reorderable.rememberReorderableLazyListState
 
 private enum class PromptTab(
     override val icon: ImageVector,
-    @param:StringRes override val label: Int,
+    @param:StringRes private val labelRes: Int,
 ) : PagerTab {
     MODE_INJECTIONS(HugeIcons.MagicWand01, R.string.prompt_page_mode_injection_tab),
-    LOREBOOKS(HugeIcons.Book01, R.string.prompt_page_lorebook_tab),
+    LOREBOOKS(HugeIcons.Book01, R.string.prompt_page_lorebook_tab);
+
+    override val label: String
+        @Composable get() = stringResource(labelRes)
 }
 
 @Composable

@@ -55,8 +55,8 @@ import coil3.network.cachecontrol.CacheControlCacheStrategy
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import coil3.request.crossfade
 import coil3.svg.SvgDecoder
-import com.dokar.sonner.Toaster
-import com.dokar.sonner.rememberToasterState
+import me.rerere.ui.toast.Toaster
+import me.rerere.ui.toast.rememberToasterState
 import kotlinx.serialization.Serializable
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -123,6 +123,7 @@ import me.rerere.rikkahub.ui.pages.setting.SettingPreferencesUIPage
 import me.rerere.rikkahub.ui.pages.setting.SettingThemePage
 import me.rerere.rikkahub.ui.pages.setting.SettingDonatePage
 import me.rerere.rikkahub.ui.pages.setting.SettingFilesPage
+import me.rerere.rikkahub.ui.pages.setting.SettingMcpDetailPage
 import me.rerere.rikkahub.ui.pages.setting.SettingMcpPage
 import me.rerere.rikkahub.ui.pages.setting.SettingMediaPage
 import me.rerere.rikkahub.ui.pages.setting.SettingModelPage
@@ -138,7 +139,6 @@ import me.rerere.rikkahub.ui.pages.share.handler.ShareHandlerPage
 import me.rerere.rikkahub.ui.pages.stats.StatsPage
 import me.rerere.rikkahub.ui.pages.translator.TranslatorPage
 import me.rerere.rikkahub.ui.pages.webview.WebViewPage
-import me.rerere.rikkahub.ui.theme.LocalDarkMode
 import me.rerere.rikkahub.ui.theme.RikkahubTheme
 import me.rerere.rikkahub.utils.CrashHandler
 import me.rerere.rikkahub.utils.openUsageAccessSettings
@@ -322,13 +322,6 @@ class RouteActivity : ComponentActivity() {
                 LocalTTSState provides tts,
                 LocalASRState provides asr,
             ) {
-                Toaster(
-                    state = toastState,
-                    darkTheme = LocalDarkMode.current,
-                    richColors = true,
-                    alignment = Alignment.TopCenter,
-                    showCloseButton = true,
-                )
                 TTSController()
                 Box(
                     modifier = Modifier
@@ -542,6 +535,9 @@ class RouteActivity : ComponentActivity() {
                             entry<Screen.SettingMcp> {
                                 SettingMcpPage()
                             }
+                            entry<Screen.SettingMcpDetail> { key ->
+                                SettingMcpDetailPage(id = Uuid.parse(key.serverId))
+                            }
                             entry<Screen.SettingTermux> {
                                 SettingTermuxPage()
                             }
@@ -649,6 +645,10 @@ class RouteActivity : ComponentActivity() {
                             }
                         }
                     }
+                    Toaster(
+                        state = toastState,
+                        modifier = Modifier.align(Alignment.TopCenter),
+                    )
                 }
             }
         }
@@ -784,6 +784,9 @@ sealed interface Screen : NavKey {
 
     @Serializable
     data object SettingMcp : Screen
+
+    @Serializable
+    data class SettingMcpDetail(val serverId: String) : Screen
 
     @Serializable
     data object SettingMedia : Screen
