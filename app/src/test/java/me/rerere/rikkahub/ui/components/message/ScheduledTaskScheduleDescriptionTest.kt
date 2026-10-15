@@ -8,6 +8,17 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class ScheduledTaskScheduleDescriptionTest {
+    @Test fun rendersExecutionModelWithProviderAndSupportsOlderSnapshots() {
+        assertEquals("模型 A · 服务商 B", scheduledTaskModelDescription(buildJsonObject {
+            put("model_name", "模型 A")
+            put("model_provider", "服务商 B")
+        }))
+        assertEquals("模型 A", scheduledTaskModelDescription(buildJsonObject { put("model_name", "模型 A") }))
+        assertEquals("跟随助手", scheduledTaskModelDescription(buildJsonObject { put("mode", "NEW_CHAT") }))
+        assertEquals("跟随目标会话", scheduledTaskModelDescription(buildJsonObject { put("mode", "FOLLOW_UP") }))
+        assertEquals("指定模型（名称未记录）", scheduledTaskModelDescription(buildJsonObject { put("model_override_id", "legacy-model") }))
+    }
+
     @Test fun rendersEachScheduleInChinese() {
         assertEquals("仅执行一次：2026-10-09 10:00", scheduledTaskScheduleDescription(buildJsonObject {
             put("schedule_type", "ONCE")

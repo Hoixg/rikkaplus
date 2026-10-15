@@ -12,11 +12,38 @@ import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.model.Conversation
+import me.rerere.rikkahub.data.model.Assistant
+import me.rerere.rikkahub.data.model.ConversationConfig
 import me.rerere.rikkahub.data.repository.ScheduledTaskSchedule
 
 class ScheduledTaskToolsTest {
     private fun args(json: String) = Json.parseToJsonElement(json).jsonObject
     private fun task() = ScheduledTaskEntity("my-task", "Task", "Prompt", "assistant-a", createdAt = 1, updatedAt = 1, revision = "rev")
+
+    @Test fun approvalSnapshotShowsTheEffectiveExecutionModelAndProvider() {
+        val global = Model(modelId = "global", displayName = "全局模型")
+        val assistantModel = Model(modelId = "assistant", displayName = "助手模型")
+        val conversationModel = Model(modelId = "conversation", displayName = "会话模型")
+        val overrideModel = Model(modelId = "override", displayName = "任务模型")
+        val assistant = Assistant(chatModelId = assistantModel.id)
+        val settings = Settings(
+            chatModelId = global.id,
+            assistants = listOf(assistant),
+            providers = listOf(ProviderSetting.OpenAI(name = "测试服务", models = listOf(global, assistantModel, conversationModel, overrideModel))),
+        )
+        val task = task().copy(assistantId = assistant.id.toString())
+        val target = Conversation.ofId(Uuid.random(), assistant.id).copy(config = ConversationConfig(chatModelId = conversationModel.id))
+        fun modelName(task: ScheduledTaskEntity, target: Conversation? = null, config: Settings = settings): String? =
+            taskApprovalSnapshot(task, target, config)["model_name"]?.jsonPrimitive?.contentOrNull
+
+        assertEquals("助手模型", modelName(task))
+        assertEquals("全局模型", modelName(task, config = settings.copy(assistants = listOf(assistant.copy(chatModelId = null)))))
+        assertEquals("会话模型", modelName(task.copy(mode = "FOLLOW_UP"), target))
+        assertEquals("会话模型", modelName(task.copy(mode = "REGENERATE"), target))
+        assertEquals("任务模型", modelName(task.copy(mode = "FOLLOW_UP", modelOverrideId = overrideModel.id.toString()), target))
+        assertEquals("任务模型", modelName(task.copy(mode = "FOLLOW_UP"), target.copy(modelOverrideId = overrideModel.id)))
+        assertEquals("测试服务", taskApprovalSnapshot(task, null, settings)["model_provider"]?.jsonPrimitive?.contentOrNull)
+    }
     @Test fun createDefaultsToDailyNineOClock() {
         val parsed = parseSchedule(args("{}"))
         assertEquals("DAILY", parsed.type.name)

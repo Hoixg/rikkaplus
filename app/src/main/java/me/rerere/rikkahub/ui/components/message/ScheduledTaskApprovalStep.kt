@@ -13,6 +13,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -162,12 +163,21 @@ internal fun ChainOfThoughtScope.ScheduledTaskApprovalStep(
                             )
                             HorizontalDivider()
                             ApprovalDetail(
-                                label = "提示词",
-                                oldValue = before?.get("prompt")?.jsonPrimitive?.contentOrNull,
-                                newValue = after["prompt"]?.jsonPrimitive?.contentOrNull.orEmpty(),
+                                label = "执行模型",
+                                oldValue = before?.let(::scheduledTaskModelDescription),
+                                newValue = scheduledTaskModelDescription(after),
                                 showChange = action == "update",
-                                longText = true,
                             )
+                            HorizontalDivider()
+                            key(tool.toolCallId) {
+                                ApprovalDetail(
+                                    label = "提示词",
+                                    oldValue = before?.get("prompt")?.jsonPrimitive?.contentOrNull,
+                                    newValue = after["prompt"]?.jsonPrimitive?.contentOrNull.orEmpty(),
+                                    showChange = action == "update",
+                                    longText = true,
+                                )
+                            }
                         }
                     }
                 } else {
@@ -187,19 +197,50 @@ private fun ApprovalDetail(
     longText: Boolean = false,
 ) {
     val changed = showChange && oldValue != null && oldValue != newValue
+    var showOldValue by remember(oldValue, newValue) { mutableStateOf(false) }
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-        Text(if (changed) "$label · 已修改" else label,
-            style = MaterialTheme.typography.labelSmall,
-            color = if (changed) MaterialTheme.colorScheme.primary
-                else MaterialTheme.colorScheme.onSurfaceVariant)
-        if (changed && longText) {
-            Text("修改前：$oldValue", style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text("修改后：$newValue", style = MaterialTheme.typography.bodyMedium)
-        } else {
-            Text(if (changed) "$oldValue → $newValue" else newValue.ifBlank { "（空）" },
-                style = MaterialTheme.typography.bodyMedium)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(if (changed) "$label · 已修改" else label,
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.labelSmall,
+                color = if (changed) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.onSurfaceVariant)
+            if (changed && longText) {
+                TextButton(onClick = { showOldValue = !showOldValue }) {
+                    Text(if (showOldValue) "收起旧提示词" else "对比旧提示词")
+                }
+            }
         }
+        Text(if (changed && !longText) "$oldValue → $newValue" else newValue.ifBlank { "（空）" },
+            style = MaterialTheme.typography.bodyMedium)
+        if (changed && longText && showOldValue) {
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceContainer,
+                shape = MaterialTheme.shapes.medium,
+            ) {
+                Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("旧提示词", style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(oldValue.orEmpty().ifBlank { "（空）" }, style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+    }
+}
+
+internal fun scheduledTaskModelDescription(config: JsonObject): String {
+    val model = config["model_name"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
+    val provider = config["model_provider"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
+    if (model != null) return listOfNotNull(model, provider).joinToString(" · ")
+    return when {
+        config["model_override_id"]?.jsonPrimitive?.contentOrNull != null -> "指定模型（名称未记录）"
+        config["mode"]?.jsonPrimitive?.contentOrNull in setOf("FOLLOW_UP", "REGENERATE") -> "跟随目标会话"
+        else -> "跟随助手"
     }
 }
 

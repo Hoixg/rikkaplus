@@ -68,6 +68,16 @@ fun ChainOfThoughtScope.ImageGenerationToolStep(
     }
     val images = tool.output.filterIsInstance<UIMessagePart.Image>()
     var showSheet by remember(tool.toolCallId) { mutableStateOf(false) }
+    var deciding by remember(tool.toolCallId, tool.input, tool.approvalState) { mutableStateOf(false) }
+    val submitApproval: (Boolean, String?) -> Unit = { approved, prompt ->
+        if (tool.isPending && !deciding && onApproval != null &&
+            (!approved || (request != null && !prompt.isNullOrBlank()))
+        ) {
+            deciding = true
+            showSheet = false
+            onApproval(tool.toolCallId, approved, "", prompt)
+        }
+    }
     // An external approval, cancellation or branch change invalidates the editing view.
     LaunchedEffect(tool.isPending) { if (!tool.isPending) showSheet = false }
     val title = when {
@@ -83,7 +93,7 @@ fun ChainOfThoughtScope.ImageGenerationToolStep(
     }
 
     ControlledChainOfThoughtStep(
-        expanded = images.isNotEmpty() || (error != null && !cancelled),
+        expanded = tool.isPending || images.isNotEmpty() || (error != null && !cancelled),
         onExpandedChange = {},
         icon = {
             if (loading && !tool.isPending) DotLoading(size = 10.dp)
@@ -96,9 +106,54 @@ fun ChainOfThoughtScope.ImageGenerationToolStep(
             { TextButton(onClick = { showSheet = true }) { Text(stringResource(R.string.chat_image_generation_review)) } }
         } else null,
         onClick = { showSheet = true },
-        content = if (images.isNotEmpty() || (error != null && !cancelled)) {
+        content = if (tool.isPending || images.isNotEmpty() || (error != null && !cancelled)) {
             {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    if (tool.isPending) {
+                        if (request != null) {
+                            Text(
+                                stringResource(R.string.chat_image_generation_model, request.target.modelName, request.target.providerName),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Text(
+                                stringResource(R.string.chat_image_generation_parameters, request.count,
+                                    if (request.size == "auto") stringResource(R.string.chat_image_generation_size_auto) else request.size),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Text(
+                                request.prompt,
+                                style = MaterialTheme.typography.bodyMedium,
+                                maxLines = 4,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            if (request.references.isNotEmpty()) {
+                                Text(
+                                    stringResource(R.string.chat_image_generation_references, request.references.size),
+                                    style = MaterialTheme.typography.labelMedium,
+                                )
+                                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    items(request.references, key = { it.id }) { reference ->
+                                        ZoomableAsyncImage(reference.url, null, Modifier.size(64.dp))
+                                    }
+                                }
+                            }
+                        }
+                        if (onApproval != null) {
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                TextButton(
+                                    enabled = !deciding,
+                                    onClick = { submitApproval(false, null) },
+                                ) { Text(stringResource(R.string.chat_message_tool_deny)) }
+                                FilledTonalButton(
+                                    enabled = request != null && !deciding,
+                                    modifier = Modifier.weight(1f),
+                                    onClick = { submitApproval(true, request?.prompt) },
+                                ) { Text(stringResource(R.string.chat_image_generation_approve)) }
+                            }
+                        }
+                    }
                     if (images.isNotEmpty()) {
                         BoxWithConstraints(Modifier.fillMaxWidth()) {
                             val imageWidth = maxWidth
@@ -134,7 +189,10 @@ fun ChainOfThoughtScope.ImageGenerationToolStep(
                 tool = tool,
                 request = request,
                 error = if (cancelled) stringResource(R.string.chat_image_generation_cancelled) else error,
-                onApproval = onApproval,
+                deciding = deciding,
+                onApproval = if (onApproval != null) {
+                    { _, approved, _, prompt -> submitApproval(approved, prompt) }
+                } else null,
                 onDismiss = { showSheet = false },
             )
         }
@@ -146,11 +204,11 @@ private fun ImageGenerationRequestContent(
     tool: UIMessagePart.Tool,
     request: ImageToolRequest?,
     error: String?,
+    deciding: Boolean,
     onApproval: ((String, Boolean, String, String?) -> Unit)?,
     onDismiss: () -> Unit,
 ) {
     var prompt by remember(tool.input) { mutableStateOf(request?.prompt.orEmpty()) }
-    var deciding by remember { mutableStateOf(false) }
     Column(
         modifier = Modifier.fillMaxWidth().heightIn(max = 640.dp)
             .imePadding().verticalScroll(rememberScrollState()).padding(16.dp),
@@ -203,12 +261,12 @@ private fun ImageGenerationRequestContent(
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TextButton(
                     enabled = !deciding,
-                    onClick = { deciding = true; onApproval(tool.toolCallId, false, "", null); onDismiss() },
+                    onClick = { onApproval(tool.toolCallId, false, "", null); onDismiss() },
                 ) { Text(stringResource(R.string.chat_message_tool_deny)) }
                 FilledTonalButton(
                     enabled = request != null && prompt.isNotBlank() && !deciding,
                     modifier = Modifier.weight(1f),
-                    onClick = { deciding = true; onApproval(tool.toolCallId, true, "", prompt); onDismiss() },
+                    onClick = { onApproval(tool.toolCallId, true, "", prompt); onDismiss() },
                 ) { Text(stringResource(R.string.chat_image_generation_approve)) }
             }
         }

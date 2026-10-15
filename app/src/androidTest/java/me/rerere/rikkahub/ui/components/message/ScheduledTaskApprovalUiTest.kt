@@ -41,6 +41,8 @@ class ScheduledTaskApprovalUiTest {
         put("enabled", true)
         put("notify", true)
         put("show_preview", true)
+        put("model_name", "执行模型 A")
+        put("model_provider", "服务商 B")
     }
 
     private fun call(action: String, before: JsonObject?, after: JsonObject) =
@@ -70,6 +72,7 @@ class ScheduledTaskApprovalUiTest {
             }
         }
         compose.onNodeWithText("创建定时任务").assertIsDisplayed()
+        compose.onNodeWithText("执行模型 A · 服务商 B").assertExists()
         compose.onNodeWithText("仅执行一次：2026-10-09 10:00").assertExists()
         compose.onNodeWithText("很长的提示词。".repeat(80)).assertExists()
         compose.onNodeWithText("执行模式").assertDoesNotExist()
@@ -90,5 +93,25 @@ class ScheduledTaskApprovalUiTest {
         compose.onNodeWithText("批准").assertIsDisplayed()
         compose.onNodeWithText("仅执行一次：2026-10-09 10:00").assertExists()
         compose.onNodeWithText("内容预览").assertDoesNotExist()
+    }
+
+    @Test fun updateShowsNewPromptAndOnlyRevealsOldPromptWhenRequested() {
+        val selected = call("update", config("任务", "旧提示词内容"), config("任务", "新提示词内容"))
+        compose.setContent {
+            MaterialTheme {
+                Box(Modifier.width(280.dp)) {
+                    ChainOfThought(steps = listOf(selected)) { tool ->
+                        ScheduledTaskApprovalStep(tool) { _, _, _, _ -> }
+                    }
+                }
+            }
+        }
+        compose.onNodeWithText("新提示词内容").assertExists()
+        compose.onNodeWithText("旧提示词内容").assertDoesNotExist()
+        compose.onNodeWithText("对比旧提示词").performClick()
+        compose.onNodeWithText("旧提示词内容").assertExists()
+        compose.onNodeWithText("新提示词内容").assertExists()
+        compose.onNodeWithText("收起旧提示词").performClick()
+        compose.onNodeWithText("旧提示词内容").assertDoesNotExist()
     }
 }

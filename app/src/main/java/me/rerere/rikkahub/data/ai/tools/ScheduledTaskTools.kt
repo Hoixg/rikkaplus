@@ -26,7 +26,10 @@ import me.rerere.rikkahub.data.repository.ConversationRepository
 import me.rerere.rikkahub.data.repository.ScheduledTaskSchedule
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.findModelById
+import me.rerere.rikkahub.data.datastore.findProvider
+import me.rerere.rikkahub.data.datastore.getAssistantById
 import me.rerere.rikkahub.data.model.Conversation
+import me.rerere.rikkahub.utils.getConversationChatModel
 import me.rerere.rikkahub.utils.JsonInstantPretty
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -295,10 +298,20 @@ private suspend fun validateTaskTargets(task: ScheduledTaskEntity, conversations
 
 private suspend fun approvalTaskConfiguration(task: ScheduledTaskEntity, conversations: ConversationRepository?, settings: Settings): JsonObject {
     val target = task.targetConversationId?.let { Uuid.parse(it) }?.let { conversations?.getConversationById(it) }
+    return taskApprovalSnapshot(task, target, settings)
+}
+
+internal fun taskApprovalSnapshot(task: ScheduledTaskEntity, target: Conversation?, settings: Settings): JsonObject {
+    val model = when {
+        task.modelOverrideId != null -> settings.findModelById(Uuid.parse(task.modelOverrideId))
+        task.mode != "NEW_CHAT" && target != null -> settings.getConversationChatModel(target)
+        else -> settings.findModelById(settings.getAssistantById(Uuid.parse(task.assistantId))?.chatModelId ?: settings.chatModelId)
+    }
     return buildJsonObject {
         taskConfiguration(task).forEach { (key, value) -> put(key, value) }
         put("target_conversation_title", target?.title)
-        put("model_name", task.modelOverrideId?.let { settings.findModelById(Uuid.parse(it))?.displayName })
+        put("model_name", model?.let { it.displayName.ifBlank { it.modelId } })
+        put("model_provider", model?.findProvider(settings.providers)?.name)
     }
 }
 
