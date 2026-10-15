@@ -78,6 +78,54 @@ class WorkspaceDetailVMTest {
     }
 
     @Test
+    fun `renaming an expanded folder remaps its subtree without changing siblings`() {
+        val original = WorkspaceDetailState(
+            entries = listOf(dir("src", "src"), dir("src2", "src2")),
+            expandedPaths = setOf("src", "src/sub", "src2"),
+            childrenCache = mapOf(
+                "src" to listOf(dir("sub", "src/sub")),
+                "src/sub" to listOf(file("a", "src/sub/a")),
+                "src2" to listOf(file("b", "src2/b")),
+            ),
+            highlightPath = "src/sub/a",
+        )
+
+        val renamed = original.withRenamedWorkspaceEntry(dir("src", "src"), dir("docs", "docs"))
+
+        assertEquals(listOf("docs", "src2"), renamed.entries.map { it.path })
+        assertEquals(setOf("docs", "docs/sub", "src2"), renamed.expandedPaths)
+        assertEquals(setOf("docs", "docs/sub", "src2"), renamed.childrenCache.keys)
+        assertEquals("docs/sub/a", renamed.highlightPath)
+        assertEquals(
+            listOf("docs", "docs/sub", "docs/sub/a", "src2", "src2/b"),
+            flattenWorkspaceTree(renamed.entries, renamed.expandedPaths, renamed.childrenCache).map { it.entry.path },
+        )
+    }
+
+    @Test
+    fun `renaming a folder migrates manual order for the parent and nested folders`() {
+        val files = WorkspaceStorageArea.FILES
+        val original = mapOf(
+            workspaceFileOrderKey(files, "") to listOf("src2", "src"),
+            workspaceFileOrderKey(files, "src") to listOf("src/sub", "src/a"),
+            workspaceFileOrderKey(files, "src/sub") to listOf("src/sub/b"),
+            workspaceFileOrderKey(files, "src2") to listOf("src2/c"),
+            workspaceFileOrderKey(files, "docs") to listOf("docs/stale"),
+            workspaceFileOrderKey(WorkspaceStorageArea.LINUX, "src") to listOf("src/x"),
+        )
+
+        val renamed = remapWorkspaceFileOrders(original, "src", "docs")
+
+        assertEquals(listOf("src2", "docs"), renamed[workspaceFileOrderKey(files, "")])
+        assertEquals(listOf("docs/sub", "docs/a"), renamed[workspaceFileOrderKey(files, "docs")])
+        assertEquals(listOf("docs/sub/b"), renamed[workspaceFileOrderKey(files, "docs/sub")])
+        assertEquals(listOf("src2/c"), renamed[workspaceFileOrderKey(files, "src2")])
+        assertEquals(listOf("src/x"), renamed[workspaceFileOrderKey(WorkspaceStorageArea.LINUX, "src")])
+        assertFalse(workspaceFileOrderKey(files, "src") in renamed)
+        assertFalse(workspaceFileOrderKey(files, "src/sub") in renamed)
+    }
+
+    @Test
     fun `fresh listings prune caches of directories that no longer exist`() {
         val original = WorkspaceDetailState(
             entries = listOf(dir("src", "src"), dir("docs", "docs")),

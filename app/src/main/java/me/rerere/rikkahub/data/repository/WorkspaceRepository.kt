@@ -376,10 +376,10 @@ class WorkspaceRepository(
         manager.moveFile(workspace.root, source, target, overwrite)
     }
 
-    suspend fun renameFile(id: String, path: String, newName: String): WorkspaceFileEntry = withContext(Dispatchers.IO) {
+    suspend fun renameEntry(id: String, path: String, newName: String): WorkspaceFileEntry = withContext(Dispatchers.IO) {
         val workspace = dao.getById(id) ?: error("Workspace not found: $id")
         manager.ensureWorkspace(workspace.root)
-        manager.renameFile(workspace.root, path, newName)
+        manager.renameEntry(workspace.root, path, newName)
     }
 
     suspend fun executeCommand(

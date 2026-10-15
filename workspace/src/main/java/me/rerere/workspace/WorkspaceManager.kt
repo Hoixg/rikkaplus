@@ -292,8 +292,8 @@ class WorkspaceManager(
     fun moveFile(root: String, source: String, target: String, overwrite: Boolean = false): WorkspaceFileEntry =
         fileSystem.move(filesDir(root), source, target, overwrite)
 
-    fun renameFile(root: String, path: String, newName: String): WorkspaceFileEntry =
-        fileSystem.renameFile(filesDir(root), path, newName)
+    fun renameEntry(root: String, path: String, newName: String): WorkspaceFileEntry =
+        fileSystem.renameEntry(filesDir(root), path, newName)
 
     fun glob(root: String, pattern: String, path: String = ""): List<WorkspaceFileEntry> =
         fileSystem.glob(filesDir(root), pattern, path)

@@ -284,18 +284,14 @@ class WorkspaceDetailVM(
         }
     }
 
-    fun renameFile(entry: WorkspaceFileEntry, newName: String, onResult: (String?) -> Unit) {
+    fun renameEntry(entry: WorkspaceFileEntry, newName: String, onResult: (String?) -> Unit) {
         if (state.value.area != WorkspaceStorageArea.FILES) {
-            onResult("Files can only be renamed in the workspace files area")
-            return
-        }
-        if (entry.isDirectory) {
-            onResult("Directories cannot be renamed here")
+            onResult("Entries can only be renamed in the workspace files area")
             return
         }
         val name = newName.trim()
         if (!isValidWorkspaceEntryName(name)) {
-            onResult("Invalid file name")
+            onResult("Invalid entry name")
             return
         }
         if (name == entry.name) {
@@ -305,24 +301,19 @@ class WorkspaceDetailVM(
 
         viewModelScope.launch {
             try {
-                val renamedEntry = repository.renameFile(id, entry.path, name)
+                val renamedEntry = repository.renameEntry(id, entry.path, name)
                 _state.update { current ->
-                    if (current.area != WorkspaceStorageArea.FILES) current else current.copy(
-                        entries = current.entries.map { if (it.path == entry.path) renamedEntry else it },
-                        childrenCache = current.childrenCache.mapValues { (_, children) ->
-                            children.map { if (it.path == entry.path) renamedEntry else it }
-                        },
-                    )
+                    if (current.area != WorkspaceStorageArea.FILES) current
+                    else current.withRenamedWorkspaceEntry(entry, renamedEntry)
                 }
-                val parentPath = entry.path.substringBeforeLast('/', missingDelimiterValue = "")
-                val orderKey = workspaceFileOrderKey(WorkspaceStorageArea.FILES, parentPath)
-                state.value.customFileOrders[orderKey]?.let { order ->
-                    if (entry.path in order) {
-                        setWorkspaceFileOrder(
-                            WorkspaceStorageArea.FILES,
-                            parentPath,
-                            order.map { if (it == entry.path) renamedEntry.path else it },
-                        )
+                val orders = state.value.customFileOrders
+                val renamedOrders = remapWorkspaceFileOrders(orders, entry.path, renamedEntry.path)
+                (orders.keys - renamedOrders.keys).forEach { key ->
+                    setWorkspaceFileOrder(WorkspaceStorageArea.FILES, key.substringAfter(':'), emptyList())
+                }
+                renamedOrders.forEach { (key, order) ->
+                    if (orders[key] != order) {
+                        setWorkspaceFileOrder(WorkspaceStorageArea.FILES, key.substringAfter(':'), order)
                     }
                 }
                 if (state.value.area == WorkspaceStorageArea.FILES) refresh()
@@ -750,6 +741,30 @@ internal enum class WorkspaceFileSortMode {
 
 internal fun workspaceFileOrderKey(area: WorkspaceStorageArea, directoryPath: String): String =
     "${area.name}:${directoryPath.trim('/')}"
+
+internal fun remapWorkspaceFileOrders(
+    orders: Map<String, List<String>>,
+    oldPath: String,
+    newPath: String,
+): Map<String, List<String>> {
+    val filesPrefix = "${WorkspaceStorageArea.FILES.name}:"
+    val renamed = orders.toMutableMap()
+    val movedKeys = orders.keys.filter {
+        it.startsWith(filesPrefix) && isWorkspacePathInSubtree(it.removePrefix(filesPrefix), oldPath)
+    }
+    movedKeys.forEach { renamed.remove(it) }
+    orders.forEach { (key, order) ->
+        if (key.startsWith(filesPrefix) && key !in movedKeys) {
+            renamed[key] = order.map { remapWorkspacePath(it, oldPath, newPath) }
+        }
+    }
+    movedKeys.forEach { key ->
+        val directoryPath = remapWorkspacePath(key.removePrefix(filesPrefix), oldPath, newPath)
+        renamed[workspaceFileOrderKey(WorkspaceStorageArea.FILES, directoryPath)] =
+            orders.getValue(key).map { remapWorkspacePath(it, oldPath, newPath) }
+    }
+    return renamed
+}
 
 internal fun isWorkspaceReorderTarget(path: String, draggingPath: String?): Boolean =
     draggingPath == null || path.substringBeforeLast('/', "") == draggingPath.substringBeforeLast('/', "")

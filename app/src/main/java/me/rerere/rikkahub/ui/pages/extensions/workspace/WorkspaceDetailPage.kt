@@ -540,14 +540,14 @@ fun WorkspaceDetailPage(
                 OutlinedTextField(
                     value = renameFileName,
                     onValueChange = { renameFileName = it },
-                    label = { Text(stringResource(R.string.workspace_detail_file_name)) },
+                    label = { Text(stringResource(if (entry.isDirectory) R.string.workspace_detail_folder_name else R.string.workspace_detail_file_name)) },
                     singleLine = true,
                     isError = fileNameInvalid,
                     supportingText = if (fileNameInvalid) {
-                        { Text(stringResource(R.string.workspace_detail_file_name_invalid)) }
-                    } else {
+                        { Text(stringResource(if (entry.isDirectory) R.string.workspace_detail_folder_name_invalid else R.string.workspace_detail_file_name_invalid)) }
+                    } else if (!entry.isDirectory) {
                         { Text(stringResource(R.string.workspace_detail_rename_file_desc)) }
-                    },
+                    } else null,
                     modifier = Modifier.fillMaxWidth(),
                 )
             },
@@ -555,7 +555,7 @@ fun WorkspaceDetailPage(
                 Button(
                     onClick = {
                         renamingFile = true
-                        vm.renameFile(entry, normalizedName) { error ->
+                        vm.renameEntry(entry, normalizedName) { error ->
                             renamingFile = false
                             if (error == null) {
                                 renameTarget = null
@@ -1719,7 +1719,7 @@ private fun WorkspaceFileCard(
                                 }
                             },
                         ))
-                        if (!entry.isDirectory && area == WorkspaceStorageArea.FILES) {
+                        if (area == WorkspaceStorageArea.FILES) {
                             add(ItemAction(
                                 text = stringResource(R.string.common_rename),
                                 icon = HugeIcons.PencilEdit01,

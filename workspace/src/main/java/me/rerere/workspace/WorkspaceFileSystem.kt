@@ -131,23 +131,20 @@ class WorkspaceFileSystem(
         return targetFile.toEntry(root)
     }
 
-    fun renameFile(root: File, path: String, newName: String): WorkspaceFileEntry {
+    fun renameEntry(root: File, path: String, newName: String): WorkspaceFileEntry {
         val normalizedPath = path.replace('\\', '/').trim().trimStart('/')
         require(normalizedPath.isNotBlank() && normalizedPath != "." && !normalizedPath.endsWith('/')) {
             "Refusing to rename workspace root"
         }
         val sourceName = normalizedPath.substringAfterLast('/')
-        require(isValidEntryName(sourceName)) { "Invalid file name: $sourceName" }
-        require(isValidEntryName(newName)) { "Invalid file name: $newName" }
+        require(isValidEntryName(sourceName)) { "Invalid entry name: $sourceName" }
+        require(isValidEntryName(newName)) { "Invalid entry name: $newName" }
 
         val parentPath = normalizedPath.substringBeforeLast('/', missingDelimiterValue = "")
         val parent = resolvePath(root, parentPath)
         require(parent.isDirectory) { "Parent path is not a directory: $parentPath" }
         val source = File(parent, sourceName)
-        require(Files.exists(source.toPath(), LinkOption.NOFOLLOW_LINKS)) { "File does not exist: $path" }
-        require(!Files.isDirectory(source.toPath(), LinkOption.NOFOLLOW_LINKS)) {
-            "Path is not a file: $path"
-        }
+        require(Files.exists(source.toPath(), LinkOption.NOFOLLOW_LINKS)) { "Entry does not exist: $path" }
         if (sourceName == newName) return source.toEntry(root)
 
         val target = File(parent, newName)

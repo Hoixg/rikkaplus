@@ -140,6 +140,31 @@ internal class WorkspaceDirectoryLoader(
 internal fun isWorkspacePathInSubtree(path: String, root: String): Boolean =
     path == root || path.startsWith("$root/")
 
+internal fun remapWorkspacePath(path: String, oldPath: String, newPath: String): String =
+    if (isWorkspacePathInSubtree(path, oldPath)) newPath + path.removePrefix(oldPath) else path
+
+internal fun WorkspaceDetailState.withRenamedWorkspaceEntry(
+    original: WorkspaceFileEntry,
+    renamed: WorkspaceFileEntry,
+): WorkspaceDetailState {
+    fun remap(entry: WorkspaceFileEntry): WorkspaceFileEntry = when {
+        entry.path == original.path -> renamed
+        isWorkspacePathInSubtree(entry.path, original.path) ->
+            entry.copy(path = remapWorkspacePath(entry.path, original.path, renamed.path))
+        else -> entry
+    }
+    return copy(
+        path = remapWorkspacePath(path, original.path, renamed.path),
+        highlightPath = highlightPath?.let { remapWorkspacePath(it, original.path, renamed.path) },
+        entries = entries.map(::remap),
+        childrenCache = childrenCache.map { (directoryPath, children) ->
+            remapWorkspacePath(directoryPath, original.path, renamed.path) to children.map(::remap)
+        }.toMap(),
+        expandedPaths = expandedPaths.map { remapWorkspacePath(it, original.path, renamed.path) }.toSet(),
+        loadingPaths = loadingPaths.map { remapWorkspacePath(it, original.path, renamed.path) }.toSet(),
+    )
+}
+
 internal fun WorkspaceDetailState.forStorageArea(area: WorkspaceStorageArea): WorkspaceDetailState = copy(
     area = area,
     path = "",
