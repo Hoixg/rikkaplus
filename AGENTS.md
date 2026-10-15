@@ -26,6 +26,15 @@ Material 3 look (cards with dividers, plain forms).
 ./gradlew lint                   # 运行 Android Lint
 ```
 
+## Commit and Push Descriptions
+
+For future commits pushed to `origin/custom`, follow the upstream commit style: write a Chinese subject in the form
+`type(scope): 改动摘要` (for example, `fix(workspace): 支持重命名文件夹`). For changes that need more context, add a short
+commit body explaining what changed and why; a clear subject is enough for a simple change.
+
+After each push, summarize the change in Chinese and report the verification result and commit hash. Do not rewrite
+already pushed commits solely to change their descriptions unless the user explicitly asks.
+
 ## Custom release shortcut
 
 When the user says only `提交` in this repository, treat it as a request to publish the next custom release:
