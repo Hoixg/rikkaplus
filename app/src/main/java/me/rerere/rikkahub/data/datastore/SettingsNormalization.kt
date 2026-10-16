@@ -112,4 +112,5 @@ private fun Settings.withValuesInRange(): Settings = copy(
     defaultTTSPlaybackSpeed = defaultTTSPlaybackSpeed.coerceIn(0.5f, 2.0f),
     autoCompactionThresholdPercent = normalizeAutoCompactionThresholdPercent(autoCompactionThresholdPercent),
     autoCompactionTokenLimit = normalizeAutoCompactionTokenLimit(autoCompactionTokenLimit),
+    enableAutoCompactionTokenLimit = enableAutoCompactionTokenLimit && normalizeAutoCompactionTokenLimit(autoCompactionTokenLimit) != null,
 )

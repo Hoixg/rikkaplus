@@ -12,7 +12,6 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -275,20 +274,16 @@ private fun ModelSettingsPage(settings: Settings, vm: SettingVM, contentPadding:
         }
         item {
             CardGroup {
-                item(
+                switchItem(
+                    checked = settings.enableAutoCompaction,
+                    onCheckedChange = { enabled ->
+                        vm.updateSettings { latest -> latest.copy(enableAutoCompaction = enabled) }
+                    },
                     headlineContent = {
-                        Text(stringResource(R.string.setting_model_page_enable_auto_compaction))
+                        Text(stringResource(R.string.setting_model_page_enable_auto_compaction), style = MaterialTheme.typography.titleMedium)
                     },
                     supportingContent = {
-                        Text(stringResource(R.string.setting_model_page_enable_auto_compaction_desc))
-                    },
-                    trailingContent = {
-                        Switch(
-                            checked = settings.enableAutoCompaction,
-                            onCheckedChange = {
-                                vm.updateSettings { latest -> latest.copy(enableAutoCompaction = it) }
-                            },
-                        )
+                        Text(stringResource(R.string.setting_model_page_enable_auto_compaction_desc), style = MaterialTheme.typography.bodySmall)
                     },
                 )
                 if (settings.enableAutoCompaction) {
@@ -399,26 +394,35 @@ private fun ModelSettingsPage(settings: Settings, vm: SettingVM, contentPadding:
                 }
             }
         }
-        if (settings.enableAutoCompaction) {
-            item {
-                CardGroup {
+        item {
+            CardGroup {
+                switchItem(
+                    checked = settings.enableAutoCompactionTokenLimit,
+                    onCheckedChange = { enabled ->
+                        if (enabled && settings.autoCompactionTokenLimit == null) {
+                            showTokenLimitDialog = true
+                        } else {
+                            vm.updateSettings { latest -> latest.copy(enableAutoCompactionTokenLimit = enabled) }
+                        }
+                    },
+                    headlineContent = {
+                        Text(stringResource(R.string.setting_model_page_auto_compaction_token_limit), style = MaterialTheme.typography.titleMedium)
+                    },
+                    supportingContent = {
+                        Text(
+                            text = stringResource(R.string.setting_model_page_auto_compaction_token_limit_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    },
+                )
+                if (settings.enableAutoCompactionTokenLimit) {
                     item(
-                        headlineContent = {
-                            Text(stringResource(R.string.setting_model_page_auto_compaction_token_limit))
-                        },
-                        supportingContent = {
-                            Text(
-                                text = stringResource(R.string.setting_model_page_auto_compaction_token_limit_desc),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        },
+                        onClick = { showTokenLimitDialog = true },
+                        headlineContent = { Text(stringResource(R.string.setting_model_page_auto_compaction_token_limit_value)) },
                         trailingContent = {
                             OutlinedButton(onClick = { showTokenLimitDialog = true }) {
-                                Text(
-                                    settings.autoCompactionTokenLimit?.let(::formatContextLength)
-                                        ?: stringResource(R.string.setting_model_page_auto_compaction_token_limit_unlimited)
-                                )
+                                Text(formatContextLength(settings.autoCompactionTokenLimit))
                             }
                         },
                     )
@@ -431,7 +435,7 @@ private fun ModelSettingsPage(settings: Settings, vm: SettingVM, contentPadding:
         AutoCompactionTokenLimitDialog(
             initialValue = settings.autoCompactionTokenLimit,
             onConfirm = { value ->
-                vm.updateSettings { latest -> latest.copy(autoCompactionTokenLimit = value) }
+                vm.updateSettings { latest -> latest.copy(autoCompactionTokenLimit = value, enableAutoCompactionTokenLimit = true) }
                 showTokenLimitDialog = false
             },
             onDismiss = { showTokenLimitDialog = false },
@@ -455,7 +459,7 @@ private fun ModelSettingsPage(settings: Settings, vm: SettingVM, contentPadding:
 @Composable
 private fun AutoCompactionTokenLimitDialog(
     initialValue: Int?,
-    onConfirm: (Int?) -> Unit,
+    onConfirm: (Int) -> Unit,
     onDismiss: () -> Unit,
 ) {
     var text by remember(initialValue) { mutableStateOf(formatContextLength(initialValue)) }
@@ -490,8 +494,8 @@ private fun AutoCompactionTokenLimitDialog(
         confirmButton = {
             TextButton(
                 onClick = {
-                    val parsed = if (text.isBlank()) null else parseContextLengthInput(text)
-                    if (text.isNotBlank() && parsed == null) {
+                    val parsed = parseContextLengthInput(text)
+                    if (parsed == null) {
                         hasError = true
                     } else {
                         onConfirm(parsed)

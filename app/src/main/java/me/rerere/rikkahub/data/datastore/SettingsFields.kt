@@ -5,6 +5,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.stringPreferencesKey
 import me.rerere.ai.core.ReasoningLevel
 import me.rerere.rikkahub.utils.JsonInstant
+import me.rerere.rikkahub.utils.normalizeAutoCompactionTokenLimit
 import kotlin.reflect.KProperty1
 import kotlin.uuid.Uuid
 
@@ -93,6 +94,7 @@ internal val SETTINGS_FIELDS: List<SettingsField<*, *>> = with(SettingsStore) {
         plain(OCR_PROMPT, Settings::ocrPrompt) { copy(ocrPrompt = it) },
         plain(COMPRESS_PROMPT, Settings::compressPrompt) { copy(compressPrompt = it) },
         plain(ENABLE_AUTO_COMPACTION, Settings::enableAutoCompaction) { copy(enableAutoCompaction = it) },
+        plain(ENABLE_AUTO_COMPACTION_TOKEN_LIMIT, Settings::enableAutoCompactionTokenLimit) { copy(enableAutoCompactionTokenLimit = it) },
         plain(AUTO_COMPACTION_THRESHOLD_PERCENT, Settings::autoCompactionThresholdPercent) { copy(autoCompactionThresholdPercent = it) },
         SettingsField(
             AUTO_COMPACTION_TOKEN_LIMIT, Settings::autoCompactionTokenLimit,
@@ -164,8 +166,14 @@ private val MISSING_KEY_DEFAULTS = Settings(
 )
 
 /** 解码出的是盘上的原始值，还没有经过 [normalized]。 */
-internal fun Preferences.toSettings(): Settings =
-    SETTINGS_FIELDS.fold(MISSING_KEY_DEFAULTS) { settings, field -> field.read(this, settings) }
+internal fun Preferences.toSettings(): Settings {
+    val settings = SETTINGS_FIELDS.fold(MISSING_KEY_DEFAULTS) { settings, field -> field.read(this, settings) }
+    // Preserve an existing active cap when upgrading from versions without a separate switch.
+    return if (this[SettingsStore.ENABLE_AUTO_COMPACTION_TOKEN_LIMIT] == null) {
+        settings.copy(enableAutoCompactionTokenLimit = settings.enableAutoCompaction &&
+            normalizeAutoCompactionTokenLimit(settings.autoCompactionTokenLimit) != null)
+    } else settings
+}
 
 /**
  * 把 [settings] 写进 Preferences。
@@ -173,6 +181,10 @@ internal fun Preferences.toSettings(): Settings =
  * 给了 [persisted]（盘上现有的那一份）时只写和它不同的字段：整份设置的 JSON 编码很重，没变的字段不用重新编码。
  */
 internal fun MutablePreferences.putSettings(settings: Settings, persisted: Settings? = null) {
+    // Persist the migrated switch even when only another setting changed on the first write.
+    if (SettingsStore.ENABLE_AUTO_COMPACTION_TOKEN_LIMIT !in this) {
+        this[SettingsStore.ENABLE_AUTO_COMPACTION_TOKEN_LIMIT] = settings.enableAutoCompactionTokenLimit
+    }
     remove(SettingsStore.COMPRESS_MODEL)
     remove(SettingsStore.KEEP_AWAKE_ENABLED)
     remove(SettingsStore.NOTIFICATION_PRIVACY)

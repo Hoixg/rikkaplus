@@ -59,20 +59,21 @@ class ContextWindowTest {
     }
 
     @Test
-    fun contextUsageDisplayCapacityUsesTheConfiguredCapOrFixedDefault() {
-        assertEquals(262_144, contextUsageDisplayCapacity(null))
-        assertEquals("262.1K", formatContextLength(contextUsageDisplayCapacity(null)))
-        assertEquals(100_000, contextUsageDisplayCapacity(parseContextLengthInput("100k")))
-        assertEquals("100K", formatContextLength(contextUsageDisplayCapacity(100_000)))
-        assertEquals(1_000_000, contextUsageDisplayCapacity(parseContextLengthInput("1m")))
-        assertEquals(262_144, contextUsageDisplayCapacity(parseContextLengthInput("")))
-        assertEquals(262_144, contextUsageDisplayCapacity(0))
-        assertEquals(262_144, contextUsageDisplayCapacity(MAX_AUTO_COMPACTION_TOKEN_LIMIT + 1))
+    fun usageRingAndCompactionUseTheModelWindowWhenTheGlobalCapIsOff() {
+        val settings = Settings(autoCompactionTokenLimit = 10_000, enableAutoCompactionTokenLimit = false)
+        for (window in listOf(32_000, 128_000, 200_000, 1_000_000)) {
+            val policy = settings.contextCompactionPolicy(Model(contextLength = window))
+            assertEquals(window, policy.capacityTokens)
+            assertEquals(window * 80 / 100, policy.triggerTokens)
+            assertFalse(policy.usesGlobalLimit)
+        }
+        assertEquals(262_144, settings.contextCompactionPolicy(null).capacityTokens)
     }
 
     @Test
     fun contextUsageProgressUsesDisplayCapacityAndClampsOverflow() {
-        val capacity = contextUsageDisplayCapacity(100_000)
+        val capacity = Settings(enableAutoCompactionTokenLimit = true, autoCompactionTokenLimit = 100_000)
+            .contextCompactionPolicy(Model(contextLength = 200_000)).capacityTokens
         assertEquals(0f, contextUsageFraction(0, capacity), 0f)
         assertEquals(0.5f, contextUsageFraction(50_000, capacity), 0f)
         assertEquals(1f, contextUsageFraction(100_000, capacity), 0f)
@@ -83,50 +84,54 @@ class ContextWindowTest {
     }
 
     @Test
-    fun contextUsageDisplayCapacityDoesNotChangeModelCompactionThresholds() {
-        val model = Model(modelId = "context-indicator-model", contextLength = 1_000_000)
-        val windowTokens = model.effectiveContextLength()
-        assertEquals(1_000_000, windowTokens)
-        assertEquals(262_144, contextUsageDisplayCapacity(null))
-        assertEquals(800_000, autoCompactionThresholdTokens(windowTokens = windowTokens))
-
-        assertEquals(100_000, contextUsageDisplayCapacity(100_000))
-        assertEquals(100_000, autoCompactionThresholdTokens(windowTokens = windowTokens, tokenLimit = 100_000))
-        assertFalse(shouldAutoCompact(true, usedTokens = 99_999, windowTokens = windowTokens, tokenLimit = 100_000))
-        assertTrue(shouldAutoCompact(true, usedTokens = 100_000, windowTokens = windowTokens, tokenLimit = 100_000))
-
-        assertEquals(1_000_000, contextUsageDisplayCapacity(1_000_000))
-        assertEquals(800_000, autoCompactionThresholdTokens(windowTokens = windowTokens, tokenLimit = 1_000_000))
+    fun enabledGlobalCapOverridesBothSmallerAndLargerModelWindows() {
+        val settings = Settings(enableAutoCompactionTokenLimit = true, autoCompactionTokenLimit = 100_000,
+            enableAutoCompaction = false)
+        for (window in listOf(32_000, 1_000_000)) {
+            val model = Model(contextLength = window)
+            val policy = settings.contextCompactionPolicy(model)
+            assertEquals(100_000, policy.capacityTokens)
+            assertEquals(100_000, policy.triggerTokens)
+            assertFalse(policy.shouldCompact(99_999))
+            assertTrue(policy.shouldCompact(100_000))
+            assertTrue(policy.usesGlobalLimit)
+            assertEquals(window, settings.copy(enableAutoCompactionTokenLimit = false)
+                .contextCompactionPolicy(model).capacityTokens)
+        }
     }
 
     @Test
-    fun autoCompactionOnlyRunsWhenEnabledAndAtThreshold() {
-        assertFalse(shouldAutoCompact(enabled = false, usedTokens = 100, windowTokens = 100))
-        assertFalse(shouldAutoCompact(enabled = true, usedTokens = 79, windowTokens = 100))
-        assertTrue(shouldAutoCompact(enabled = true, usedTokens = 80, windowTokens = 100))
-        assertFalse(shouldAutoCompact(enabled = true, usedTokens = 1, windowTokens = 0))
+    fun modelWindowCompactionStillRunsWhenGlobalAutomaticCompactionIsDisabled() {
+        val settings = Settings(enableAutoCompaction = false, autoCompactionThresholdPercent = 50,
+            autoCompactionTokenLimit = 1_000)
+        val smaller = settings.contextCompactionPolicy(Model(contextLength = 128_000))
+        assertFalse(smaller.shouldCompact(127_999))
+        assertTrue(smaller.shouldCompact(128_000))
+        assertEquals(83_200, smaller.targetTokens)
+        assertFalse(settings.contextCompactionPolicy(Model(contextLength = 200_000)).shouldCompact(128_000))
     }
 
     @Test
-    fun autoCompactionUsesConfiguredPercentageAndWhicheverThresholdComesFirst() {
-        assertFalse(shouldAutoCompact(true, usedTokens = 69, windowTokens = 100, thresholdPercent = 70))
-        assertTrue(shouldAutoCompact(true, usedTokens = 70, windowTokens = 100, thresholdPercent = 70))
-
-        // An absolute cap below the percentage threshold triggers first.
-        assertFalse(shouldAutoCompact(true, usedTokens = 64, windowTokens = 100, thresholdPercent = 80, tokenLimit = 65))
-        assertTrue(shouldAutoCompact(true, usedTokens = 65, windowTokens = 100, thresholdPercent = 80, tokenLimit = 65))
-
-        // A higher absolute cap does not delay the percentage threshold.
-        assertFalse(shouldAutoCompact(true, usedTokens = 79, windowTokens = 100, thresholdPercent = 80, tokenLimit = 90))
-        assertTrue(shouldAutoCompact(true, usedTokens = 80, windowTokens = 100, thresholdPercent = 80, tokenLimit = 90))
+    fun globalAutomaticCompactionAppliesThePercentageToTheActiveCapacity() {
+        val model = Model(contextLength = 200_000)
+        val settings = Settings(autoCompactionThresholdPercent = 90,
+            autoCompactionTokenLimit = 100_000, enableAutoCompactionTokenLimit = true)
+        val global = settings.contextCompactionPolicy(model)
+        assertEquals(90_000, global.triggerTokens)
+        assertFalse(global.shouldCompact(89_999))
+        assertTrue(global.shouldCompact(90_000))
+        val perModel = settings.copy(enableAutoCompactionTokenLimit = false).contextCompactionPolicy(model)
+        assertEquals(180_000, perModel.triggerTokens)
+        assertFalse(perModel.shouldCompact(90_000))
     }
 
     @Test
     fun autoCompactionTargetStaysBelowCustomThreshold() {
-        assertEquals(640, autoCompactionTargetTokens(windowTokens = 1_000))
-        assertEquals(80, autoCompactionTargetTokens(windowTokens = 1_000, tokenLimit = 100))
-        assertEquals(400, autoCompactionTargetTokens(windowTokens = 1_000, thresholdPercent = 50))
-        assertNull(autoCompactionTargetTokens(windowTokens = 0))
+        val model = Model(contextLength = 1_000)
+        assertEquals(640, Settings().contextCompactionPolicy(model).targetTokens)
+        assertEquals(64, Settings(enableAutoCompactionTokenLimit = true, autoCompactionTokenLimit = 100)
+            .contextCompactionPolicy(model).targetTokens)
+        assertEquals(400, Settings(autoCompactionThresholdPercent = 50).contextCompactionPolicy(model).targetTokens)
     }
 
     @Test
@@ -135,7 +140,18 @@ class ContextWindowTest {
         assertNull(Settings().autoCompactionTokenLimit)
         val unknownModel: Model? = null
         assertEquals(262_144, unknownModel.effectiveContextLength())
-        assertEquals(209_715, autoCompactionThresholdTokens(windowTokens = 262_144))
+        assertFalse(Settings().enableAutoCompactionTokenLimit)
+        assertEquals(209_715, Settings().contextCompactionPolicy(unknownModel).triggerTokens)
+    }
+
+    @Test
+    fun anEnabledButInvalidGlobalCapFallsBackToTheModelWindow() {
+        for (cap in listOf(null, 0, MAX_AUTO_COMPACTION_TOKEN_LIMIT + 1)) {
+            val policy = Settings(enableAutoCompactionTokenLimit = true, autoCompactionTokenLimit = cap)
+                .contextCompactionPolicy(Model(contextLength = 128_000))
+            assertEquals(128_000, policy.capacityTokens)
+            assertFalse(policy.usesGlobalLimit)
+        }
     }
 
     @Test
@@ -374,8 +390,9 @@ class ContextWindowTest {
         val currentTokens = 75
         val pendingTokens = estimateTokenCount(listOf(message("x".repeat(100))))
 
-        assertFalse(shouldAutoCompact(true, currentTokens, 100))
-        assertTrue(shouldAutoCompact(true, currentTokens + pendingTokens, 100))
+        val policy = Settings().contextCompactionPolicy(Model(contextLength = 100))
+        assertFalse(policy.shouldCompact(currentTokens))
+        assertTrue(policy.shouldCompact(currentTokens + pendingTokens))
         assertTrue(
             estimateTokenCount(listOf(UIMessage(role = MessageRole.USER, parts = listOf(UIMessagePart.Image("file:///image.png"))))) >= 1_024,
         )
@@ -402,6 +419,19 @@ class ContextWindowTest {
         assertEquals(nodes, selectNodesForAutomaticCompaction(nodes, 0, true))
         assertEquals(emptyList<MessageNode>(), selectNodesForAutomaticCompaction(recent, 0, false))
         assertEquals(recent, selectNodesForAutomaticCompaction(recent, 0, true))
+    }
+
+    @Test
+    fun preSendCompactionIncludesAnOversizedCompletedTurnButKeepsPendingToolsAndUnansweredInput() {
+        val recent = listOf(node(message("request ".repeat(500))), node(message("reply ".repeat(500), MessageRole.ASSISTANT)))
+        assertTrue(canCompactLatestCompletedTurn(recent))
+        assertEquals(recent, selectNodesForAutomaticCompaction(recent, 0, canCompactLatestCompletedTurn(recent)))
+        assertFalse(canCompactLatestCompletedTurn(recent + node(message("unanswered input"))))
+        val pending = UIMessagePart.Tool("call", "tool", "{}", approvalState = me.rerere.ai.ui.ToolApprovalState.Pending)
+        for (tool in listOf(pending, pending.copy(approvalState = me.rerere.ai.ui.ToolApprovalState.Approved))) {
+            val nodes = recent + node(UIMessage(role = MessageRole.ASSISTANT, parts = listOf(tool)))
+            assertFalse(canCompactLatestCompletedTurn(nodes))
+        }
     }
 
     @Test

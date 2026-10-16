@@ -115,13 +115,12 @@ import me.rerere.rikkahub.ui.hooks.EditStateContent
 import me.rerere.rikkahub.ui.hooks.rememberAppLifecycleState
 import me.rerere.rikkahub.ui.hooks.useEditState
 import me.rerere.rikkahub.utils.base64Decode
-import me.rerere.rikkahub.utils.contextUsageDisplayCapacity
+import me.rerere.rikkahub.utils.contextCompactionPolicy
+import me.rerere.rikkahub.utils.ContextCompactionPolicy
 import me.rerere.rikkahub.utils.contextUsageFraction
-import me.rerere.rikkahub.utils.effectiveContextLength
 import me.rerere.rikkahub.utils.estimateTokenCount
 import me.rerere.rikkahub.utils.estimateWindowTokens
 import me.rerere.rikkahub.utils.getConversationChatModel
-import me.rerere.rikkahub.utils.autoCompactionThresholdTokens
 import me.rerere.rikkahub.utils.formatContextLength
 import me.rerere.rikkahub.utils.navigateToChatPage
 import org.koin.androidx.compose.koinViewModel
@@ -342,8 +341,8 @@ private fun ChatPageContent(
     val pendingText = inputState.textContent.text.toString()
     val pendingParts = inputState.messageContent
     val editingMessageId = inputState.editingMessage
-    val pendingTokens = remember(pendingText, pendingParts, editingMessageId, setting.enableAutoCompaction) {
-        if (setting.enableAutoCompaction && editingMessageId == null) {
+    val pendingTokens = remember(pendingText, pendingParts, editingMessageId) {
+        if (editingMessageId == null) {
             val parts = inputState.getContents()
             if (parts.isNotEmpty()) {
                 estimateTokenCount(listOf(UIMessage(role = MessageRole.USER, parts = parts)))
@@ -358,14 +357,15 @@ private fun ChatPageContent(
         conversation,
         conversationChatModel,
         setting.enableAutoCompaction,
+        setting.autoCompactionThresholdPercent,
+        setting.enableAutoCompactionTokenLimit,
         setting.autoCompactionTokenLimit,
         pendingTokens,
     ) {
-        if (setting.enableAutoCompaction && conversationChatModel != null) {
+        if (conversationChatModel != null) {
             ContextUsage(
                 usedTokens = conversation.estimateWindowTokens(conversationChatModel) + pendingTokens,
-                modelWindowTokens = conversationChatModel.effectiveContextLength(),
-                displayCapacityTokens = contextUsageDisplayCapacity(setting.autoCompactionTokenLimit),
+                policy = setting.contextCompactionPolicy(conversationChatModel),
             )
         } else {
             null
@@ -753,10 +753,7 @@ private fun TopBar(
                 key(conversation.id) {
                     ContextUsageRingButton(
                         usedTokens = usage.usedTokens,
-                        modelWindowTokens = usage.modelWindowTokens,
-                        displayCapacityTokens = usage.displayCapacityTokens,
-                        thresholdPercent = settings.autoCompactionThresholdPercent,
-                        tokenLimit = settings.autoCompactionTokenLimit,
+                        policy = usage.policy,
                         enableAnimation = settings.enableContextUsageRingAnimation,
                     )
                 }
@@ -819,21 +816,17 @@ private fun TopBar(
 
 private data class ContextUsage(
     val usedTokens: Int,
-    val modelWindowTokens: Int,
-    val displayCapacityTokens: Int,
+    val policy: ContextCompactionPolicy,
 )
 
 @Composable
 internal fun ContextUsageRingButton(
     usedTokens: Int,
-    modelWindowTokens: Int,
-    displayCapacityTokens: Int,
-    thresholdPercent: Int,
-    tokenLimit: Int?,
+    policy: ContextCompactionPolicy,
     enableAnimation: Boolean = true,
 ) {
     var showPopup by remember { mutableStateOf(false) }
-    val fraction = contextUsageFraction(usedTokens, displayCapacityTokens)
+    val fraction = contextUsageFraction(usedTokens, policy.capacityTokens)
     val lifecycleState by rememberAppLifecycleState()
     val animateRing = enableAnimation && lifecycleState == Lifecycle.State.RESUMED
     val displayedFraction = if (animateRing) {
@@ -857,12 +850,7 @@ internal fun ContextUsageRingButton(
     } else {
         null
     }
-    val warningThresholdTokens = autoCompactionThresholdTokens(
-        windowTokens = modelWindowTokens,
-        thresholdPercent = thresholdPercent,
-        tokenLimit = tokenLimit,
-    )
-    val isWarning = warningThresholdTokens != null && usedTokens >= warningThresholdTokens
+    val isWarning = policy.shouldCompact(usedTokens)
     val colorScheme = MaterialTheme.colorScheme
     val errorColor = MaterialTheme.colorScheme.error
     val ringColors = remember(
@@ -924,15 +912,21 @@ internal fun ContextUsageRingButton(
         expanded = showPopup,
         onDismissRequest = { showPopup = false },
     ) {
-        Text(
-            text = stringResource(
-                R.string.chat_context_usage_tooltip,
-                formatContextLength(usedTokens),
-                formatContextLength(displayCapacityTokens),
-            ),
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-            style = MaterialTheme.typography.bodySmall,
-        )
+        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+            Text(
+                text = stringResource(if (policy.usesGlobalLimit) R.string.chat_context_usage_global_limit else R.string.chat_context_usage_model_window),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Text(
+                text = stringResource(
+                    R.string.chat_context_usage_tooltip,
+                    formatContextLength(usedTokens),
+                    formatContextLength(policy.capacityTokens),
+                ),
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
     }
 }
 

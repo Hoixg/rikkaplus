@@ -59,6 +59,7 @@ data class Settings(
     val enableAutoCompaction: Boolean = true,
     val autoCompactionThresholdPercent: Int = DEFAULT_AUTO_COMPACTION_THRESHOLD_PERCENT,
     val autoCompactionTokenLimit: Int? = null,
+    val enableAutoCompactionTokenLimit: Boolean = false,
     val assistantId: Uuid = DEFAULT_ASSISTANT_ID,
     val providers: List<ProviderSetting> = emptyList(),
     val assistants: List<Assistant> = DEFAULT_ASSISTANTS,

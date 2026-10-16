@@ -133,6 +133,7 @@ class SettingsStore internal constructor(
         val ENABLE_AUTO_COMPACTION = booleanPreferencesKey("enable_auto_compaction")
         val AUTO_COMPACTION_THRESHOLD_PERCENT = intPreferencesKey("auto_compaction_threshold_percent")
         val AUTO_COMPACTION_TOKEN_LIMIT = intPreferencesKey("auto_compaction_token_limit")
+        val ENABLE_AUTO_COMPACTION_TOKEN_LIMIT = booleanPreferencesKey("enable_auto_compaction_token_limit")
 
         // 提供商
         val PROVIDERS = stringPreferencesKey("providers")

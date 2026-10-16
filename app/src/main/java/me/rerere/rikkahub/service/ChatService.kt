@@ -51,6 +51,7 @@ import me.rerere.rikkahub.AppScope
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.ai.GenerationChunk
 import me.rerere.rikkahub.data.ai.GenerationLoop
+import me.rerere.rikkahub.data.ai.prompts.DEFAULT_COMPRESS_PROMPT
 import me.rerere.rikkahub.data.ai.MemoryConsolidationScheduler
 import me.rerere.rikkahub.data.ai.TranslationHandler
 import me.rerere.rikkahub.data.ai.mcp.McpManager
@@ -111,8 +112,8 @@ import me.rerere.rikkahub.data.repository.WorkspaceRepository
 import me.rerere.rikkahub.data.repository.memoryId
 import me.rerere.rikkahub.utils.applyPlaceholders
 import me.rerere.rikkahub.utils.getConversationChatModel
-import me.rerere.rikkahub.utils.autoCompactionTargetTokens
-import me.rerere.rikkahub.utils.shouldAutoCompact
+import me.rerere.rikkahub.utils.contextCompactionPolicy
+import me.rerere.rikkahub.utils.canCompactLatestCompletedTurn
 import me.rerere.rikkahub.utils.estimateTokenCount
 import me.rerere.rikkahub.utils.estimateTextTokenCount
 import me.rerere.rikkahub.utils.effectiveContextLength
@@ -138,9 +139,10 @@ internal fun backgroundTextGenerationParams(
 )
 
 private const val AUTO_COMPRESS_TARGET_TOKENS = 2_000
-private const val AUTO_COMPRESS_INPUT_BUDGET_MAX = 12_000
 private const val AUTO_COMPRESS_CONCURRENCY = 2
-private const val AUTO_COMPRESS_REDUCE_LIMIT = 4
+
+internal fun compactionTextGenerationParams(model: Model, conversationId: Uuid, outputTokens: Int): TextGenerationParams =
+    backgroundTextGenerationParams(model.copy(tools = emptySet()), conversationId).copy(maxTokens = outputTokens)
 
 private val forkTitleSuffixRegex = Regex("""\((\d+)\)$""")
 
@@ -804,7 +806,7 @@ class ChatService(
 
                 // 对齐 YuiHub：普通发送前压缩旧上下文，新输入始终保留为近期消息。
                 val scheduledTask = scheduledTaskRepository.getActiveByConversation(conversationId.toString())
-                if (answer && settings.enableAutoCompaction &&
+                if (answer &&
                     !(scheduledTask?.mode == "FOLLOW_UP" && scheduledTask.resetContextBeforeRun)) {
                     autoCompressIfNeeded(
                         conversationId = conversationId,
@@ -1552,52 +1554,50 @@ class ChatService(
         modelOverrideId: String? = null,
     ) {
         val settings = settingsStore.awaitLoaded()
-        if (!settings.enableAutoCompaction) return
         val conversation = session.state.value
         val model = modelOverrideId?.let { settings.findModelById(Uuid.parse(it)) }
             ?: settings.getConversationChatModel(conversation) ?: return
-        val windowTokens = model.effectiveContextLength()
+        val policy = settings.contextCompactionPolicy(model)
         val pendingTokens = if (pendingParts.isEmpty()) 0 else estimateTokenCount(
             listOf(UIMessage(role = MessageRole.USER, parts = pendingParts)),
         )
         val usedTokens = conversation.estimateWindowTokens(model) + pendingTokens
-        if (!shouldAutoCompact(
-                enabled = settings.enableAutoCompaction,
-                usedTokens = usedTokens,
-                windowTokens = windowTokens,
-                thresholdPercent = settings.autoCompactionThresholdPercent,
-                tokenLimit = settings.autoCompactionTokenLimit,
-            )
-        ) return
-
-        val targetTokens = autoCompactionTargetTokens(
-            windowTokens, settings.autoCompactionThresholdPercent, settings.autoCompactionTokenLimit,
-        ) ?: return
+        if (!policy.shouldCompact(usedTokens)) return
+        val targetTokens = policy.targetTokens
         val summaryTargetTokens = minOf(AUTO_COMPRESS_TARGET_TOKENS, targetTokens / 4).coerceAtLeast(128)
         val nodesToCompress = autoCompressNodes(
-            conversation, windowTokens, pendingTokens, targetTokens, summaryTargetTokens, includeLatestCompletedTurn,
+            conversation, policy.capacityTokens, pendingTokens, targetTokens, summaryTargetTokens,
+            includeLatestCompletedTurn || canCompactLatestCompletedTurn(conversation.windowNodes()),
         )
         if (nodesToCompress.isEmpty()) {
             throw ContextCompactionException(context.getString(R.string.error_compress_context_still_too_large))
         }
+        val boundaryNodeId = nodesToCompress.last().id
+        val sourceTokens = nodesToCompress.sumOf { estimateTokenCount(listOf(it.currentMessage)) }
+        val emptyCheckpoint = insertContextCheckpoint(conversation, boundaryNodeId, "")
+            ?: throw ContextCompactionException(context.getString(R.string.error_compress_context_changed))
+        val summaryBudget = compactionSummaryBudget(
+            preferredTokens = summaryTargetTokens,
+            targetTokens = targetTokens,
+            pendingTokens = pendingTokens,
+            retainedTokens = emptyCheckpoint.estimateWindowTokens(model),
+            sourceTokens = sourceTokens,
+        ) ?: throw ContextCompactionException(context.getString(R.string.error_compress_context_still_too_large))
 
         val compactingStatus = context.getString(R.string.chat_page_compacting_context)
         processingStatus.value = compactingStatus
         try {
             val summary = compressNodesToSummary(
                 conversationId = conversationId,
-                conversation = conversation,
                 nodesToCompress = nodesToCompress,
                 settings = settings,
                 model = model,
                 processingStatus = processingStatus,
-                summaryTargetTokens = summaryTargetTokens,
+                summaryBudget = summaryBudget,
             )
-            val sourceTokens = nodesToCompress.sumOf { estimateTokenCount(listOf(it.currentMessage)) }
             if (estimateTextTokenCount(summary) >= sourceTokens) {
-                throw ContextCompactionException(context.getString(R.string.error_compress_context_failed))
+                throw ContextCompactionException(context.getString(R.string.error_compress_context_no_reduction))
             }
-            val boundaryNodeId = nodesToCompress.last().id
             val sourceFingerprint = conversation.compressionSourceFingerprint(boundaryNodeId)
                 ?: throw ContextCompactionException(context.getString(R.string.error_compress_context_changed))
             val candidate = insertContextCheckpoint(conversation, boundaryNodeId, summary)
@@ -1691,12 +1691,11 @@ class ChatService(
 
     private suspend fun compressNodesToSummary(
         conversationId: Uuid,
-        conversation: Conversation,
         nodesToCompress: List<MessageNode>,
         settings: Settings,
         model: Model,
         processingStatus: MutableStateFlow<String?>,
-        summaryTargetTokens: Int,
+        summaryBudget: CompactionSummaryBudget,
     ): String {
         if (nodesToCompress.isEmpty()) throw ContextCompactionException(
             context.getString(R.string.error_compress_context_failed),
@@ -1705,16 +1704,34 @@ class ChatService(
             val provider = model.findRequestProvider(settings.providers)
                 ?: throw IllegalStateException("Provider not found")
             val providerHandler = providerManager.getProviderByType(provider)
-            val inputBudget = (model.effectiveContextLength() - 1_024)
-                .coerceIn(512, AUTO_COMPRESS_INPUT_BUDGET_MAX)
-            val contentBudget = inputBudget - 512
-            if (contentBudget < 128) throw IllegalStateException("No room for a safe context summary")
+            val locale = Locale.getDefault().displayName
+            val useCompactTemplate = settings.compressPrompt == DEFAULT_COMPRESS_PROMPT &&
+                (summaryBudget.preferredTokens < 256 || model.effectiveContextLength() < 4_096)
+            fun renderPrompt(content: String, targetTokens: Int): String {
+                if (useCompactTemplate) return compactSummaryPrompt(content, targetTokens, locale)
+                val template = settings.compressPrompt
+                val rendered = template.applyPlaceholders(
+                    "content" to content,
+                    "target_tokens" to targetTokens.toString(),
+                    "additional_context" to "",
+                    "locale" to locale,
+                )
+                return if (template.contains("{content}")) rendered else
+                    "$rendered\n\nConversation content to summarize:\n$content"
+            }
 
-            val mapTarget = (inputBudget / 6).coerceIn(128, 1_000)
-            val reduceTarget = contentBudget.coerceAtMost(summaryTargetTokens).coerceAtLeast(128)
+            val budget = compactionRequestBudget(
+                windowTokens = model.effectiveContextLength(),
+                promptTokens = maxOf(
+                    estimateTextTokenCount(renderPrompt("", summaryBudget.preferredTokens)),
+                    estimateTextTokenCount(compactSummaryPrompt("", summaryBudget.preferredTokens, locale)),
+                ),
+            )
+            val reduceTarget = minOf(budget.contentTokens, summaryBudget.preferredTokens)
+            val mapTarget = minOf(budget.contentTokens / 6, 1_000, reduceTarget).coerceAtLeast(1)
             val sourceChunks = chunkCompactionTexts(
                 nodesToCompress.map { it.currentMessage.toCompactionText() },
-                (inputBudget - 512).coerceAtLeast(1),
+                budget.contentTokens,
             )
             val semaphore = Semaphore(AUTO_COMPRESS_CONCURRENCY)
             val progressMutex = Mutex()
@@ -1735,88 +1752,47 @@ class ChatService(
                 )
             }
 
-            suspend fun summarize(content: String, targetTokens: Int, additionalContext: String = ""): String =
+            suspend fun generateSummary(prompt: String): String =
                 semaphore.withPermit {
-                    val promptTemplate = settings.compressPrompt
-                    val renderedPrompt = promptTemplate.applyPlaceholders(
-                        "content" to content,
-                        "target_tokens" to targetTokens.toString(),
-                        "additional_context" to additionalContext,
-                        "locale" to Locale.getDefault().displayName,
-                    )
-                    val missingInputs = buildString {
-                        if (!promptTemplate.contains("{content}")) {
-                            appendLine()
-                            appendLine("Conversation content to summarize:")
-                            appendLine(content)
-                        }
-                        if (additionalContext.isNotBlank() &&
-                            !promptTemplate.contains("{additional_context}")
-                        ) {
-                            appendLine()
-                            appendLine(additionalContext)
-                        }
-                    }
-                    val prompt = renderedPrompt + missingInputs
                     providerHandler.generateText(
                         providerSetting = provider,
                         messages = listOf(UIMessage.user(prompt)),
-                        params = backgroundTextGenerationParams(model, conversationId),
+                        params = compactionTextGenerationParams(model, conversationId, budget.outputTokens),
                     ).message.toText().trim().takeIf { it.isNotBlank() }
                         ?: throw IllegalStateException("Empty compression result")
                 }
 
-            var summaries = coroutineScope {
+            val summaries = coroutineScope {
                 sourceChunks.map { chunk ->
-                    async { summarize(chunk, mapTarget).also { reportMapChunkComplete() } }
+                    async {
+                        generateSummary(renderPrompt(chunk, if (sourceChunks.size == 1) reduceTarget else mapTarget))
+                            .also { reportMapChunkComplete() }
+                    }
                 }.awaitAll()
             }
-            var reducePasses = 0
-            while (summaries.sumOf(::estimateTextTokenCount) > contentBudget) {
-                if (reducePasses++ >= AUTO_COMPRESS_REDUCE_LIMIT) {
-                    throw IllegalStateException("Could not reduce checkpoint to the model input budget")
-                }
-                val groups = chunkCompactionTexts(summaries, (inputBudget - 512).coerceAtLeast(1))
-                val previousSize = summaries.sumOf(::estimateTextTokenCount)
-                var completedReduceGroups = 0
-                processingStatus.value = context.getString(
-                    R.string.chat_page_compacting_context_reduce_progress,
-                    reducePasses,
-                    completedReduceGroups,
-                    groups.size,
-                )
-                summaries = coroutineScope {
-                    groups.map { group ->
-                        async {
-                            summarize(group, reduceTarget).also {
-                                progressMutex.withLock {
-                                    completedReduceGroups++
-                                    processingStatus.value = context.getString(
-                                        R.string.chat_page_compacting_context_reduce_progress,
-                                        reducePasses,
-                                        completedReduceGroups,
-                                        groups.size,
-                                    )
-                                }
-                            }
-                        }
-                    }.awaitAll()
-                }
-                val reducedSize = summaries.sumOf(::estimateTextTokenCount)
-                if (reducedSize >= previousSize && groups.size >= summaries.size) {
-                    throw IllegalStateException("Checkpoint reduction did not converge")
-                }
-            }
-
-            processingStatus.value = context.getString(R.string.chat_page_compacting_context_finalize)
-            summarize(
-                content = summaries.joinToString("\n\n"),
+            reduceCompactionSummaries(
+                summaries = summaries,
+                contentBudget = budget.contentTokens,
                 targetTokens = reduceTarget,
+                maxTokens = summaryBudget.maxTokens,
+                onProgress = { pass, completed, total ->
+                    processingStatus.value = if (total == 1) {
+                        context.getString(R.string.chat_page_compacting_context_finalize)
+                    } else context.getString(
+                        R.string.chat_page_compacting_context_reduce_progress, pass, completed, total,
+                    )
+                },
+                summarize = { content, target -> generateSummary(compactSummaryPrompt(content, target, locale)) },
             )
         } catch (error: CancellationException) {
             throw error
         } catch (error: ContextCompactionException) {
             throw error
+        } catch (error: CompactionSummaryTooLargeException) {
+            Log.w(TAG, "Summary exceeds available context space", error)
+            throw ContextCompactionException(context.getString(
+                R.string.error_compress_context_summary_too_large, error.actualTokens, error.maxTokens,
+            ))
         } catch (error: Exception) {
             Log.w(TAG, "compressNodesToSummary failed", error)
             throw ContextCompactionException(

@@ -163,5 +163,11 @@ internal fun selectNodesForAutomaticCompaction(
 internal fun priorCheckpointMergeContext(summary: String): String = if (summary.isBlank()) "" else
     "PRIOR CHECKPOINT (merge this exactly once with the new conversation into one consolidated checkpoint):\n$summary"
 
+/** Pending input has not been saved yet, so the previous completed turn can be summarized safely. */
+internal fun canCompactLatestCompletedTurn(nodes: List<MessageNode>): Boolean =
+    nodes.lastOrNull()?.currentMessage?.role == MessageRole.ASSISTANT && nodes.none { node ->
+        node.currentMessage.getTools().any { it.isPending || it.canResumeExecution }
+    }
+
 private fun Int.isCjk(): Boolean =
     this in 0x4e00..0x9fff || this in 0x3040..0x30ff || this in 0xac00..0xd7af

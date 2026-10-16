@@ -76,9 +76,6 @@ fun normalizeAutoCompactionThresholdPercent(value: Int): Int {
 fun normalizeAutoCompactionTokenLimit(value: Int?): Int? =
     value?.takeIf { it in 1..MAX_AUTO_COMPACTION_TOKEN_LIMIT }
 
-internal fun contextUsageDisplayCapacity(tokenLimit: Int?): Int =
-    normalizeAutoCompactionTokenLimit(tokenLimit) ?: DEFAULT_CONTEXT_LENGTH
-
 internal fun contextUsageFraction(usedTokens: Int, capacityTokens: Int): Float =
     if (capacityTokens > 0) {
         (usedTokens.toFloat() / capacityTokens).coerceIn(0f, 1f)
@@ -86,40 +83,26 @@ internal fun contextUsageFraction(usedTokens: Int, capacityTokens: Int): Float =
         0f
     }
 
-fun autoCompactionThresholdTokens(
-    windowTokens: Int,
-    thresholdPercent: Int = DEFAULT_AUTO_COMPACTION_THRESHOLD_PERCENT,
-    tokenLimit: Int? = null,
-): Int? {
-    if (windowTokens <= 0) return null
-
-    val percentageThreshold = (
-        windowTokens.toLong() * normalizeAutoCompactionThresholdPercent(thresholdPercent) / 100L
-    ).toInt()
-    return minOf(percentageThreshold, normalizeAutoCompactionTokenLimit(tokenLimit) ?: Int.MAX_VALUE)
+internal data class ContextCompactionPolicy(
+    val capacityTokens: Int,
+    val triggerTokens: Int,
+    val targetTokens: Int,
+    val usesGlobalLimit: Boolean,
+) {
+    fun shouldCompact(usedTokens: Int): Boolean = usedTokens >= triggerTokens
 }
 
-internal fun autoCompactionTargetTokens(
-    windowTokens: Int,
-    thresholdPercent: Int = DEFAULT_AUTO_COMPACTION_THRESHOLD_PERCENT,
-    tokenLimit: Int? = null,
-): Int? {
-    val threshold = autoCompactionThresholdTokens(windowTokens, thresholdPercent, tokenLimit) ?: return null
-    return minOf(windowTokens.toLong() * 65 / 100, threshold.toLong() * 80 / 100)
-        .coerceAtLeast(1)
-        .toInt()
-}
-
-fun shouldAutoCompact(
-    enabled: Boolean,
-    usedTokens: Int,
-    windowTokens: Int,
-    thresholdPercent: Int = DEFAULT_AUTO_COMPACTION_THRESHOLD_PERCENT,
-    tokenLimit: Int? = null,
-): Boolean {
-    if (!enabled) return false
-    val thresholdTokens = autoCompactionThresholdTokens(windowTokens, thresholdPercent, tokenLimit) ?: return false
-    return usedTokens >= thresholdTokens
+/** Share the effective limit between the compaction planner and the chat usage ring. */
+internal fun Settings.contextCompactionPolicy(model: Model?): ContextCompactionPolicy {
+    val globalLimit = if (enableAutoCompactionTokenLimit) normalizeAutoCompactionTokenLimit(autoCompactionTokenLimit) else null
+    val capacity = globalLimit ?: model.effectiveContextLength()
+    // Global automatic compaction is an optional early trigger. The active window limit always applies.
+    val trigger = if (enableAutoCompaction) {
+        (capacity.toLong() * normalizeAutoCompactionThresholdPercent(autoCompactionThresholdPercent) / 100)
+            .coerceAtLeast(1).toInt()
+    } else capacity
+    val target = minOf(capacity.toLong() * 65 / 100, trigger.toLong() * 80 / 100).coerceAtLeast(1).toInt()
+    return ContextCompactionPolicy(capacity, trigger, target, usesGlobalLimit = globalLimit != null)
 }
 
 fun Conversation.estimateWindowTokens(model: Model?): Int {

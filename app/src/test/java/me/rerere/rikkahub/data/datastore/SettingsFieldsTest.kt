@@ -20,6 +20,7 @@ import me.rerere.search.SearchCommonOptions
 import me.rerere.search.SearchServiceOptions
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.uuid.Uuid
 
@@ -85,6 +86,38 @@ class SettingsFieldsTest {
     }
 
     @Test
+    fun `legacy active global cap is enabled on upgrade and migration survives other setting changes`() {
+        val preferences = mutablePreferencesOf(SettingsStore.AUTO_COMPACTION_TOKEN_LIMIT to 123_456)
+        val migrated = preferences.toSettings()
+        assertTrue(migrated.enableAutoCompactionTokenLimit)
+        val updated = migrated.copy(enableAutoCompaction = false)
+        preferences.putSettings(updated, persisted = migrated)
+        assertTrue(preferences.toSettings().enableAutoCompactionTokenLimit)
+        assertEquals(123_456, preferences.toSettings().autoCompactionTokenLimit)
+    }
+
+    @Test
+    fun `explicitly disabled cap retains its value without being reenabled on load`() {
+        val preferences = mutablePreferencesOf(
+            SettingsStore.AUTO_COMPACTION_TOKEN_LIMIT to 123_456,
+            SettingsStore.ENABLE_AUTO_COMPACTION_TOKEN_LIMIT to false,
+        )
+        assertFalse(preferences.toSettings().enableAutoCompactionTokenLimit)
+        assertEquals(123_456, preferences.toSettings().autoCompactionTokenLimit)
+    }
+
+    @Test
+    fun `legacy cap disabled with global compression stays disabled on upgrade`() {
+        val preferences = mutablePreferencesOf(
+            SettingsStore.AUTO_COMPACTION_TOKEN_LIMIT to 123_456,
+            SettingsStore.ENABLE_AUTO_COMPACTION to false,
+        )
+        assertFalse(preferences.toSettings().enableAutoCompactionTokenLimit)
+        assertFalse(emptyPreferences().toSettings().enableAutoCompactionTokenLimit)
+        assertFalse(Settings(enableAutoCompactionTokenLimit = true).normalized().enableAutoCompactionTokenLimit)
+    }
+
+    @Test
     fun `clearing the asr provider removes its key`() {
         val preferences = mutablePreferencesOf().apply { putSettings(SAMPLE) }
 
@@ -137,6 +170,7 @@ private val SAMPLE = Settings(
     enableAutoCompaction = false,
     autoCompactionThresholdPercent = 60,
     autoCompactionTokenLimit = 123456,
+    enableAutoCompactionTokenLimit = true,
     assistantId = id(20),
     providers = listOf(ProviderSetting.OpenAI(id = id(31), name = "Provider")),
     assistants = listOf(Assistant(id = id(20), name = "Assistant")),
@@ -191,6 +225,7 @@ private val STORED_KEYS = setOf(
     "enable_auto_compaction",
     "auto_compaction_threshold_percent",
     "auto_compaction_token_limit",
+    "enable_auto_compaction_token_limit",
     "providers",
     "select_assistant",
     "assistants",

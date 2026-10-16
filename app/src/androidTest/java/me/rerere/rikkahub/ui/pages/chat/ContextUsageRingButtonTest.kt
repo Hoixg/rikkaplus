@@ -35,6 +35,9 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import me.rerere.rikkahub.R
+import me.rerere.ai.provider.Model
+import me.rerere.rikkahub.data.datastore.Settings
+import me.rerere.rikkahub.utils.contextCompactionPolicy
 import me.rerere.rikkahub.ui.theme.LocalDarkMode
 import me.rerere.rikkahub.utils.formatContextLength
 import org.junit.Assert.assertArrayEquals
@@ -82,10 +85,7 @@ class ContextUsageRingButtonTest {
                             key(conversationKey) {
                                 ContextUsageRingButton(
                                     usedTokens = usedTokens,
-                                    modelWindowTokens = 100,
-                                    displayCapacityTokens = 100,
-                                    thresholdPercent = 80,
-                                    tokenLimit = null,
+                                    policy = Settings().contextCompactionPolicy(Model(contextLength = 100)),
                                     enableAnimation = enableAnimation,
                                 )
                             }

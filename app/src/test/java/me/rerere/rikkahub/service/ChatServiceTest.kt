@@ -108,6 +108,32 @@ class ChatServiceTest {
     }
 
     @Test
+    fun `compression reserves output tokens and disables tools while preserving model routing`() {
+        val model = Model(
+            tools = setOf(BuiltInTools.Search, BuiltInTools.ImageGeneration),
+            customHeaders = listOf(CustomHeader("X-Route", "compression")),
+            customBodies = listOf(CustomBody("gateway_mode", JsonPrimitive("strict"))),
+        )
+        val conversationId = Uuid.random()
+        val params = compactionTextGenerationParams(model, conversationId, outputTokens = 4_096)
+        assertEquals(4_096, params.maxTokens)
+        assertTrue(params.model.tools.isEmpty())
+        assertEquals(model.id, params.model.id)
+        assertEquals(model.customHeaders, params.customHeaders)
+        assertEquals(model.customBodies, params.customBody)
+        assertEquals(conversationId.toString(), params.sessionId)
+    }
+
+    @Test
+    fun `compression failure retains provider details for diagnosis`() {
+        val cause = IllegalStateException("Provider rejected the request")
+        val error = ContextCompactionException("Compaction failed", cause)
+        assertEquals("Compaction failed\n\nProvider rejected the request", error.message)
+        assertEquals(cause, error.cause)
+        assertEquals("Compaction failed", ContextCompactionException("Compaction failed").message)
+    }
+
+    @Test
     fun `external web search is enabled when assistant preference is enabled`() {
         val assistant = Assistant(enableWebSearch = true)
         val model = Model()
