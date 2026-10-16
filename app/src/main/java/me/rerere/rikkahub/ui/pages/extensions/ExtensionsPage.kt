@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.dp
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.rikkahub.R
 import me.rerere.hugeicons.stroke.Book03
+import me.rerere.hugeicons.stroke.Calendar03
 import me.rerere.hugeicons.stroke.File02
 import me.rerere.hugeicons.stroke.Folder01
 import me.rerere.hugeicons.stroke.McpServer
@@ -82,6 +83,12 @@ fun ExtensionsPage() {
                         leadingContent = { CardGroupIcon(HugeIcons.Folder01, containerColor = containerColor, contentColor = contentColor) },
                         headlineContent = { Text(stringResource(R.string.extensions_page_workspace)) },
                         supportingContent = { Text(stringResource(R.string.extensions_page_workspace_desc)) },
+                    )
+                    item(
+                        onClick = { navController.navigate(Screen.ScheduledTasks()) },
+                        leadingContent = { CardGroupIcon(HugeIcons.Calendar03, containerColor = containerColor, contentColor = contentColor) },
+                        headlineContent = { Text("定时任务") },
+                        supportingContent = { Text("按计划让助手执行提示词") },
                     )
                     item(
                         onClick = { navController.navigate(Screen.SettingMcp) },
