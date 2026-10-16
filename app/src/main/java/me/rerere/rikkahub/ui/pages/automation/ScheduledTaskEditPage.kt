@@ -363,7 +363,7 @@ fun ScheduledTaskEditPage(
                                 minLines = 3,
                                 maxLines = 8,
                                 shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp),
                             )
                         }
                     }

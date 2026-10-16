@@ -1,7 +1,8 @@
 package me.rerere.rikkahub.data.ai.tools
 
-import kotlinx.coroutines.*
-import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.*
 import me.rerere.ai.core.MessageRole
 import me.rerere.ai.core.Tool
@@ -11,10 +12,11 @@ import me.rerere.ai.ui.UIMessagePart
 import org.junit.Assert.*
 import org.junit.Test
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class ScheduledTaskApprovalTest {
-    private var now = 1_000_000L
     private var executions = 0
-    private val definition = Tool(SCHEDULED_TASK_TOOL_NAME, "", needsApproval = { true },
+    private val definition = Tool(SCHEDULED_TASK_TOOL_NAME, "",
+        needsApproval = { scheduledAction(it) in scheduledApprovalActions },
         prepareArguments = { input -> buildJsonObject {
             put("action", input.jsonObject.getValue("action"))
             put(SCHEDULED_PREPARED_ARGUMENT, buildJsonObject {
@@ -23,97 +25,96 @@ class ScheduledTaskApprovalTest {
                 put("after", buildJsonObject { put("name", "Check weather"); put("prompt", "Report today's weather") })
             })
         } }, execute = { executions++; listOf(UIMessagePart.Text("done")) })
+
     private fun call(action: String = "create", id: String = "call") =
         UIMessagePart.Tool(id, SCHEDULED_TASK_TOOL_NAME, """{"action":"$action"}""")
-    private suspend fun pending(action: String = "create", id: String = "call") =
-        prepareScheduledTaskApproval(call(action, id), definition) { now }
 
-    @Test fun preparationDoesNotExecuteAndSnapshotSurvivesSerialization() = runBlocking {
+    private suspend fun pending(action: String = "create") = prepareToolApproval(call(action), definition)
+
+    @Test fun ordinaryPreparationPreservesSnapshotWithoutCreatingADeadline() = runTest {
         val pending = pending()
         assertTrue(pending.isPending)
         assertEquals(0, executions)
-        assertEquals(now + 60_000L, scheduledApprovalDeadline(pending))
-        assertEquals(60_000L, scheduledApprovalDurationMs(pending))
+        assertNull(pending.metadata)
+        val snapshot = scheduledApprovalSnapshot(pending)!!
+        assertEquals("stable-request", snapshot.getValue("request_id").jsonPrimitive.content)
+        assertNull(snapshot["expires_at"])
+        assertNull(snapshot["timeout_ms"])
         val restored = Json.decodeFromString(UIMessagePart.Tool.serializer(), Json.encodeToString(UIMessagePart.Tool.serializer(), pending))
         assertEquals(pending, restored)
-        now += 10_000
-        assertEquals(pending, prepareScheduledTaskApproval(restored, definition) { now })
+        assertEquals(snapshot, scheduledApprovalSnapshot(restored))
+        assertEquals(restored, prepareToolApproval(restored, definition))
+    }
+
+    @Test fun allThreeActionsCanBeApprovedAfterMoreThanSixtySeconds() = runTest {
+        for (action in listOf("create", "update", "run_now")) {
+            val pending = pending(action)
+            advanceTimeBy(86_400_000)
+            val approved = applyToolApprovalDecision(pending, true)
+            assertEquals(ToolApprovalState.Approved, approved.approvalState)
+            assertEquals(pending.input, approved.input)
+            executeToolWithApproval(approved, definition, approved.inputAsJson())
+        }
+        assertEquals(3, executions)
+    }
+
+    @Test fun waitingNeverApprovesOrExecutesTheRequest() = runTest {
+        val pending = pending()
+        advanceTimeBy(7 * 86_400_000L)
+        assertTrue(pending.isPending)
         assertTrue(runCatching { executeToolWithApproval(pending, definition, pending.inputAsJson()) }.isFailure)
-    }
-
-    @Test fun approvalAt59SecondsCanExecuteAfterDeadline() = runBlocking {
-        val pending = pending("run_now")
-        now += 59_000
-        val approved = decideScheduledTaskApproval(pending, true, now = now)
-        assertEquals(ToolApprovalState.Approved, approved.approvalState)
-        now += 2_000
-        executeToolWithApproval(approved, definition, approved.inputAsJson())
-        assertEquals(1, executions)
-        assertEquals(approved, decideScheduledTaskApproval(approved, false, now = now))
-    }
-
-    @Test fun at60SecondsLateApprovalIsDeniedAndCannotExecute() = runBlocking {
-        val pending = pending("update")
-        now += 60_000
-        val denied = decideScheduledTaskApproval(pending, true, now = now)
-        assertEquals(ToolApprovalState.Denied(SCHEDULED_APPROVAL_TIMEOUT_REASON), denied.approvalState)
-        assertEquals(denied, decideScheduledTaskApproval(denied, true, now = now))
-        assertTrue(runCatching { executeToolWithApproval(denied, definition, denied.inputAsJson()) }.isFailure)
         assertEquals(0, executions)
     }
 
-    @Test fun legacyPendingWithoutDeadlineAndBackwardClockFailClosed() = runBlocking {
-        val legacy = call().copy(approvalState = ToolApprovalState.Pending)
-        assertTrue(decideScheduledTaskApproval(legacy, true, now = now).approvalState is ToolApprovalState.Denied)
-        assertEquals(legacy, prepareScheduledTaskApproval(legacy, definition) { now })
+    @Test fun rejectedAndApprovedDecisionsCannotBeReversedByStaleClicks() = runTest {
+        val pending = pending("update")
+        val denied = applyToolApprovalDecision(pending, false, "用户拒绝")
+        assertEquals(ToolApprovalState.Denied("用户拒绝"), denied.approvalState)
+        assertEquals(denied, applyToolApprovalDecision(denied, true))
+        assertTrue(runCatching { executeToolWithApproval(denied, definition, denied.inputAsJson()) }.isFailure)
+        val approved = applyToolApprovalDecision(pending, true)
+        assertEquals(approved, applyToolApprovalDecision(approved, false))
+        assertEquals(0, executions)
+    }
+
+    @Test fun restoredPendingRequestIgnoresItsOldExpiredDeadline() = runTest {
+        val pending = pending().let { call -> call.copy(metadata = buildJsonObject {
+            put(SCHEDULED_APPROVAL_METADATA, buildJsonObject {
+                scheduledApprovalSnapshot(call)!!.forEach { (key, value) -> put(key, value) }
+                put("expires_at", 1L)
+                put("timeout_ms", 60_000L)
+            })
+        }) }
+        val restored = Json.decodeFromString(UIMessagePart.Tool.serializer(), Json.encodeToString(UIMessagePart.Tool.serializer(), pending))
+        assertEquals(restored, prepareToolApproval(restored, definition))
+        advanceTimeBy(86_400_000)
+        val approved = applyToolApprovalDecision(restored, true)
+        assertEquals(ToolApprovalState.Approved, approved.approvalState)
+        executeToolWithApproval(approved, definition, approved.inputAsJson())
+        assertEquals(1, executions)
+    }
+
+    @Test fun olderCardsCanStillReadTheirConfigurationFromMetadata() {
+        val snapshot = buildJsonObject { put("after", buildJsonObject { put("name", "旧版任务") }) }
+        val legacy = call().copy(approvalState = ToolApprovalState.Pending,
+            metadata = buildJsonObject { put(SCHEDULED_APPROVAL_METADATA, snapshot) })
+        assertEquals(snapshot, scheduledApprovalSnapshot(legacy))
+    }
+
+    @Test fun preparedArgumentsTakePriorityOverDuplicatedOlderCardMetadata() = runTest {
         val pending = pending()
-        assertTrue(scheduledApprovalExpired(pending, now - 1))
-    }
-
-    @Test fun restoredLegacyRequestKeepsIts30SecondDeadline() = runBlocking {
-        val created = pending()
-        val metadata = created.metadata ?: error("Missing metadata")
-        val original = scheduledApprovalMetadata(created) ?: error("Missing approval metadata")
-        val legacy = created.copy(metadata = buildJsonObject {
-            metadata.forEach { (key, value) ->
-                put(key, if (key == SCHEDULED_APPROVAL_METADATA) buildJsonObject {
-                    original.forEach { (field, item) -> if (field != "timeout_ms" && field != "expires_at") put(field, item) }
-                    put("expires_at", now + 30_000L)
-                } else value)
-            }
+        val stale = pending.copy(metadata = buildJsonObject {
+            put(SCHEDULED_APPROVAL_METADATA, buildJsonObject { put("after", buildJsonObject { put("name", "Stale") }) })
         })
-        assertEquals(30_000L, scheduledApprovalDurationMs(legacy))
-        assertEquals(now + 30_000L, scheduledApprovalDeadline(legacy))
-        now += 29_000L
-        assertEquals(ToolApprovalState.Approved, decideScheduledTaskApproval(legacy, true, now = now).approvalState)
-        now += 1_000L
-        assertEquals(ToolApprovalState.Denied(SCHEDULED_APPROVAL_TIMEOUT_REASON),
-            decideScheduledTaskApproval(legacy, true, now = now).approvalState)
-        assertEquals(legacy, prepareScheduledTaskApproval(legacy, definition) { now })
+        assertEquals(scheduledApprovalSnapshot(pending), scheduledApprovalSnapshot(stale))
     }
 
-    @Test fun reopeningPageUsesRemainingTimeFromPersistedDeadline() = runBlocking {
-        val created = pending()
-        now += 10_000L
-        val restored = Json.decodeFromString(UIMessagePart.Tool.serializer(),
-            Json.encodeToString(UIMessagePart.Tool.serializer(), created))
-        val waits = Channel<Long>(Channel.UNLIMITED)
-        val coordinator = ScheduledTaskApprovalCoordinator(this, { _, _ -> },
-            clock = { now }, wait = { waits.send(it); awaitCancellation() })
-        coordinator.observe("chat", listOf(restored))
-        assertEquals(50_000L, waits.receive())
-        coordinator.observe("chat", listOf(restored.copy()))
-        assertTrue(waits.tryReceive().isFailure)
-        coordinator.cancelAll()
-    }
-
-    @Test fun otherToolsAndNonTimedScheduledActionsKeepGenericApproval() = runBlocking {
+    @Test fun otherToolsKeepOrdinaryApprovalAndNonWriteActionsDoNotUseTheTaskCard() = runTest {
         for (name in listOf("generate_image", "workspace_shell", "ask_user")) {
             val definition = Tool(name, "", needsApproval = { true }, execute = { emptyList() })
             val pending = prepareToolApproval(UIMessagePart.Tool("other", name, "{}"), definition)
-            assertNull(scheduledApprovalDeadline(pending))
             assertFalse(isScheduledApproval(pending))
-            assertEquals(pending, decideScheduledTaskApproval(pending, false, now = now + 99_000))
+            assertNull(scheduledApprovalSnapshot(pending))
             assertEquals(ToolApprovalState.Approved, applyToolApprovalDecision(pending, true).approvalState)
         }
         for (action in listOf("delete", "set_enabled", "cancel_run", "list", "get", "options", "history")) {
@@ -121,72 +122,11 @@ class ScheduledTaskApprovalTest {
         }
     }
 
-    @Test fun coordinatorKeepsIndependentTimersAndDoesNotRestartOnPageUpdates() = runBlocking {
-        val waits = Channel<Pair<Long, CompletableDeferred<Unit>>>(Channel.UNLIMITED)
-        val expired = mutableListOf<String>()
-        var references = 0
-        val coordinator = ScheduledTaskApprovalCoordinator(this, expire = { _, id -> expired += id },
-            retain = { references++ }, release = { references-- }, clock = { now },
-            wait = { duration -> CompletableDeferred<Unit>().also { waits.send(duration to it) }.await() })
-        val first = pending(id = "first")
-        coordinator.observe("chat", listOf(first))
-        val firstWait = waits.receive()
-        assertEquals(60_000L, firstWait.first)
-        now += 10_000
-        val second = pending(id = "second")
-        coordinator.observe("chat", listOf(first.copy(), second))
-        val secondWait = waits.receive()
-        assertEquals(60_000L, secondWait.first)
-        assertTrue(waits.tryReceive().isFailure)
-        assertEquals(2, references)
-        now += 50_000
-        firstWait.second.complete(Unit)
-        yield()
-        assertEquals(listOf("first"), expired)
-        coordinator.observe("chat", listOf(decideScheduledTaskApproval(second, true, now = now)))
-        yield()
-        assertEquals(0, references)
-        assertEquals(listOf("first"), expired)
-    }
-
-    @Test fun restoredExpiredRequestTimesOutImmediatelyWhileOtherApprovalIsIgnored() = runBlocking {
-        var waits = 0
-        val expired = mutableListOf<String>()
-        val pending = pending()
-        now += 61_000
-        val coordinator = ScheduledTaskApprovalCoordinator(this, { _, id -> expired += id }, clock = { now }, wait = { waits++ })
-        coordinator.observe("chat", listOf(pending,
-            UIMessagePart.Tool("other", "workspace_shell", "{}", approvalState = ToolApprovalState.Pending)))
-        yield()
-        assertEquals(listOf("call"), expired)
-        assertEquals(0, waits)
-    }
-
-    @Test fun cancellingBeforeTimerStartsReleasesItsSessionReference() = runBlocking {
-        var references = 0
-        var expired = 0
-        val pending = pending()
-        val coordinator = ScheduledTaskApprovalCoordinator(this, { _, _ -> expired++ },
-            retain = { references++ }, release = { references-- }, clock = { now })
-        coordinator.observe("chat", listOf(pending))
-        coordinator.observe("chat", listOf(decideScheduledTaskApproval(pending, true, now = now)))
-        yield()
-        assertEquals(0, references)
-        assertEquals(0, expired)
-    }
-
-    @Test fun cleanupCancelsOnlyOwnedTimersAndReleasesReferences() = runBlocking {
-        var references = 0
-        var expired = 0
-        val coordinator = ScheduledTaskApprovalCoordinator(this, { _, _ -> expired++ },
-            retain = { references++ }, release = { references-- }, clock = { now })
-        coordinator.observe("first-chat", listOf(pending(id = "first")))
-        coordinator.observe("second-chat", listOf(pending(id = "second")))
-        assertEquals(2, references)
-        coordinator.cancelAll()
-        yield()
-        assertEquals(0, references)
-        assertEquals(0, expired)
+    @Test fun readActionsDoNotAcquireAnApprovalRequirement() = runTest {
+        for (action in scheduledReadActions) {
+            val prepared = prepareToolApproval(call(action), definition)
+            assertEquals(ToolApprovalState.Auto, prepared.approvalState)
+        }
     }
 
     @Test fun newHumanMessageIsRequiredAfterDenialBeforeAnotherWriteRequest() {

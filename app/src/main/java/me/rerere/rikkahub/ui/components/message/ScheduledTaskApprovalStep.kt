@@ -4,7 +4,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.material3.Button
@@ -13,42 +17,31 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.delay
 import kotlinx.serialization.json.*
 import me.rerere.ai.ui.ToolApprovalState
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.rikkahub.data.ai.tools.*
 import me.rerere.rikkahub.ui.components.ui.ChainOfThoughtScope
 
-/** Dedicated timed card. The service remains authoritative when a deadline is reached. */
+/** Review the prepared task configuration with the same approval lifecycle as ordinary tools. */
 @Composable
 internal fun ChainOfThoughtScope.ScheduledTaskApprovalStep(
     tool: UIMessagePart.Tool,
     onApproval: ((String, Boolean, String, String?) -> Unit)?,
 ) {
-    var now by remember(tool.toolCallId) { mutableLongStateOf(System.currentTimeMillis()) }
-    val deadline = scheduledApprovalDeadline(tool)
-    LaunchedEffect(tool.toolCallId, tool.isPending, deadline) {
-        while (tool.isPending && deadline != null && now < deadline) {
-            now = System.currentTimeMillis()
-            delay(200)
-        }
-        now = System.currentTimeMillis()
-    }
     val action = scheduledAction(tool.inputAsJson())
     val title = when (action) {
         "create" -> "创建定时任务"
         "update" -> "修改定时任务"
         else -> "立即执行定时任务"
     }
-    val metadata = scheduledApprovalMetadata(tool)
+    val metadata = scheduledApprovalSnapshot(tool)
     val before = metadata?.get("before") as? JsonObject
     val after = metadata?.get("after") as? JsonObject
     val name = after?.get("name")?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
@@ -56,16 +49,10 @@ internal fun ChainOfThoughtScope.ScheduledTaskApprovalStep(
     val displayName = if (action == "update" && previousName != null && previousName != name) {
         "$previousName → ${name ?: "未命名任务"}"
     } else name ?: "未命名任务"
-    val expired = scheduledApprovalExpired(tool, now)
-    val durationMs = scheduledApprovalDurationMs(tool)
-    val remainingMs = (deadline?.minus(now) ?: 0L).coerceIn(0L, durationMs)
-    val remainingSeconds = (remainingMs + 999L) / 1000L
     val denied = tool.approvalState as? ToolApprovalState.Denied
-    val urgent = tool.isPending && (expired || remainingSeconds <= 10L)
     val status = when {
         denied != null -> denied.reason.ifBlank { "已拒绝，未执行" }
-        expired -> "审批已超时，未执行"
-        tool.isPending -> "剩余 $remainingSeconds 秒"
+        tool.isPending -> "待审批"
         tool.isExecuted -> "已执行"
         tool.approvalState == ToolApprovalState.Approved -> "已批准，等待执行"
         else -> "审批已结束"
@@ -85,22 +72,21 @@ internal fun ChainOfThoughtScope.ScheduledTaskApprovalStep(
         extra = {
             if (!expanded) {
                 Surface(
-                    color = if (urgent || denied != null) MaterialTheme.colorScheme.errorContainer
+                    color = if (denied != null) MaterialTheme.colorScheme.errorContainer
                         else MaterialTheme.colorScheme.primaryContainer,
                     shape = RoundedCornerShape(8.dp),
                 ) {
                     Text(
                         when {
                             denied != null -> "已拒绝"
-                            expired -> "已超时"
-                            tool.isPending -> "${remainingSeconds} 秒"
+                            tool.isPending -> "待审批"
                             tool.isExecuted -> "已执行"
                             tool.approvalState == ToolApprovalState.Approved -> "已批准"
                             else -> "已结束"
                         },
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                         style = MaterialTheme.typography.labelMedium,
-                        color = if (urgent || denied != null) MaterialTheme.colorScheme.onErrorContainer
+                        color = if (denied != null) MaterialTheme.colorScheme.onErrorContainer
                             else MaterialTheme.colorScheme.onPrimaryContainer,
                     )
                 }
@@ -108,30 +94,9 @@ internal fun ChainOfThoughtScope.ScheduledTaskApprovalStep(
         },
         content = {
             Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    color = if (urgent || denied != null) MaterialTheme.colorScheme.errorContainer
-                        else MaterialTheme.colorScheme.primaryContainer,
-                    shape = RoundedCornerShape(16.dp),
-                ) {
-                    val foreground = if (urgent || denied != null) MaterialTheme.colorScheme.onErrorContainer
-                        else MaterialTheme.colorScheme.onPrimaryContainer
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(14.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        if (tool.isPending && !expired) {
-                            Text("${remainingSeconds} 秒", style = MaterialTheme.typography.headlineMedium,
-                                fontWeight = FontWeight.Bold, color = foreground)
-                            Text("超时自动拒绝", style = MaterialTheme.typography.labelSmall, color = foreground)
-                        } else {
-                            Text(status, style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.SemiBold, color = foreground)
-                        }
-                    }
-                }
-                if (tool.isPending && !expired && onApproval != null) {
+                Text(status, style = MaterialTheme.typography.labelLarge,
+                    color = if (denied != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+                if (tool.isPending && onApproval != null) {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(
                             onClick = { onApproval(tool.toolCallId, false, "用户拒绝", null) },
@@ -169,14 +134,8 @@ internal fun ChainOfThoughtScope.ScheduledTaskApprovalStep(
                                 showChange = action == "update",
                             )
                             HorizontalDivider()
-                            key(tool.toolCallId) {
-                                ApprovalDetail(
-                                    label = "提示词",
-                                    oldValue = before?.get("prompt")?.jsonPrimitive?.contentOrNull,
-                                    newValue = after["prompt"]?.jsonPrimitive?.contentOrNull.orEmpty(),
-                                    showChange = action == "update",
-                                    longText = true,
-                                )
+                            key(tool.toolCallId, after["prompt"]) {
+                                ScheduledTaskPromptPreview(after["prompt"]?.jsonPrimitive?.contentOrNull.orEmpty())
                             }
                         }
                     }
@@ -194,41 +153,34 @@ private fun ApprovalDetail(
     oldValue: String?,
     newValue: String,
     showChange: Boolean,
-    longText: Boolean = false,
 ) {
     val changed = showChange && oldValue != null && oldValue != newValue
-    var showOldValue by remember(oldValue, newValue) { mutableStateOf(false) }
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(if (changed) "$label · 已修改" else label,
-                modifier = Modifier.weight(1f),
-                style = MaterialTheme.typography.labelSmall,
-                color = if (changed) MaterialTheme.colorScheme.primary
-                    else MaterialTheme.colorScheme.onSurfaceVariant)
-            if (changed && longText) {
-                TextButton(onClick = { showOldValue = !showOldValue }) {
-                    Text(if (showOldValue) "收起旧提示词" else "对比旧提示词")
+        Text(if (changed) "$label · 已修改" else label,
+            style = MaterialTheme.typography.labelSmall,
+            color = if (changed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(if (changed) "$oldValue → $newValue" else newValue.ifBlank { "（空）" },
+            style = MaterialTheme.typography.bodyMedium)
+    }
+}
+
+@Composable
+internal fun ScheduledTaskPromptPreview(prompt: String, modifier: Modifier = Modifier) {
+    val scrollState = rememberScrollState()
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text("提示词", style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, shape = MaterialTheme.shapes.medium) {
+            Column(modifier.fillMaxWidth().heightIn(max = 240.dp).verticalScroll(scrollState)) {
+                SelectionContainer {
+                    Text(prompt.ifBlank { "（空）" }, modifier = Modifier.fillMaxWidth().padding(12.dp),
+                        style = MaterialTheme.typography.bodyMedium)
                 }
             }
         }
-        Text(if (changed && !longText) "$oldValue → $newValue" else newValue.ifBlank { "（空）" },
-            style = MaterialTheme.typography.bodyMedium)
-        if (changed && longText && showOldValue) {
-            Surface(
-                color = MaterialTheme.colorScheme.surfaceContainer,
-                shape = MaterialTheme.shapes.medium,
-            ) {
-                Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("旧提示词", style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(oldValue.orEmpty().ifBlank { "（空）" }, style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
+        if (scrollState.maxValue > 0) {
+            Text("上下滑动查看完整提示词", style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

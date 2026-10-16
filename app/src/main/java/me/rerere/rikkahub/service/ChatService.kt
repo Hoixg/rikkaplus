@@ -64,10 +64,6 @@ import me.rerere.rikkahub.data.ai.tools.ChatToolFactory
 import me.rerere.rikkahub.data.ai.tools.InvalidMcpServerNamesException
 import me.rerere.rikkahub.data.ai.tools.shouldUseExternalWebSearch
 import me.rerere.rikkahub.data.ai.tools.applyToolApprovalDecision
-import me.rerere.rikkahub.data.ai.tools.ScheduledTaskApprovalCoordinator
-import me.rerere.rikkahub.data.ai.tools.isScheduledApproval
-import me.rerere.rikkahub.data.ai.tools.decideScheduledTaskApproval
-import me.rerere.rikkahub.data.ai.tools.SCHEDULED_APPROVAL_TIMEOUT_REASON
 import me.rerere.rikkahub.data.ai.tools.local.LocalToolOption
 import me.rerere.rikkahub.data.ai.tools.local.imageToolChatModel
 import me.rerere.rikkahub.data.ai.transformers.Base64ImageToLocalFileTransformer
@@ -465,30 +461,6 @@ class ChatService(
         onSessionRemoved = memoryConsolidationScheduler::onConversationLeft,
     )
 
-    private val scheduledApprovals = ScheduledTaskApprovalCoordinator(
-        scope = appScope,
-        expire = { conversationId, toolId -> handleToolApproval(Uuid.parse(conversationId), toolId, false, SCHEDULED_APPROVAL_TIMEOUT_REASON) },
-        retain = { sessionManager.acquire(Uuid.parse(it)) },
-        release = { sessionManager.release(Uuid.parse(it)) },
-    )
-
-    private fun observeScheduledApprovals(conversation: Conversation) {
-        scheduledApprovals.observe(conversation.id.toString(), conversation.currentMessages.flatMap { it.getTools() })
-    }
-
-    init {
-        appScope.launch {
-            runCatching {
-                conversationRepo.getScheduledApprovalConversationIds().forEach { id ->
-                    sessionManager.withSession(id) { session ->
-                        session.initialize { conversationRepo.getConversationById(id) ?: session.state.value }
-                        observeScheduledApprovals(session.state.value)
-                    }
-                }
-            }.onFailure { Log.e(TAG, "Unable to restore scheduled task approvals", it) }
-        }
-    }
-
     // 错误状态
     private val _errors = MutableStateFlow<List<ChatError>>(emptyList())
     val errors: StateFlow<List<ChatError>> = _errors.asStateFlow()
@@ -519,7 +491,6 @@ class ChatService(
 
     fun cleanup() = runCatching {
         subagentManager.cleanup()
-        scheduledApprovals.cancelAll()
         sessionManager.cleanup()
     }
 
@@ -612,7 +583,6 @@ class ChatService(
         sessionManager.withSession(conversationId) { session ->
             ensureInitialized(session)
             settingsStore.selectAssistant(session.state.value.assistantId)
-            observeScheduledApprovals(session.state.value)
         }
     }
 
@@ -974,7 +944,6 @@ class ChatService(
         val session = sessionManager.getOrCreate(conversationId)
         requireWritableConversation(session.state.value)
         val previousJob = session.getJob()
-        val decisionAt = System.currentTimeMillis()
 
         val hasOtherPendingTools = session.state.value.messageNodes.any { node ->
             node.currentMessage.parts.any { part ->
@@ -1003,10 +972,7 @@ class ChatService(
                                     parts = msg.parts.map { part ->
                                         when {
                                             part is UIMessagePart.Tool && part.toolCallId == toolCallId -> {
-                                                if (isScheduledApproval(part)) {
-                                                    decideScheduledTaskApproval(part, approved && answer == null && editedPrompt == null,
-                                                        reason, decisionAt)
-                                                } else applyToolApprovalDecision(part, approved, reason, answer, editedPrompt)
+                                                applyToolApprovalDecision(part, approved, reason, answer, editedPrompt)
                                             }
 
                                             else -> part
@@ -1898,8 +1864,7 @@ class ChatService(
         if (conversation.id != conversationId) return
         val session = sessionManager.getOrCreate(conversationId)
         checkFilesDelete(conversation, session.state.value)
-        val updated = session.updateFromGeneration(conversation)
-        observeScheduledApprovals(updated)
+        session.updateFromGeneration(conversation)
     }
 
     fun updateConversationState(conversationId: Uuid, update: (Conversation) -> Conversation) {
