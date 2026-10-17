@@ -6,6 +6,10 @@
 [English](README.md) | 简体中文 | [繁體中文](README_ZH_TW.md)
 </div>
 
+<div align="center">
+  <img src="docs/img/poster.png" alt="RikkaHub" width="800" />
+</div>
+
 RikkaPlus 持续同步 [RikkaHub](https://github.com/rikkahub/rikkahub)，同时改进聊天和工具使用体验。开发与发布分支为 `custom`。
 
 ## 下载
@@ -31,7 +35,7 @@ RikkaPlus 持续同步 [RikkaHub](https://github.com/rikkahub/rikkahub)，同时
 - 多模态消息、消息分支及自定义助手。
 - Markdown、代码、数学公式和 Mermaid 渲染。
 - 搜索、MCP 工具、记忆和供智能体使用的 Linux 工作区。
-- Material You 界面及深色模式。
+- Material 3 Expressive 界面及深色模式。
 
 ## 反馈与源码
 

@@ -6,6 +6,10 @@
 English | [简体中文](README_ZH_CN.md) | [繁體中文](README_ZH_TW.md)
 </div>
 
+<div align="center">
+  <img src="docs/img/poster.png" alt="RikkaHub" width="800" />
+</div>
+
 RikkaPlus keeps syncing with [RikkaHub](https://github.com/rikkahub/rikkahub) while adding workflow improvements. Its development and release branch is `custom`.
 
 ## Download
@@ -31,7 +35,7 @@ Older releases may still display the name **RikkaHub Custom**. The application I
 - Multimodal messages, message branches and customizable assistants.
 - Markdown, code, math and Mermaid rendering.
 - Search, MCP tools, memory and a Linux workspace for agents.
-- Material You design and dark mode.
+- Material 3 Expressive design and dark mode.
 
 ## Feedback and source
 
