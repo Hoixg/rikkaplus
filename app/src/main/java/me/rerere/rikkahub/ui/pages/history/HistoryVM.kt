@@ -36,7 +36,7 @@ class HistoryVM(
 
     fun deleteConversation(conversation: Conversation) {
         viewModelScope.launch {
-            chatService.deleteConversationTree(conversation)
+            chatService.deleteConversation(conversation.id)
         }
     }
 
@@ -58,11 +58,11 @@ class HistoryVM(
 
     fun restoreConversation(conversation: Conversation) {
         viewModelScope.launch {
-            conversationRepo.insertConversation(conversation)
+            chatService.restoreConversation(conversation)
         }
     }
 
     suspend fun getFullConversation(conversationId: Uuid): Conversation? {
-        return conversationRepo.getConversationById(conversationId)
+        return chatService.getConversation(conversationId)
     }
 }

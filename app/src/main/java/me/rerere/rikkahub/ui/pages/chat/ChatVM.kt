@@ -2,6 +2,7 @@ package me.rerere.rikkahub.ui.pages.chat
 
 import android.app.Application
 import android.content.Context
+import android.util.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -17,7 +18,6 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -38,14 +38,13 @@ import me.rerere.rikkahub.data.model.MessageNode
 import me.rerere.rikkahub.data.model.NodeFavoriteTarget
 import me.rerere.rikkahub.data.model.getAssistantOf
 import me.rerere.rikkahub.data.model.getChatModelOf
-import me.rerere.rikkahub.data.repository.ConversationRepository
 import me.rerere.rikkahub.data.repository.FavoriteRepository
 import me.rerere.rikkahub.service.ChatError
 import me.rerere.rikkahub.service.ChatService
 import me.rerere.rikkahub.ui.hooks.writeStringPreference
 import me.rerere.rikkahub.ui.hooks.ChatInputState
-import me.rerere.rikkahub.utils.UiState
 import me.rerere.rikkahub.utils.getConversationChatModel
+import me.rerere.rikkahub.utils.UiState
 import me.rerere.rikkahub.utils.UpdateChecker
 import java.util.Locale
 import kotlin.uuid.Uuid
@@ -56,7 +55,6 @@ class ChatVM(
     id: String,
     private val context: Application,
     private val settingsStore: SettingsStore,
-    private val conversationRepo: ConversationRepository,
     private val chatService: ChatService,
     val updateChecker: UpdateChecker,
     private val filesManager: FilesManager,
@@ -122,15 +120,11 @@ class ChatVM(
         settings.getAssistantOf(conversation)
     }.stateIn(viewModelScope, SharingStarted.Eagerly, settings.value.getAssistantOf(conversation.value))
 
-    val enableWebSearch = assistant
-        .map { it.enableWebSearch }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, assistant.value.enableWebSearch)
-
-    // 自定义的会话模型覆盖优先，其余模型配置由会话快照提供。
+    // 自定义会话模型覆盖优先，其余模型配置由会话快照提供。
     val currentChatModel: StateFlow<Model?> = combine(settings, configuredConversation) { settings, conversation ->
         settings.getConversationChatModel(conversation) ?: settings.getChatModelOf(conversation)
-    }.stateIn(viewModelScope, SharingStarted.Lazily, settings.value.getConversationChatModel(conversation.value)
-        ?: settings.value.getChatModelOf(conversation.value))
+    }.stateIn(viewModelScope, SharingStarted.Lazily,
+        settings.value.getConversationChatModel(conversation.value) ?: settings.value.getChatModelOf(conversation.value))
 
     // 错误状态
     val errors: StateFlow<List<ChatError>> = chatService.errors
@@ -141,18 +135,21 @@ class ChatVM(
 
     val messageQueue = chatService.getMessageQueueFlow(_conversationId)
 
-    fun removeQueuedMessage(id: Uuid) = chatService.removeQueuedMessage(_conversationId, id)
+    fun moveQueuedMessage(id: Uuid, targetId: Uuid) = chatService.moveQueuedMessage(_conversationId, id, targetId)
+    fun sendQueuedMessageImmediately(id: Uuid) = chatService.sendQueuedMessageImmediately(_conversationId, id)
+    fun setConversationChatModel(model: Model) {
+        viewModelScope.launch { chatService.updateConversationChatModel(_conversationId, model.id) }
+    }
 
-    fun moveQueuedMessage(id: Uuid, targetId: Uuid) =
-        chatService.moveQueuedMessage(_conversationId, id, targetId)
+    val enableWebSearch = assistant.map { it.enableWebSearch }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, assistant.value.enableWebSearch)
+
+    fun removeQueuedMessage(id: Uuid) = chatService.removeQueuedMessage(_conversationId, id)
 
     fun beginEditQueuedMessage(id: Uuid) = chatService.beginEditQueuedMessage(_conversationId, id)
 
     fun finishEditQueuedMessage(id: Uuid, parts: List<UIMessagePart>?) =
         chatService.finishEditQueuedMessage(_conversationId, id, parts)
-
-    fun sendQueuedMessageImmediately(id: Uuid) =
-        chatService.sendQueuedMessageImmediately(_conversationId, id)
 
     fun resumeMessageQueue() = chatService.resumeMessageQueue(_conversationId)
 
@@ -188,11 +185,7 @@ class ChatVM(
         }
     }
 
-    // 设置聊天模型
-    fun setConversationChatModel(model: Model) {
-        viewModelScope.launch { chatService.updateConversationChatModel(_conversationId, model.id) }
-    }
-
+    // 聊天页对助手的修改：新会话直接改助手，会话开始后只改当前会话
     fun updateAssistant(assistant: Assistant) {
         viewModelScope.launch {
             chatService.updateChatAssistant(_conversationId) { assistant }
@@ -216,8 +209,7 @@ class ChatVM(
     // Update checker
     val updateState = settingsStore.settingsFlow
         .map { settings ->
-            !settings.init &&
-                settings.displaySetting.showUpdates &&
+            !settings.init && settings.displaySetting.showUpdates &&
                 settings.displaySetting.updateCheckDisabledUntilEpochMillis <= System.currentTimeMillis()
         }
         .distinctUntilChanged()
@@ -238,33 +230,23 @@ class ChatVM(
      */
     fun handleMessageSend(content: List<UIMessagePart>,answer: Boolean = true) {
         if (content.isEmptyInputMessage()) return
+
         chatService.sendMessage(_conversationId, content, answer)
     }
 
     fun handleMessageEdit(parts: List<UIMessagePart>, messageId: Uuid) {
         if (parts.isEmptyInputMessage()) return
+
         viewModelScope.launch {
             chatService.editMessage(_conversationId, messageId, parts)
         }
     }
 
-    fun handleCompressContext(
-        additionalPrompt: String,
-        targetTokens: Int,
-        keepRecentMessages: Int,
-    ): Job = viewModelScope.launch {
-        chatService.compressConversation(
-            conversationId = _conversationId,
-            conversation = conversation.value,
-            additionalPrompt = additionalPrompt,
-            targetTokens = targetTokens,
-            keepRecentMessages = keepRecentMessages,
-        ).onFailure { error ->
-            chatService.addError(
-                error = error,
-                conversationId = _conversationId,
-                title = context.getString(R.string.error_title_compress_context),
-            )
+    fun handleCompressContext(additionalPrompt: String): Job {
+        return viewModelScope.launch {
+            chatService.compressConversation(_conversationId, additionalPrompt).onFailure {
+                chatService.addError(it, conversationId = _conversationId, title = context.getString(R.string.error_title_compress_context))
+            }
         }
     }
 
@@ -286,11 +268,8 @@ class ChatVM(
         )
     }
 
-    fun regenerateAtMessage(
-        message: UIMessage,
-        regenerateAssistantMsg: Boolean = true
-    ) {
-        chatService.regenerateAtMessage(_conversationId, message, regenerateAssistantMsg)
+    fun regenerateAtMessage(message: UIMessage) {
+        chatService.regenerateAtMessage(_conversationId, message.id)
     }
 
     fun handleToolApproval(
@@ -315,22 +294,15 @@ class ChatVM(
         }
     }
 
-    fun saveConversationAsync() {
-        viewModelScope.launch {
-            chatService.saveConversation(_conversationId, conversation.value)
-        }
-    }
-
     fun updateTitle(title: String) {
         viewModelScope.launch {
-            val updatedConversation = conversation.value.copy(title = title)
-            chatService.saveConversation(_conversationId, updatedConversation)
+            chatService.updateTitle(_conversationId, title)
         }
     }
 
     fun deleteConversation(conversation: Conversation): Job =
         viewModelScope.launch {
-            chatService.deleteConversationTree(conversation)
+            chatService.deleteConversation(conversation.id)
         }
 
     fun updatePinnedStatus(conversation: Conversation) {
@@ -354,24 +326,38 @@ class ChatVM(
 
     fun generateTitle(conversation: Conversation, force: Boolean = false) {
         viewModelScope.launch {
-            val conversationFull = conversationRepo.getConversationById(conversation.id) ?: return@launch
-            chatService.generateTitle(_conversationId, conversationFull, force)
-        }
-    }
-
-    fun generateSuggestion(conversation: Conversation) {
-        viewModelScope.launch {
-            chatService.generateSuggestion(_conversationId, conversation)
+            chatService.generateTitle(conversation.id, force)
         }
     }
 
     fun clearTranslationField(messageId: Uuid) {
-        chatService.clearTranslationField(_conversationId, messageId)
+        viewModelScope.launch {
+            chatService.clearTranslationField(_conversationId, messageId)
+        }
     }
 
-    fun updateConversation(newConversation: Conversation) {
-        chatService.updateConversationState(_conversationId) {
-            newConversation
+    fun selectMessageNode(nodeId: Uuid, selectIndex: Int) {
+        viewModelScope.launch {
+            try {
+                chatService.selectMessageNode(_conversationId, nodeId, selectIndex)
+            } catch (e: IllegalArgumentException) {
+                // 界面上的分支已经过时（比如刚被清理掉），切换不了就算了
+                Log.w(TAG, "selectMessageNode: ${e.message}")
+            } catch (e: NoSuchElementException) {
+                Log.w(TAG, "selectMessageNode: ${e.message}")
+            }
+        }
+    }
+
+    fun updateConversationSystemPrompt(systemPrompt: String?) {
+        viewModelScope.launch {
+            chatService.updateConversationSystemPrompt(_conversationId, systemPrompt)
+        }
+    }
+
+    fun updateWorkspaceCwd(workspaceCwd: String?) {
+        viewModelScope.launch {
+            chatService.updateWorkspaceCwd(_conversationId, workspaceCwd)
         }
     }
 
@@ -391,17 +377,7 @@ class ChatVM(
                 )
             }
 
-            chatService.updateConversationState(_conversationId) { currentConversation ->
-                currentConversation.copy(
-                    messageNodes = currentConversation.messageNodes.map { existingNode ->
-                        if (existingNode.id == node.id) {
-                            existingNode.copy(isFavorite = !currentlyFavorited)
-                        } else {
-                            existingNode
-                        }
-                    }
-                )
-            }
+            chatService.setNodeFavorite(_conversationId, node.id, favorite = !currentlyFavorited)
         }
     }
 

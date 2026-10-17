@@ -538,17 +538,7 @@ private fun ChatPageContent(
                     }
                 },
                 onUpdateMessage = { newNode ->
-                    vm.updateConversation(
-                        conversation.copy(
-                            messageNodes = conversation.messageNodes.map { node ->
-                                if (node.id == newNode.id) {
-                                    newNode
-                                } else {
-                                    node
-                                }
-                            }
-                        ))
-                    vm.saveConversationAsync()
+                    vm.selectMessageNode(newNode.id, newNode.selectIndex)
                 },
                 onClickSuggestion = { suggestion ->
                     inputState.editingMessage = null
@@ -576,8 +566,7 @@ private fun ChatPageContent(
                     vm.toggleMessageFavorite(node)
                 },
                 onConversationSystemPromptChange = { newPrompt ->
-                    vm.updateConversation(conversation.copy(customSystemPrompt = newPrompt))
-                    vm.saveConversationAsync()
+                    vm.updateConversationSystemPrompt(newPrompt)
                 },
                 onWorkspacePathClick = { reference: WorkspacePathReference ->
                     val workspace = boundWorkspace
@@ -649,14 +638,9 @@ private fun ChatFilesPickerSheet(
             assistant = assistant,
             chatModel = chatModel,
             mcpManager = vm.mcpManager,
-            onCompressContext = { additionalPrompt, targetTokens, keepRecentMessages ->
-                vm.handleCompressContext(additionalPrompt, targetTokens, keepRecentMessages)
-            },
+            onCompressContext = vm::handleCompressContext,
             onUpdateAssistant = vm::updateAssistant,
-            onUpdateConversation = {
-                vm.updateConversation(it)
-                vm.saveConversationAsync()
-            },
+            onUpdateWorkspaceCwd = vm::updateWorkspaceCwd,
             showCompressDialog = showCompressDialog,
             onShowCompressDialogChange = { showCompressDialog = it },
             onDismiss = { dismissAll() },

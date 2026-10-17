@@ -11,22 +11,26 @@ import org.junit.Test
 import kotlin.uuid.Uuid
 
 class ChildConversationChatTest {
+    private fun sessionOf(child: Conversation, scope: CoroutineScope,
+        finished: (Uuid, Throwable?) -> Unit = { _, _ -> }): ConversationSession = runBlocking {
+        ConversationSession(child.id, child, scope, FakeConversationStore(child), {}, finished).also {
+            it.initialize(load = { child })
+        }
+    }
     @Test fun `stale generation snapshots cannot overwrite the latest child model selection`() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val child = Conversation.ofId(Uuid.random()).copy(parentConversationId = Uuid.random(), modelOverrideId = Uuid.random())
-        val session = ConversationSession(child.id, child, scope, {})
+        val session = sessionOf(child, scope)
         val stale = child.updateCurrentMessages(listOf(UIMessage.user("saved before model selection")))
         val chosen = Uuid.random()
         try {
-            session.withPersistenceLock { session.updateMetadata({ it.copy(modelOverrideId = chosen) }, {}) }
-            session.updateFromGeneration(stale)
+            session.updateMetadata({ it.copy(modelOverrideId = chosen) }, {})
+            session.update { latest -> latest.upsertMessage(Uuid.random(), stale.currentMessages.single()) }
             assertEquals(chosen, session.state.value.modelOverrideId)
-            session.withPersistenceLock {
-                val persisted = session.preserveChildModelOverride(stale)
-                assertEquals(chosen, persisted.modelOverrideId)
-                assertEquals(stale.messageNodes, persisted.messageNodes)
-                assertEquals(child.parentConversationId, persisted.parentConversationId)
-            }
+            val persisted = session.flush()
+            assertEquals(chosen, persisted.modelOverrideId)
+            assertEquals(stale.currentMessages, persisted.currentMessages)
+            assertEquals(child.parentConversationId, persisted.parentConversationId)
         } finally { session.cleanup(); scope.cancel() }
     }
 
@@ -35,11 +39,11 @@ class ChildConversationChatTest {
         val child = Conversation.ofId(Uuid.random()).copy(parentConversationId = Uuid.random())
             .updateCurrentMessages(listOf(UIMessage(role = MessageRole.ASSISTANT, parts = listOf(
                 UIMessagePart.Tool("approval", "generate_image", "{}", approvalState = ToolApprovalState.Pending)))))
-        val session = ConversationSession(child.id, Conversation.ofId(child.id), scope, {})
+        val session = ConversationSession(child.id, Conversation.ofId(child.id), scope, FakeConversationStore(child), {})
         val job = Job()
         try {
             assertTrue(session.tryStartSubagent(job))
-            session.initialize { child }
+            session.initialize(load = { child })
             assertTrue(session.hasPendingToolApprovals())
             assertEquals(child, session.state.value)
         } finally { session.cleanup(); scope.cancel() }
@@ -48,16 +52,19 @@ class ChildConversationChatTest {
     @Test fun `changing a child model preserves streamed messages and parent association`() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val child = Conversation.ofId(Uuid.random()).copy(parentConversationId = Uuid.random(), modelOverrideId = Uuid.random())
-        val session = ConversationSession(child.id, child, scope, {})
+        val store = FakeConversationStore(child)
+        val session = ConversationSession(child.id, child, scope, store, {})
         var persisted = child
         val chosen = Uuid.random()
         try {
-            session.updateConversation(child.updateCurrentMessages(listOf(UIMessage.user("existing child history"))))
+            session.initialize(load = { child })
+            session.update { it.updateCurrentMessages(listOf(UIMessage.user("existing child history"))) }
             session.updateMetadata({ it.copy(modelOverrideId = chosen) }, {
                 persisted = persisted.copy(modelOverrideId = it.modelOverrideId)
             })
             assertTrue(persisted.messageNodes.isEmpty())
-            session.finishGeneration { persisted = it }
+            session.finishGeneration()
+            persisted = store.persisted!!
             assertEquals(chosen, persisted.modelOverrideId)
             assertEquals(child.parentConversationId, persisted.parentConversationId)
             assertEquals("existing child history", persisted.currentMessages.single().toText())
@@ -68,7 +75,7 @@ class ChildConversationChatTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val child = Conversation.ofId(Uuid.random()).copy(parentConversationId = Uuid.random())
             .updateCurrentMessages(listOf(UIMessage.user("direct user turn")))
-        val session = ConversationSession(child.id, child, scope, {})
+        val session = sessionOf(child, scope)
         val userJob = Job()
         val toolJob = Job()
         try {
@@ -85,16 +92,15 @@ class ChildConversationChatTest {
         val child = Conversation.ofId(Uuid.random()).copy(parentConversationId = Uuid.random())
         val dispatched = mutableListOf<String>()
         lateinit var session: ConversationSession
-        session = ConversationSession(child.id, child, scope, {}, { _, cause ->
+        session = sessionOf(child, scope) { _, cause ->
             assertNull(cause)
             assertNull(session.getJob())
             while (true) {
                 val next = session.messageQueue.takeNext() ?: break
                 dispatched += next.parts.filterIsInstance<UIMessagePart.Text>().joinToString { it.text }
-                session.updateConversation(session.state.value.updateCurrentMessages(
-                    session.state.value.currentMessages + UIMessage.user(dispatched.last())))
+                session.update { it.updateCurrentMessages(it.currentMessages + UIMessage.user(dispatched.last())) }
             }
-        })
+        }
         val toolJob = Job()
         val competing = Job()
         try {
@@ -113,7 +119,7 @@ class ChildConversationChatTest {
     @Test fun `paused user queue retains priority over tool followups after a stopped turn`() {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val child = Conversation.ofId(Uuid.random()).copy(parentConversationId = Uuid.random())
-        val session = ConversationSession(child.id, child, scope, {})
+        val session = sessionOf(child, scope)
         val toolJob = Job()
         try {
             session.messageQueue.enqueue(listOf(UIMessagePart.Text("retained input")))
@@ -127,7 +133,7 @@ class ChildConversationChatTest {
     @Test fun `concurrent tool reservations cannot both own a child session`() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val child = Conversation.ofId(Uuid.random()).copy(parentConversationId = Uuid.random())
-        val session = ConversationSession(child.id, child, scope, {})
+        val session = sessionOf(child, scope)
         val jobs = List(32) { Job() }
         try {
             val gate = CompletableDeferred<Unit>()

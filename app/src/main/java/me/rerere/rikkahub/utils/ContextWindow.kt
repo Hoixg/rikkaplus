@@ -110,7 +110,8 @@ fun Conversation.estimateWindowTokens(model: Model?): Int {
     val window = requestContext.messages
     val lastAssistant = window.lastOrNull()?.takeIf { it.role == MessageRole.ASSISTANT }
     val usage = lastAssistant?.usage
-    val usageTokens = usage?.promptTokens ?: 0
+    val contextTokens = lastAssistant?.contextTokens
+    val usageTokens = contextTokens ?: usage?.promptTokens ?: 0
     val checkpointAt = activeCompressionForRequest()?.createdAt
         ?.atZone(java.time.ZoneId.systemDefault())
         ?.toLocalDateTime()
@@ -124,7 +125,7 @@ fun Conversation.estimateWindowTokens(model: Model?): Int {
     return if (usageUsable) {
         val completionTokens = usage?.completionTokens?.takeIf { it > 0 }
             ?: estimateTokenCount(listOf(lastAssistant))
-        usageTokens + completionTokens
+        contextTokens ?: (usageTokens + completionTokens)
     } else {
         estimateTokenCount(window) + estimateTextTokenCount(requestContext.checkpointContent.orEmpty())
     }

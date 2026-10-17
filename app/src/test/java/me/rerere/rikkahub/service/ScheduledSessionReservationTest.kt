@@ -11,15 +11,16 @@ import kotlin.uuid.Uuid
 class ScheduledSessionReservationTest {
     @Test fun userQueueAndPendingApprovalHavePriorityOverScheduledOwnership() = runBlocking {
         val id = Uuid.random()
-        val session = ConversationSession(id, Conversation.ofId(id), this, {})
+        val session = ConversationSession(id, Conversation.ofId(id), this, FakeConversationStore(), {})
+        session.initialize(load = { Conversation.ofId(id) })
         val reservations = mutableSetOf<Uuid>()
         session.messageQueue.enqueue(listOf(UIMessagePart.Text("User first")))
         assertFalse(session.reserveForScheduledTask(reservations, emptySet()))
         session.messageQueue.takeNext()
         val approval = UIMessage(role = MessageRole.ASSISTANT, parts = listOf(UIMessagePart.Tool("call", "tool", "{}", approvalState = ToolApprovalState.Pending)))
-        session.updateConversation(Conversation.ofId(id).updateCurrentMessages(listOf(approval)))
+        session.update { it.updateCurrentMessages(listOf(approval)) }
         assertFalse(session.reserveForScheduledTask(reservations, emptySet()))
-        session.updateConversation(Conversation.ofId(id))
+        session.update { it.copy(messageNodes = emptyList()) }
         assertFalse(session.reserveForScheduledTask(reservations, setOf(id)))
         assertTrue(session.reserveForScheduledTask(reservations, emptySet()))
         assertFalse(session.reserveForScheduledTask(reservations, emptySet()))
@@ -28,7 +29,7 @@ class ScheduledSessionReservationTest {
         val id = Uuid.random()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         try {
-            val session = ConversationSession(id, Conversation.ofId(id), scope, {})
+            val session = ConversationSession(id, Conversation.ofId(id), scope, FakeConversationStore(), {})
             val job = Job()
             session.setJob(job)
             assertFalse(session.reserveForScheduledTask(mutableSetOf(), emptySet()))

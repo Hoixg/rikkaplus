@@ -50,18 +50,15 @@ private fun Assistant.withConversationConfig(config: ConversationConfig) = copy(
 /** 会话视角下的助手：会话开始后，会话持有的字段覆盖助手自身的值。 */
 fun Assistant.withConversation(conversation: Conversation): Assistant {
     val configuredAssistant = conversation.config?.let(::withConversationConfig) ?: this
-    return configuredAssistant.copy(
-        modeInjectionIds = if (conversation.config != null || conversation.modeInjectionIds.isNotEmpty()) {
-            conversation.modeInjectionIds
-        } else {
-            modeInjectionIds
-        },
-        lorebookIds = if (conversation.config != null || conversation.lorebookIds.isNotEmpty()) {
-            conversation.lorebookIds
-        } else {
-            lorebookIds
-        },
-    )
+    val modes = if (conversation.config != null || conversation.modeInjectionIds.isNotEmpty()) {
+        conversation.modeInjectionIds
+    } else modeInjectionIds
+    val lorebooks = if (conversation.config != null || conversation.lorebookIds.isNotEmpty()) {
+        conversation.lorebookIds
+    } else lorebookIds
+    return if (modes == configuredAssistant.modeInjectionIds && lorebooks == configuredAssistant.lorebookIds) {
+        configuredAssistant
+    } else configuredAssistant.copy(modeInjectionIds = modes, lorebookIds = lorebooks)
 }
 
 /** 聊天页改动助手后留在会话上的部分，[updated] 是会话视角下改动后的助手。 */

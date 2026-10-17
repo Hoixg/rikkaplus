@@ -30,6 +30,19 @@ class ContextWindowTest {
         MessageNode(messages = messages.toList())
 
     @Test
+    fun contextGaugeUsesLatestRequestInsteadOfAccumulatedToolUsage() {
+        val model = Model(modelId = "tool-model", contextLength = 1_000)
+        val reply = message("done", MessageRole.ASSISTANT).copy(
+            modelId = model.id,
+            contextTokens = 700,
+            usage = TokenUsage(promptTokens = 2_000, completionTokens = 300),
+        )
+        val conversation = Conversation(assistantId = Uuid.random(), messageNodes = listOf(node(reply)))
+        assertEquals(700, conversation.estimateWindowTokens(model))
+        assertFalse(Settings(enableAutoCompaction = false).contextCompactionPolicy(model).shouldCompact(conversation.estimateWindowTokens(model)))
+    }
+
+    @Test
     fun contextLengthInputParsing() {
         assertEquals(4096, parseContextLengthInput("4096"))
         assertEquals(256_000, parseContextLengthInput("256k"))

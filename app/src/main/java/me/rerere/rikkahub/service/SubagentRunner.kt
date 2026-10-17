@@ -6,9 +6,10 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.serialization.json.*
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
-import me.rerere.rikkahub.data.ai.GenerationChunk
-import me.rerere.rikkahub.data.ai.GenerationLoop
-import me.rerere.rikkahub.data.ai.tools.ChatToolFactory
+import me.rerere.ai.agent.AgentEvent
+import me.rerere.ai.agent.AgentFinishReason
+import me.rerere.ai.agent.runAgent
+import me.rerere.rikkahub.data.ai.ChatRequestFactory
 import me.rerere.rikkahub.data.ai.tools.SUBAGENT_RESULT_INLINE_CHARS
 import me.rerere.rikkahub.data.ai.tools.restrictChildTools
 import me.rerere.rikkahub.data.ai.tools.childAssistant
@@ -17,24 +18,19 @@ import me.rerere.rikkahub.data.files.FileFolders
 import me.rerere.rikkahub.data.model.Conversation
 import me.rerere.rikkahub.data.model.toMessageNode
 import me.rerere.rikkahub.data.repository.ConversationRepository
-import me.rerere.rikkahub.data.repository.MemoryRepository
-import me.rerere.rikkahub.data.repository.memoryId
 import me.rerere.rikkahub.data.repository.WorkspaceRepository
+import me.rerere.rikkahub.utils.getConversationChatModel
 import java.io.File
 import kotlin.uuid.Uuid
 
 /** Uses the same request transformers, approval gates and session persistence as ordinary chat. */
 internal class SubagentRunner(
     private val context: Application,
-    private val generationLoop: GenerationLoop,
-    private val toolFactory: ChatToolFactory,
-    private val templateTransformer: TemplateTransformer,
+    private val requestFactory: ChatRequestFactory,
     private val sessions: ConversationSessionManager,
     private val repository: ConversationRepository,
-    private val memoryRepository: MemoryRepository,
     private val workspaceRepository: WorkspaceRepository,
     private val manager: SubagentManager,
-    private val save: suspend (Uuid, Conversation) -> Unit,
 ) {
     suspend fun run(id: Uuid, config: SubagentExecutionConfig, prompt: String, followup: Boolean): String =
         sessions.withSession(id) { session ->
@@ -43,7 +39,7 @@ internal class SubagentRunner(
             }
             val startedAt = System.currentTimeMillis()
             val parent = config.parent
-            if (followup) session.initialize { repository.getConversationById(id) ?: error("AGENT_SESSION_NOT_FOUND") }
+            if (followup) session.initialize(load = { repository.getConversationById(id) ?: error("AGENT_SESSION_NOT_FOUND") })
             if (followup && session.hasPendingToolApprovals()) {
                 return@withSession SubagentManager.errorJson("AGENT_SESSION_BUSY", "Child session has a pending tool approval", id)
             }
@@ -61,58 +57,50 @@ internal class SubagentRunner(
                 workspaceCwd = parent.workspaceCwd,
                 modelOverrideId = config.model.id,
                 parentConversationId = parent.id,
-            )).let { it.copy(messageNodes = it.messageNodes + UIMessage.user(prompt).toMessageNode()) }
-            session.updateFromGeneration(base)
+            ))
+            session.initialize(load = { if (followup) repository.getConversationById(id) else null }, create = { base })
+            session.update { latest -> latest.copy(messageNodes = latest.messageNodes + UIMessage.user(prompt).toMessageNode()) }
             val foregroundId = Uuid.random()
             val foreground = !config.scheduledExecution && ChatGenerationForegroundService.acquire(context, foregroundId, parent.id)
             var failure: Throwable? = null
+            var finishReason: AgentFinishReason? = null
             var before: Map<String, Pair<Long, Long>>? = null
             var after: Map<String, Pair<Long, Long>> = emptyMap()
             try {
-                save(id, base)
+                session.flush()
                 before = snapshotWorkspace(config)
                 val assistant = childAssistant(config.assistant, parent)
-                val model = config.model.let {
+                val model = (config.settings.getConversationChatModel(session.state.value) ?: config.model).let {
                     if (config.maxToolCalls == 0) it.copy(tools = emptySet()) else it
                 }
-                val tools = restrictChildTools(toolFactory.createTools(
-                    settings = config.settings,
-                    assistant = assistant,
-                    model = model,
-                    workspaceCwd = base.workspaceCwd,
+                val turn = requestFactory.createContext(
+                    config.settings, session.state.value,
+                    modelOverride = model,
+                    assistantOverride = assistant,
                     getMessages = { session.state.value.currentMessages },
                     scheduledExecution = config.scheduledExecution,
-                ))
-                val window = base.requestContextForGeneration()
-                generationLoop.generateText(
-                    settings = config.settings,
-                    model = model,
-                    messages = window.messages,
-                    assistant = assistant,
-                    conversationId = id,
-                    conversationSystemPrompt = base.customSystemPrompt,
-                    compactionContext = window.checkpointContent,
-                    workspaceCwd = base.workspaceCwd,
-                    processingStatus = session.processingStatus,
-                    memories = memoryRepository.getFiles(assistant.memoryId),
-                    inputTransformers = listOf(TimeReminderTransformer, PromptInjectionTransformer, PlaceholderTransformer, DocumentAsPromptTransformer, OcrTransformer, templateTransformer, WorkspaceReminderTransformer(workspaceRepository), ImageToolResultTransformer),
-                    outputTransformers = listOf(ThinkTagTransformer, Base64ImageToLocalFileTransformer, RegexOutputTransformer),
-                    tools = tools,
+                    toolFilter = { if (config.maxToolCalls == 0) emptyList() else restrictChildTools(it) },
+                )
+                val replyNodeId = Uuid.random()
+                val (request, hooks) = requestFactory.createAgent(
+                    turn, session.state.value.requestWindowMessages(), session.processingStatus,
                     maxSteps = config.maxSteps,
                     maxToolCalls = config.maxToolCalls,
                     resetTurnTracker = false,
-                ).collect { chunk ->
-                    if (chunk is GenerationChunk.Messages) {
-                        session.updateFromGeneration(session.state.value.updateRequestWindowMessages(window, chunk.messages))
-                        manager.updateMessages(id, chunk.messages)
+                )
+                runAgent(request, hooks).collect { event ->
+                    if (event is AgentEvent.MessageUpdated) {
+                        session.update { it.upsertMessage(replyNodeId, event.message) }
+                        manager.updateMessages(id, session.state.value.currentMessages)
                     }
+                    if (event is AgentEvent.Finished) finishReason = event.reason
                 }
             } catch (e: Throwable) {
                 failure = e
             } finally {
                 withContext(NonCancellable) {
                     try {
-                        session.finishGeneration { save(id, it) }
+                        session.finishGeneration()
                         after = snapshotWorkspace(config)
                     } catch (e: Exception) {
                         if (failure == null) failure = e else failure?.addSuppressed(e)
@@ -123,7 +111,7 @@ internal class SubagentRunner(
             }
             val messages = session.state.value.currentMessages
             val latest = messages.drop(base.currentMessages.size).lastOrNull { it.role == me.rerere.ai.core.MessageRole.ASSISTANT }
-            if (failure == null && latest?.parts?.any { it is UIMessagePart.Tool } == true) {
+            if (failure == null && finishReason != AgentFinishReason.Completed) {
                 failure = IllegalStateException("Child reached its tool step or turn budget before completing")
             }
             val answer = latest?.parts?.filterIsInstance<UIMessagePart.Text>()?.joinToString("\n") { it.text }.orEmpty()
