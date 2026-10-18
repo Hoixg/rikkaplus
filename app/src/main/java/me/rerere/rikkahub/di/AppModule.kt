@@ -114,6 +114,7 @@ val appModule = module {
             requestFactory = get(),
             memoryConsolidationScheduler = get(),
             translationHandler = get(),
+            metaGenerator = get(),
             providerManager = get(),
             mcpManager = get(),
             filesManager = get(),
