@@ -27,8 +27,8 @@ android {
         applicationId = "me.rerere.rikkahub.custom"
         minSdk = 26
         targetSdk = 37
-        versionCode = 200
-        versionName = "2.5.75"
+        versionCode = 201
+        versionName = "3.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -121,6 +121,14 @@ android {
         compilerOptions.optIn.add("kotlin.time.ExperimentalTime")
         compilerOptions.optIn.add("kotlinx.coroutines.ExperimentalCoroutinesApi")
         compilerOptions.optIn.add("androidx.navigation3.runtime.ExperimentalNavigation3Api")
+    }
+}
+
+// baselineprofile 插件按 release 复制出 nonMinifiedRelease 时只关掉 isMinifyEnabled，关不掉 optimization，
+// 不手动关的话生成用的包会被 R8 内联、合并类，profile 里记下的是优化后的类和方法
+androidComponents {
+    finalizeDsl { extension ->
+        extension.buildTypes.findByName("nonMinifiedRelease")?.optimization?.enable = false
     }
 }
 

@@ -1,0 +1,23 @@
+diff --git a/app/src/main/java/me/rerere/rikkahub/data/datastore/DefaultProviders.kt b/app/src/main/java/me/rerere/rikkahub/data/datastore/DefaultProviders.kt
+--- a/app/src/main/java/me/rerere/rikkahub/data/datastore/DefaultProviders.kt
++++ b/app/src/main/java/me/rerere/rikkahub/data/datastore/DefaultProviders.kt
+@@ -8,2 +8,17 @@
+ /** Providers are user-managed; no provider templates are installed by default. */
+-val DEFAULT_PROVIDERS: List<ProviderSetting> = emptyList()
+\ No newline at end of file
++val DEFAULT_PROVIDERS: List<ProviderSetting> = listOf(
++    // 仅用于生成 baseline profile，生成完必须撤掉。
++    ProviderSetting.OpenAI(
++        id = Uuid.parse("5c1f6a2e-8d3b-4f7a-9e2c-b4d1a6f0c3e8"),
++        name = "Baseline Profile Mock",
++        baseUrl = "http://127.0.0.1:18765/v1",
++        apiKey = "mock",
++        models = listOf(
++            me.rerere.ai.provider.Model(
++                modelId = "mock-model",
++                displayName = "Mock Model",
++                id = DEFAULT_AUTO_MODEL_ID,
++            )
++        ),
++    ),
++)
