@@ -16,7 +16,6 @@ import me.rerere.ai.ui.UIMessagePart
 import me.rerere.ai.ui.OpenRouterReasoningMetadata
 import me.rerere.ai.ui.metadataAs
 import me.rerere.ai.ui.toMetadata
-import me.rerere.ai.util.KeyRoulette
 import okhttp3.OkHttpClient
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -35,7 +34,7 @@ class ChatCompletionsRequestMessageTest {
 
     @Before
     fun setUp() {
-        api = ChatCompletionsAPI(OkHttpClient(), KeyRoulette.default())
+        api = ChatCompletionsAPI(OkHttpClient())
     }
 
     // Helper to invoke private buildMessages method via reflection

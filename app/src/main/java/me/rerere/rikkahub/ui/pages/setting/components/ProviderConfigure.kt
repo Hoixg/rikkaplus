@@ -52,6 +52,7 @@ fun ProviderConfigure(
     provider: ProviderSetting,
     modifier: Modifier = Modifier,
     allowTypeSwitch: Boolean = false,
+    onApiKeysChange: ((ProviderSetting) -> Unit)? = null,
     onEdit: (provider: ProviderSetting) -> Unit
 ) {
     Column(
@@ -85,6 +86,9 @@ fun ProviderConfigure(
             is ProviderSetting.Google -> ProviderConfigureGoogle(provider, onEdit)
             is ProviderSetting.Claude -> ProviderConfigureClaude(provider, onEdit)
         }
+        if (provider !is ProviderSetting.Google || !provider.vertexAI || !provider.useServiceAccount) {
+            ProviderApiKeys(provider, onChange = onApiKeysChange ?: onEdit)
+        }
     }
 }
 
@@ -114,19 +118,19 @@ fun ProviderSetting.convertTo(type: KClass<out ProviderSetting>): ProviderSettin
             id = this.id, enabled = this.enabled, name = this.name, models = this.models,
             balanceOption = this.balanceOption, customHeaders = this.customHeaders, builtIn = this.builtIn,
             description = this.description, shortDescription = this.shortDescription,
-            apiKey = apiKey, baseUrl = convertedBaseUrl
+            apiKey = apiKey, apiKeyEntries = apiKeyEntries, selectedApiKeyId = selectedApiKeyId, baseUrl = convertedBaseUrl
         )
         ProviderSetting.Google::class -> ProviderSetting.Google(
             id = this.id, enabled = this.enabled, name = this.name, models = this.models,
             balanceOption = this.balanceOption, customHeaders = this.customHeaders, builtIn = this.builtIn,
             description = this.description, shortDescription = this.shortDescription,
-            apiKey = apiKey, baseUrl = convertedBaseUrl
+            apiKey = apiKey, apiKeyEntries = apiKeyEntries, selectedApiKeyId = selectedApiKeyId, baseUrl = convertedBaseUrl
         )
         ProviderSetting.Claude::class -> ProviderSetting.Claude(
             id = this.id, enabled = this.enabled, name = this.name, models = this.models,
             balanceOption = this.balanceOption, customHeaders = this.customHeaders, builtIn = this.builtIn,
             description = this.description, shortDescription = this.shortDescription,
-            apiKey = apiKey, baseUrl = convertedBaseUrl
+            apiKey = apiKey, apiKeyEntries = apiKeyEntries, selectedApiKeyId = selectedApiKeyId, baseUrl = convertedBaseUrl
         )
         else -> error("Unsupported provider type: $type")
     }
@@ -263,17 +267,6 @@ private fun CardGroupScope.nameItem(
     onValueChange = { onEdit(provider.copyProvider(name = it)) },
 )
 
-private fun CardGroupScope.apiKeyItem(
-    apiKey: String,
-    onValueChange: (String) -> Unit,
-) = textFieldItem(
-    label = R.string.setting_provider_page_api_key,
-    value = apiKey,
-    onValueChange = { onValueChange(it.trim()) },
-    secret = true,
-    maxLines = 3,
-)
-
 @Composable
 private fun ProviderConfigureOpenAI(
     provider: ProviderSetting.OpenAI,
@@ -284,7 +277,6 @@ private fun ProviderConfigureOpenAI(
 
     CardGroup {
         nameItem(provider, onEdit)
-        apiKeyItem(provider.apiKey) { onEdit(provider.copy(apiKey = it)) }
         textFieldItem(
             label = R.string.setting_provider_page_api_base_url,
             value = provider.baseUrl,
@@ -336,7 +328,6 @@ private fun ProviderConfigureClaude(
 ) {
     CardGroup {
         nameItem(provider, onEdit)
-        apiKeyItem(provider.apiKey) { onEdit(provider.copy(apiKey = it)) }
         textFieldItem(
             label = R.string.setting_provider_page_api_base_url,
             value = provider.baseUrl,
@@ -409,9 +400,6 @@ private fun ProviderConfigureGoogle(
 
     CardGroup {
         nameItem(provider, onEdit)
-        if (!useServiceAccount) {
-            apiKeyItem(provider.apiKey) { onEdit(provider.copy(apiKey = it)) }
-        }
         if (!provider.vertexAI) {
             textFieldItem(
                 label = R.string.setting_provider_page_api_base_url,

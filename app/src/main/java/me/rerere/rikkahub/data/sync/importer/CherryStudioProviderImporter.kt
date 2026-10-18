@@ -9,6 +9,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import me.rerere.ai.provider.Model
 import me.rerere.ai.provider.ProviderSetting
+import me.rerere.ai.provider.apiKeyEntries
 import me.rerere.ai.registry.ModelRegistry
 import me.rerere.common.http.jsonObjectOrNull
 import me.rerere.rikkahub.utils.JsonInstant
@@ -123,9 +124,9 @@ object CherryStudioProviderImporter {
 
     private fun importedProviderKey(provider: ProviderSetting): String {
         return when (provider) {
-            is ProviderSetting.OpenAI -> "openai|${provider.baseUrl}|${provider.apiKey}"
-            is ProviderSetting.Google -> "google|${provider.baseUrl}|${provider.apiKey}"
-            is ProviderSetting.Claude -> "claude|${provider.baseUrl}|${provider.apiKey}"
+            is ProviderSetting.OpenAI -> "openai|${provider.baseUrl}|${provider.apiKeyEntries().joinToString(",") { it.key }}"
+            is ProviderSetting.Google -> "google|${provider.baseUrl}|${provider.apiKeyEntries().joinToString(",") { it.key }}"
+            is ProviderSetting.Claude -> "claude|${provider.baseUrl}|${provider.apiKeyEntries().joinToString(",") { it.key }}"
         }
     }
 }

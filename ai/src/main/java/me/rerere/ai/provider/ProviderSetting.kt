@@ -30,6 +30,9 @@ sealed class ProviderSetting {
     abstract val models: List<Model>
     abstract val balanceOption: BalanceOption
     abstract val customHeaders: List<CustomHeader>
+    abstract val apiKey: String
+    abstract val apiKeyEntries: List<ApiKeyEntry>
+    abstract val selectedApiKeyId: String?
 
     abstract val builtIn: Boolean
     abstract val description: @Composable() () -> Unit
@@ -63,7 +66,9 @@ sealed class ProviderSetting {
         @Transient override val builtIn: Boolean = false,
         @Transient override val description: @Composable (() -> Unit) = {},
         @Transient override val shortDescription: @Composable (() -> Unit) = {},
-        var apiKey: String = "",
+        override var apiKey: String = "",
+        override val apiKeyEntries: List<ApiKeyEntry> = emptyList(),
+        override val selectedApiKeyId: String? = null,
         var baseUrl: String = "https://api.openai.com/v1",
         var chatCompletionsPath: String = "/chat/completions",
         var useResponseApi: Boolean = false,
@@ -129,7 +134,9 @@ sealed class ProviderSetting {
         @Transient override val builtIn: Boolean = false,
         @Transient override val description: @Composable (() -> Unit) = {},
         @Transient override val shortDescription: @Composable (() -> Unit) = {},
-        var apiKey: String = "",
+        override var apiKey: String = "",
+        override val apiKeyEntries: List<ApiKeyEntry> = emptyList(),
+        override val selectedApiKeyId: String? = null,
         var baseUrl: String = "https://generativelanguage.googleapis.com/v1beta",
         var vertexAI: Boolean = false,
         var useServiceAccount: Boolean = false,
@@ -198,7 +205,9 @@ sealed class ProviderSetting {
         @Transient override val builtIn: Boolean = false,
         @Transient override val description: @Composable (() -> Unit) = {},
         @Transient override val shortDescription: @Composable (() -> Unit) = {},
-        var apiKey: String = "",
+        override var apiKey: String = "",
+        override val apiKeyEntries: List<ApiKeyEntry> = emptyList(),
+        override val selectedApiKeyId: String? = null,
         var baseUrl: String = "https://api.anthropic.com/v1",
         var promptCaching: Boolean = false,
         var promptCacheTtl: ClaudePromptCacheTtl = ClaudePromptCacheTtl.FIVE_MINUTES,

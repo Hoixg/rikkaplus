@@ -29,11 +29,11 @@ Starting from upstream [RikkaHub](https://github.com/rikkahub/rikkahub), this br
 - Keep the Material 3 Expressive design consistent across the application.
 - Verify each rebuilt feature and keep its changes easy to review and synchronize with upstream.
 
-Custom features such as multiple API keys, scheduled tasks, subagents, image generation approvals, and tool interactions will be evaluated as part of this work. Their scope and progress will be documented as implementation proceeds.
+Remaining custom features such as scheduled tasks, subagents, image generation approvals, and tool interactions will be evaluated as part of this work. Their scope and progress will be documented as implementation proceeds.
 
 ## Current status
 
-**The rebuilding work is at its starting stage.** The code is based on upstream RikkaHub; the custom features have not yet been rebuilt on this branch.
+**The rebuilding work is at its starting stage.** Based on upstream RikkaHub, multiple API key management is implemented; the remaining custom features are being rebuilt individually.
 
 Old-data compatibility, database migration, import, and upgrade behavior remain undecided. This introduction does not establish a data migration policy.
 
@@ -42,6 +42,8 @@ Existing customized builds are available from [RikkaPlus Releases](https://githu
 ### Completed cleanup
 
 - Removed the Web server, browser-based chat interface, related background service, and frontend build dependencies.
+- Rebuilt API key management: add/edit/delete keys, names and rate annotations, manual selection, and per-model key binding in a Material 3 Expressive segmented interface.
+- Removed bundled reseller presets and promotional recommendations while retaining official providers and common cloud platforms.
 
 ## Automated builds and releases
 

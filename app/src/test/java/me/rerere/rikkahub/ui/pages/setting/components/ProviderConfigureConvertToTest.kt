@@ -4,6 +4,9 @@ import me.rerere.ai.provider.BalanceOption
 import me.rerere.ai.provider.CustomHeader
 import me.rerere.ai.provider.Model
 import me.rerere.ai.provider.ProviderSetting
+import me.rerere.ai.provider.ApiKeyEntry
+import me.rerere.ai.provider.apiKeyEntries
+import me.rerere.ai.provider.withApiKeyEntries
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
@@ -12,6 +15,15 @@ import org.junit.Test
 import kotlin.uuid.Uuid
 
 class ProviderConfigureConvertToTest {
+    @Test
+    fun `type conversion preserves key identities metadata and selection`() {
+        val entry = ApiKeyEntry(id = "stable-id", key = "test-secret", name = "备用", multiplier = 0.5f)
+        val original = ProviderSetting.OpenAI().withApiKeyEntries(listOf(entry), selectedId = entry.id)
+        val converted = original.convertTo(ProviderSetting.Google::class)
+        assertEquals(original.apiKeyEntries(), converted.apiKeyEntries())
+        assertEquals(entry.id, converted.selectedApiKeyId)
+    }
+
     @Test
     fun `convertTo should keep common fields and switch official endpoint to target default`() {
         val model = Model(

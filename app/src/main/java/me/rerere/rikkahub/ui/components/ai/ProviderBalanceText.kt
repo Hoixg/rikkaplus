@@ -17,16 +17,24 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import me.rerere.ai.provider.ProviderManager
 import me.rerere.ai.provider.ProviderSetting
+import me.rerere.ai.provider.selectedApiKey
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.MoneyBag02
 import me.rerere.rikkahub.utils.SimpleCache
 import me.rerere.rikkahub.utils.toDp
 import org.koin.compose.koinInject
+import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 
 private val cache = SimpleCache.builder<String, String>()
     .expireAfterWrite(2, TimeUnit.MINUTES)
     .build()
+
+internal fun ProviderSetting.OpenAI.balanceCacheKey(): String {
+    val fingerprint = MessageDigest.getInstance("SHA-256").digest(selectedApiKey().toByteArray())
+        .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+    return "$id|$baseUrl|$balanceOption|${customHeaders.hashCode()}|$fingerprint"
+}
 
 @Composable
 fun ProviderBalanceText(
@@ -42,9 +50,11 @@ fun ProviderBalanceText(
 
     val providerManager = koinInject<ProviderManager>()
 
-    val value = produceState(initialValue = "~", key1 = providerSetting.id, key2 = providerSetting.balanceOption) {
+    val cacheKey = providerSetting.balanceCacheKey()
+    val value = produceState(initialValue = "~", key1 = cacheKey) {
+        value = "~"
         // Check cache first
-        val cachedBalance = cache.getIfPresent("${providerSetting.id},${providerSetting.balanceOption.hashCode()}")
+        val cachedBalance = cache.getIfPresent(cacheKey)
         if (cachedBalance != null) {
             value = cachedBalance
         } else {
@@ -52,7 +62,7 @@ fun ProviderBalanceText(
             runCatching {
                 val balance = providerManager.getProviderByType(providerSetting).getBalance(providerSetting)
                 // Cache the result
-                cache.put("${providerSetting.id},${providerSetting.balanceOption.hashCode()}", balance)
+                cache.put(cacheKey, balance)
                 value = balance
             }.onFailure {
                 // Handle error

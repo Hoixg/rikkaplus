@@ -17,6 +17,7 @@ data class Model(
     val abilities: List<ModelAbility> = emptyList(),
     val tools: Set<BuiltInTools> = emptySet(),
     val providerOverwrite: ProviderSetting? = null,
+    val apiKeyId: String? = null,
     // 上下文窗口大小(token)
     val contextLength: Int = 1_000_000,
 )
@@ -57,6 +58,3 @@ sealed class BuiltInTools {
     @SerialName("image_generation")
     data object ImageGeneration : BuiltInTools()
 }
-
-
-

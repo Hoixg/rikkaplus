@@ -60,6 +60,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -89,6 +90,8 @@ import me.rerere.ai.provider.ModelAbility
 import me.rerere.ai.provider.ModelType
 import me.rerere.ai.provider.ProviderManager
 import me.rerere.ai.provider.ProviderSetting
+import me.rerere.ai.provider.apiKeyEntries
+import me.rerere.ai.provider.withApiKeyEntries
 import me.rerere.ai.provider.TextGenerationParams
 import me.rerere.ai.registry.ModelRegistry
 import me.rerere.ai.ui.UIMessage
@@ -130,6 +133,7 @@ import me.rerere.rikkahub.ui.components.ui.longPressReorder
 import me.rerere.rikkahub.ui.components.ui.rememberShareSheetState
 import me.rerere.rikkahub.ui.context.LocalNavController
 import me.rerere.rikkahub.ui.context.LocalToaster
+import me.rerere.rikkahub.ui.pages.setting.components.ModelApiKeySelector
 import me.rerere.rikkahub.ui.hooks.useEditState
 import me.rerere.rikkahub.ui.pages.assistant.detail.CustomBodies
 import me.rerere.rikkahub.ui.pages.assistant.detail.CustomHeaders
@@ -141,7 +145,6 @@ import me.rerere.rikkahub.ui.theme.extendColors
 import me.rerere.rikkahub.utils.UiState
 import me.rerere.rikkahub.utils.formatNumber
 import me.rerere.rikkahub.utils.plus
-import me.rerere.ui.components.RikkaConfirmDialog
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
 import sh.calvin.reorderable.ReorderableItem
@@ -292,7 +295,18 @@ private fun SettingProviderConfigPage(
     onEdit: (ProviderSetting) -> Unit,
     onDelete: () -> Unit
 ) {
-    var internalProvider by remember(provider) { mutableStateOf(provider) }
+    var internalProvider by remember(provider.id) { mutableStateOf(provider) }
+    var savedProvider by remember(provider.id) { mutableStateOf(provider) }
+    LaunchedEffect(provider) {
+        internalProvider = if (internalProvider == savedProvider) {
+            provider
+        } else {
+            // Keep form drafts while refreshing models and immediately saved key changes.
+            internalProvider.copyProvider(models = provider.models)
+                .withApiKeyEntries(provider.apiKeyEntries(), provider.selectedApiKeyId)
+        }
+        savedProvider = provider
+    }
     var showDeleteDialog by remember { mutableStateOf(false) }
     var expanded by rememberSaveable { mutableStateOf(true) }
 
@@ -318,7 +332,11 @@ private fun SettingProviderConfigPage(
                 provider = internalProvider,
                 onEdit = {
                     internalProvider = it
-                }
+                },
+                onApiKeysChange = {
+                    internalProvider = it
+                    onEdit(provider.withApiKeyEntries(it.apiKeyEntries(), it.selectedApiKeyId))
+                },
             )
 
             if (internalProvider is ProviderSetting.OpenAI) {
@@ -674,6 +692,12 @@ private fun ModelSettingsForm(
                                 onModelChange(model.copy(providerOverwrite = providerOverride))
                             },
                             parentProvider = parentProvider
+                        )
+
+                        ModelApiKeySelector(
+                            model = model,
+                            provider = parentProvider,
+                            onSelected = { onModelChange(model.copy(apiKeyId = it)) },
                         )
 
                         CustomHeaders(
@@ -1219,7 +1243,6 @@ private fun ModelCard(
         onEdit(it.copy(displayName = it.displayName.trim()))
     }
     val scope = rememberCoroutineScope()
-    var showDeleteDialog by remember { mutableStateOf(false) }
 
 
     if (dialogState.isEditing) {
@@ -1359,26 +1382,13 @@ private fun ModelCard(
                         text = stringResource(R.string.delete),
                         icon = HugeIcons.Delete01,
                         destructive = true,
-                        onClick = { showDeleteDialog = true },
+                        onClick = onDelete,
                     ),
                 )
             )
         }
     }
 
-    RikkaConfirmDialog(
-        show = showDeleteDialog,
-        title = stringResource(R.string.confirm_delete),
-        confirmText = stringResource(R.string.delete),
-        dismissText = stringResource(R.string.cancel),
-        onConfirm = {
-            showDeleteDialog = false
-            onDelete()
-        },
-        onDismiss = { showDeleteDialog = false },
-    ) {
-        Text(stringResource(R.string.common_delete_confirm_message, model.displayName))
-    }
 }
 
 @Composable

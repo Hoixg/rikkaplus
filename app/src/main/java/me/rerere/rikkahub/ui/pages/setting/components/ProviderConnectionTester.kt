@@ -38,6 +38,7 @@ import me.rerere.ai.core.ReasoningLevel
 import me.rerere.ai.core.Tool
 import me.rerere.ai.provider.ModelType
 import me.rerere.ai.provider.ProviderManager
+import me.rerere.rikkahub.data.datastore.findProvider
 import me.rerere.ai.provider.ProviderSetting
 import me.rerere.ai.provider.TextGenerationParams
 import me.rerere.ai.ui.StreamChunk
@@ -124,14 +125,15 @@ fun ProviderConnectionTester(
                 TextButton(
                     onClick = {
                         if (model == null) return@TextButton
-                        val provider = providerManager.getProviderByType(internalProvider)
+                        val requestProvider = model!!.findProvider(listOf(internalProvider)) ?: internalProvider
+                        val provider = providerManager.getProviderByType(requestProvider)
                         resetStates()
                         scope.launch {
                             launch {
                                 runCatching {
                                     nonStreamingState = UiState.Loading
                                     val result = provider.generateText(
-                                        providerSetting = internalProvider,
+                                        providerSetting = requestProvider,
                                         messages = listOf(
                                             UIMessage.system("You are a helpful assistant"),
                                             UIMessage.user("hello"),
@@ -153,7 +155,7 @@ fun ProviderConnectionTester(
                                 runCatching {
                                     streamingState = UiState.Loading
                                     val flow = provider.streamText(
-                                        providerSetting = internalProvider,
+                                        providerSetting = requestProvider,
                                         messages = listOf(
                                             UIMessage.system("You are a helpful assistant"),
                                             UIMessage.user("hello"),
@@ -182,7 +184,7 @@ fun ProviderConnectionTester(
                                         execute = { emptyList() }
                                     )
                                     val result = provider.generateText(
-                                        providerSetting = internalProvider,
+                                        providerSetting = requestProvider,
                                         messages = listOf(
                                             UIMessage.system("You are a helpful assistant"),
                                             UIMessage.user("Use the get_current_time tool."),

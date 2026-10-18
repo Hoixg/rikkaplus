@@ -1,6 +1,8 @@
 package me.rerere.rikkahub.data.datastore
 
 import me.rerere.ai.provider.Model
+import me.rerere.ai.provider.apiKeyEntries
+import me.rerere.ai.provider.withApiKeyEntries
 import me.rerere.ai.provider.ProviderSetting
 import me.rerere.asr.ASRProviderSetting
 import me.rerere.rikkahub.data.model.Assistant
@@ -84,11 +86,10 @@ fun Settings.getSelectedASRProvider(): ASRProviderSetting? {
  */
 fun Model.findProvider(providers: List<ProviderSetting>, checkOverwrite: Boolean = true): ProviderSetting? {
     val provider = findModelProviderFromList(providers) ?: return null
-    val providerOverwrite = this.providerOverwrite
-    if (checkOverwrite && providerOverwrite != null) {
-        return providerOverwrite.copyProvider(models = emptyList())
-    }
-    return provider
+    if (!checkOverwrite) return provider
+    val effective = providerOverwrite?.copyProvider(models = emptyList()) ?: provider
+    val entry = effective.apiKeyEntries().find { it.id == apiKeyId } ?: return effective
+    return effective.withApiKeyEntries(listOf(entry), selectedId = entry.id)
 }
 
 /** 模型所属的提供商，即模型列表里包含它的那个。 */

@@ -15,6 +15,7 @@ import me.rerere.ai.provider.Model
 import me.rerere.ai.provider.ModelAbility
 import me.rerere.ai.provider.ModelType
 import me.rerere.ai.provider.ProviderSetting
+import me.rerere.ai.provider.apiKeyEntries
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.rikkahub.data.model.Conversation
@@ -668,9 +669,9 @@ object ChatboxImporter {
     }
 
     private fun providerIdentity(provider: ProviderSetting): String = when (provider) {
-        is ProviderSetting.OpenAI -> "openai|${provider.baseUrl.trimEnd('/')}|${provider.apiKey}"
-        is ProviderSetting.Google -> "google|${provider.baseUrl.trimEnd('/')}|${provider.apiKey}"
-        is ProviderSetting.Claude -> "claude|${provider.baseUrl.trimEnd('/')}|${provider.apiKey}"
+        is ProviderSetting.OpenAI -> "openai|${provider.baseUrl.trimEnd('/')}|${provider.apiKeyEntries().joinToString(",") { it.key }}"
+        is ProviderSetting.Google -> "google|${provider.baseUrl.trimEnd('/')}|${provider.apiKeyEntries().joinToString(",") { it.key }}"
+        is ProviderSetting.Claude -> "claude|${provider.baseUrl.trimEnd('/')}|${provider.apiKeyEntries().joinToString(",") { it.key }}"
     }
 
     private fun ProviderSetting.providerTypeName(): String = when (this) {

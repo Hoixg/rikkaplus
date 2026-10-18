@@ -234,7 +234,7 @@ val dataSourceModule = module {
     }
 
     single {
-        ProviderManager(client = get(), context = get())
+        ProviderManager(client = get())
     }
 
     single { BackupManager(context = get(), database = get(), settingsStore = get(), json = get()) }
