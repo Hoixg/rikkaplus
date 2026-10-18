@@ -1,98 +1,54 @@
 <div align="center">
-  <img src="docs/icon.png" alt="App Icon" width="100" />
-  <h1>RikkaHub</h1>
+  <img src="docs/icon.png" alt="RikkaPlus icon" width="100" />
+  <h1>RikkaPlus · 1.0</h1>
+  <p>A rebuild of RikkaPlus on the latest RikkaHub foundation.</p>
 
-A native Android LLM chat client that supports switching between different providers for
-conversations 🤖💬
-
-Click to join our Discord server 👉 [【RikkaHub】](https://discord.gg/9weBqxe5c4)
-
-[简体中文](README_ZH_CN.md) | [繁體中文](README_ZH_TW.md) | English
+English | [简体中文](README_ZH_CN.md) | [繁體中文](README_ZH_TW.md)
 </div>
 
-<div align="center">
-  <img src="docs/img/poster.png" alt="RikkaHub" width="800" />
-</div>
+## About this branch
 
-## 🚀 Download
+The `1.0` branch is the new rebuilding branch of [RikkaPlus](https://github.com/Hoixg/rikkaplus), maintained by Hoixg.
 
-🔗 [Download from Website](https://rikka-ai.com/download) (Recommended)
+Starting from upstream [RikkaHub](https://github.com/rikkahub/rikkahub), this branch will review and rebuild the custom features developed on `custom`. The aim is to address accumulated technical debt, clarify responsibilities between features, and make future development and upstream synchronization easier.
 
-🔗 [Download from Google Play](https://play.google.com/store/apps/details?id=me.rerere.rikkahub)
+## Branches
 
-> [!WARNING]
-> There are many forked versions of RikkaHub. Issues with forks are unrelated to RikkaHub, so please use forks with caution to avoid privacy leaks or excessive permission requests.
+| Branch | Purpose |
+| --- | --- |
+| [`1.0`](https://github.com/Hoixg/rikkaplus/tree/1.0) | New rebuilding branch, starting from upstream RikkaHub. |
+| [`custom`](https://github.com/Hoixg/rikkaplus/tree/custom) | Existing customized implementation, retained for use and feature reference. |
 
-## 💖 Sponsors
+`1.0` is the branch name. The current upstream application baseline is **RikkaHub 3.0.0**.
 
-| Sponsor | Description |
-|:---:|:---|
-| <img src="docs/sponsors/aihubmix.png" alt="Aihubmix" width="50" /><br /><b>Aihubmix</b> | Thanks to <a href="https://aihubmix.com?aff=pG7r">aihubmix.com</a> for their financial support. We recommend using aihubmix as a one-stop shop for mainstream models worldwide. (OpenAI, Claude, Google Gemini, DeepSeek, Qwen, and hundreds more). |
-| <img src="docs/sponsors/api-mart.png" alt="APIMart" width="50" /><br /><b><a href="https://go.apimart.ai/gh-rikkahub">APIMart</a></b> | Thanks to APIMart for sponsoring this project! APIMart is a low-cost API platform for AI image & video generation — GPT-Image-2 from $0.006/image, 160+ images per dollar. One async API covers both image and video: submit a task, get an ID, fetch results via polling or callback. Batch tens of thousands of images without timeouts, switch models without changing code. Pay-as-you-go with no monthly fee — <a href="https://go.apimart.ai/gh-rikkahub">sign up here</a> to get started. |
-| <img src="docs/sponsors/suixiang.jpg" alt="随想AI中转" width="50" /><br /><b><a href="https://sui-xiang.com">随想AI中转</a></b> | 感谢<a href="https://sui-xiang.com">随想AI中转</a>对本项目的赞助！随想AI中转 是一家可靠高效的 API 中继服务提供商，提供 Claude、Codex、Gemini 等的中继服务。注重隐私的中转站·无数据倒卖·无模型掺水，隐私，透明，极速售后。新账户注册每日签到就送 0.5 元测试额度，充值额度 1:1，无需订阅，按量付费。多线路冗余、跨区域容灾、自动故障切换，长链路 SSE 不中断。99.9% 可用性，关键调用从不掉队。 |
-| <img src="docs/sponsors/ztest.png" alt="真测 ztest.ai" width="50" /><br /><b><a href="https://ztest.ai">真测 ztest.ai</a></b> | 感谢<a href="https://ztest.ai">真测 ztest.ai</a>对本项目的赞助！真测 ztest.ai 是一个 AI 中转站模型检测平台，检测结果数据全公开，23 项探针覆盖协议、身份、能力、内容完整性、安全性、性能六大维度，交叉印证识别伪造与降级。作为独立第三方验证平台，实时监测 AI 中转站的模型真实性、响应质量与服务可用性。 |
-| <img src="docs/sponsors/maru.png" alt="MaruCode" width="50" /><br /><b><a href="https://api.muteki.site/register?aff=Rikkahub&promo=Rikkahub">MaruCode</a></b> | <b><a href="https://api.muteki.site/register?aff=Rikkahub&promo=Rikkahub">MaruCode</a></b> 是一家偶尔做做慈善的小破站 API，自营号池，主要提供 Codex、Claude Code、GPT Image 等主流模型，支持 Websocket 协议，明码标价(Codex 0.25x, CC 1.5x)，透明汇率(1:1)，<a href="https://api.muteki.site/register?aff=Rikkahub&promo=Rikkahub">新用户注册送 2 刀</a>。<a href="https://images-2.muteki.site">生图工作台🖼️</a> |
+## Rebuilding goals
 
-## ✨ Features
+- Review the custom features individually and define what to retain, simplify, or redesign.
+- Separate feature logic from chat generation, interface code, and persistence.
+- Review unused tables, redundant fields, and historical compatibility code against their actual use.
+- Keep the Material 3 Expressive design consistent across the application.
+- Verify each rebuilt feature and keep its changes easy to review and synchronize with upstream.
 
-- 🎨 Material 3 Expressive design and 🌙 Dark mode
-- 📦 Workspace: a proot-based Linux agent environment
-- 🎬 Media generation (image and video)
-- 🔄 Multiple AI Provider Support: custom API / URL / models (all OpenAI, Google, Anthropic compatible api)
-- 🖼️ Multimodal input support (Image, Text Documentation, PDF, Docx)
-- 🖥️ Web access for multi-platform use
-- 🛠️ MCP and Skills support
-- 📝 Markdown Rendering (with code highlighting, Latex formulas, tables, Mermaid)
-- 🔍 Search capabilities (Exa, Tavily, Zhipu, LinkUp, Brave, Perplexity, etc.)
-- 🧩 Prompt variables (model name, time, etc.)
-- 🤳 QR code export and import for providers
-- 🤖 Agent customization
-- 🧠 File-based memory
-- 📝 AI Translation
-- 🌐 Custom HTTP request headers and request bodies
-- 💌 Silly Tavern character card import
+Custom features such as multiple API keys, scheduled tasks, subagents, image generation approvals, and tool interactions will be evaluated as part of this work. Their scope and progress will be documented as implementation proceeds.
 
-## ✨ Development
+## Current status
 
-> [!IMPORTANT]
-> This project does not accept pull requests (PRs).
+**The rebuilding work is at its starting stage.** The code is based on upstream RikkaHub; the custom features have not yet been rebuilt on this branch.
 
-This project is developed using [Android Studio](https://developer.android.com/studio).
+Old-data compatibility, database migration, import, and upgrade behavior remain undecided. This introduction does not establish a data migration policy.
 
-Technology stack documentation:
+Existing customized builds are available from [RikkaPlus Releases](https://github.com/Hoixg/rikkaplus/releases). Check the release notes for the branch associated with each build.
 
-- [Kotlin](https://kotlinlang.org/) (Development language)
-- [Koin](https://insert-koin.io/) (Dependency Injection)
-- [Jetpack Compose](https://developer.android.com/jetpack/compose) (UI framework)
-- [DataStore](https://developer.android.com/topic/libraries/architecture/datastore) (Preference data
-  storage)
-- [Room](https://developer.android.com/training/data-storage/room) (Database)
-- [Coil](https://coil-kt.github.io/coil/) (Image loading)
-- [Material 3 Expressive](https://m3.material.io/) (UI design)
-- [Navigation 3](https://developer.android.com/guide/navigation/navigation-3) (Navigation)
-- [Okhttp](https://square.github.io/okhttp/) (HTTP client)
-- [kotlinx.serialization](https://github.com/Kotlin/kotlinx.serialization) (JSON serialization)
+## Development
 
-> [!TIP]
-> You need a `google-services.json` file at `app` folder to build the app.
+Built with Kotlin, Jetpack Compose, Material 3 Expressive, Room, and DataStore.
 
-## 💰 Donate
+Use Android Studio and follow the upstream build configuration. Building the Web module also requires Node.js and pnpm; Android builds require the appropriate `app/google-services.json` and local SDK configuration.
 
-* [Ko-fi](https://ko-fi.com/reovodev)
-* [爱发电](https://afdian.com/a/reovo)
+Feature plans and changes for this branch should be discussed in [this repository](https://github.com/Hoixg/rikkaplus/issues).
 
-## ⭐ Star History
+## Upstream and license
 
-If you like this project, please give it a star ⭐
+RikkaPlus is based on [RikkaHub](https://github.com/rikkahub/rikkahub), created by [re-ovo](https://github.com/re-ovo). Thanks to the original author and contributors.
 
-<a href="https://www.star-history.com/?type=date&repos=re-ovo%2Frikkahub">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=re-ovo/rikkahub&type=date&theme=dark&legend=top-left&sealed_token=qSytWeq7LkzQQViTjK0MYlvvA_qkfuwjOxOqgbRpLUZZwok5rO6LXhpVL7Mq-q3o89BfKpzE7g66BCy18H6eiqTsD8czD0J-HejLqmHy-npcvCTHu11wZw" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=re-ovo/rikkahub&type=date&legend=top-left&sealed_token=qSytWeq7LkzQQViTjK0MYlvvA_qkfuwjOxOqgbRpLUZZwok5rO6LXhpVL7Mq-q3o89BfKpzE7g66BCy18H6eiqTsD8czD0J-HejLqmHy-npcvCTHu11wZw" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=re-ovo/rikkahub&type=date&legend=top-left&sealed_token=qSytWeq7LkzQQViTjK0MYlvvA_qkfuwjOxOqgbRpLUZZwok5rO6LXhpVL7Mq-q3o89BfKpzE7g66BCy18H6eiqTsD8czD0J-HejLqmHy-npcvCTHu11wZw" />
- </picture>
-</a>
-
-## 📄 License
-
-This project is licensed under the [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0).
+The project retains the [GNU Affero General Public License v3.0](LICENSE) and original copyright notices.

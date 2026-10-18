@@ -1,96 +1,54 @@
 <div align="center">
-  <img src="docs/icon.png" alt="App 圖標" width="100" />
-  <h1>RikkaHub</h1>
+  <img src="docs/icon.png" alt="RikkaPlus 圖示" width="100" />
+  <h1>RikkaPlus · 1.0</h1>
+  <p>以最新 RikkaHub 原版為基礎，重新建構 RikkaPlus。</p>
 
-一個原生Android LLM 聊天客戶端，支持切換不同的供應商進行聊天 🤖💬
-
-點擊加入我們的Discord伺服器 👉 [【RikkaHub】](https://discord.gg/9weBqxe5c4)
-
-[English](README.md) | 繁體中文 | [简体中文](README_ZH_CN.md)
-
+[English](README.md) | [简体中文](README_ZH_CN.md) | 繁體中文
 </div>
 
-<div align="center">
-  <img src="docs/img/poster.png" alt="RikkaHub" width="800" />
-</div>
+## 分支介紹
 
-## 🚀 下載
+`1.0` 是 [RikkaPlus](https://github.com/Hoixg/rikkaplus) 的新重構分支，由 Hoixg 維護。
 
-🔗 [前往官網下載](https://rikka-ai.com/download)（推薦）
+本分支從上游 [RikkaHub](https://github.com/rikkahub/rikkahub) 原版出發，重新整理並實作 `custom` 中累積的客製化功能，逐步處理早期開發留下的技術債務、功能耦合與資料結構負擔，讓後續開發與同步上游更容易維護。
 
-🔗 [前往 Google Play 下載](https://play.google.com/store/apps/details?id=me.rerere.rikkahub)
+## 分支分工
 
-> [!WARNING]
-> RikkaHub 存在許多 fork 版本，fork 版本出現問題與 RikkaHub 無關，請謹慎使用 fork 版本，避免隱私洩露或者過度索要權限問題。
+| 分支 | 定位 |
+| --- | --- |
+| [`1.0`](https://github.com/Hoixg/rikkaplus/tree/1.0) | 新重構開發分支，以原版為基礎重新組織與實作客製化能力。 |
+| [`custom`](https://github.com/Hoixg/rikkaplus/tree/custom) | 現有客製化版本，保留供日常使用與功能對照。 |
 
-## 💖 贊助商
+`1.0` 是分支名稱，目前的上游應用程式基線為 **RikkaHub 3.0.0**。
 
-| 贊助商 | 介紹 |
-|:---:|:---|
-| <img src="docs/sponsors/aihubmix.png" alt="Aihubmix" width="50" /><br /><b>Aihubmix</b> | 感謝 <a href="https://aihubmix.com?aff=pG7r">aihubmix.com</a> 的資金支持。我們推薦使用 aihubmix 作為全球主流模型的一站式服務平台。（OpenAI、Claude、Google Gemini、DeepSeek、Qwen 以及數百種其他模型）。 |
-| <img src="docs/sponsors/api-mart.png" alt="APIMart" width="50" /><br /><b><a href="https://go.apimart.ai/gh-rikkahub">APIMart</a></b> | 感謝 APIMart 贊助了本專案！APIMart 是專注 AI 圖片/影片生成的低價 API 平台，GPT-Image-2 低至 $0.006/張，1 美元可出圖 160+ 張。圖片、影片一套非同步 API 通吃，提交任務拿 ID、回呼取結果，批次生成萬張不逾時、換模型不改程式碼。按量付費、無月費，透過<a href="https://go.apimart.ai/gh-rikkahub">此註冊連結</a>註冊即可開始使用。 |
-| <img src="docs/sponsors/suixiang.jpg" alt="隨想AI網關" width="50" /><br /><b>隨想AI網關</b> | 感謝隨想AI網關對本項目的贊助！隨想AI網關 是一家可靠高效的 API 中繼服務提供商，提供 Claude、Codex、Gemini 等的中繼服務。注重隱私的中轉站·無數據倒賣·無模型摻水，隱私，透明，極速售後。新帳戶註冊每日簽到就送 0.5 元測試額度，儲值額度 1:1，無需訂閱，按量付費。多線路冗餘、跨區域容災、自動故障切換，長鏈路 SSE 不中斷。99.9% 可用性，關鍵呼叫從不掉隊。 |
-| <img src="docs/sponsors/maru.png" alt="MaruCode" width="50" /><br /><b><a href="https://api.muteki.site/register?aff=Rikkahub&promo=Rikkahub">MaruCode</a></b> | <b><a href="https://api.muteki.site/register?aff=Rikkahub&promo=Rikkahub">MaruCode</a></b> 是一家偶爾做做慈善的小破站 API，自營號池，主要提供 Codex、Claude Code、GPT Image 等主流模型，支援 Websocket 協定，明碼標價(Codex 0.25x, CC 1.5x)，透明匯率(1:1)，<a href="https://api.muteki.site/register?aff=Rikkahub&promo=Rikkahub">新用戶註冊送 2 刀</a>。<a href="https://images-2.muteki.site">生图工作台🖼️</a> |
+## 重構目標
 
-## ✨ 功能特色
+- 逐項整理客製化功能，明確定義需要保留、簡化與重新設計的內容。
+- 釐清功能邏輯、聊天生成、介面與資料儲存之間的職責。
+- 依實際使用情況整理廢棄資料表、冗餘欄位與歷史相容邏輯。
+- 統一 Material 3 Expressive 介面與互動。
+- 逐步實作並驗證各項功能，讓變更便於審查，也便於持續同步上游。
 
-- 🎨 現代化安卓APP設計（Material 3 Expressive / 預測性返回）和 🌙 暗色模式
-- 📦 工作區：基於 proot 的 Linux 智能體環境
-- 🎬 媒體生成（圖片、影片）
-- 🖥️ Web多端訪問支持
-- 🛠️ MCP 與 Skills 支持
-- 🔄 多種類型的供應商支持，自定義 API / URL / 模型（目前支持 OpenAI、Google、Anthropic）
-- 🖼️ 多模態輸入支持
-- 📝 Markdown 渲染（支持代碼高亮、數學公式、表格、Mermaid）
-- 🔍 搜尋功能（Exa、Tavily、Zhipu、LinkUp、Brave、Perplexity、..）
-- 🧩 Prompt 變量（模型名稱、時間等）
-- 🤳 二維碼導出和導入提供商
-- 🤖 智能體自定義
-- 🧠 基於檔案的記憶
-- 📝 AI翻譯
-- 🌐 自定義HTTP請求頭和請求體
+多 Key、排程任務、子代理、生圖審批與工具互動等客製化能力將納入評估，具體保留範圍與實作進度以後續開發紀錄為準。
 
-## ✨ 開發
+## 目前狀態
 
-> [!IMPORTANT]
-> 本項目不接受 Pull Request（PR）。
+**重構仍處於起步階段。** 目前程式碼以上游原版為基礎，客製化功能尚未在本分支完成重建。
 
-本項目使用[Android Studio](https://developer.android.com/studio)開發。
+舊資料相容、資料庫遷移、匯入及覆蓋升級方案尚未確定，後續另行討論。
 
-技術棧文檔:
+現有客製化安裝包請見 [RikkaPlus Releases](https://github.com/Hoixg/rikkaplus/releases)，並依對應的發佈說明確認版本所屬分支。
 
-- [Kotlin](https://kotlinlang.org/) (開發語言)
-- [Koin](https://insert-koin.io/) (依賴注入)
-- [Jetpack Compose](https://developer.android.com/jetpack/compose) (UI 框架)
-- [DataStore](https://developer.android.com/topic/libraries/architecture/datastore?hl=zh-cn#preferences-datastore) (
-  偏好數據存儲)
-- [Room](https://developer.android.com/training/data-storage/room) (數據庫)
-- [Coil](https://coil-kt.github.io/coil/) (圖片加載)
-- [Material 3 Expressive](https://m3.material.io/) (UI 設計)
-- [Navigation 3](https://developer.android.com/guide/navigation/navigation-3) (導航)
-- [Okhttp](https://square.github.io/okhttp/) (HTTP 客戶端)
-- [kotlinx.serialization](https://github.com/Kotlin/kotlinx.serialization) (Json序列化)
+## 開發
 
-> [!TIP]
-> 你需要在 `app` 資料夾下添加 `google-services.json` 檔案才能構建應用。
+主要技術為 Kotlin、Jetpack Compose、Material 3 Expressive、Room 與 DataStore。
 
-## 💰 捐贈
+使用 Android Studio 開啟專案，依上游建構設定準備環境。建構 Web 模組另需 Node.js 與 pnpm；Android 建構需要相應的 `app/google-services.json` 與本機 SDK 設定。
 
-* [Ko-fi](https://ko-fi.com/reovodev)
-* [愛發電](https://afdian.com/a/reovo)
+本分支的功能規劃與問題請在[本儲存庫](https://github.com/Hoixg/rikkaplus/issues)討論。
 
-## ⭐ Star History
+## 上游與授權條款
 
-如果喜歡這個項目，請給個Star ⭐
+RikkaPlus 基於 [re-ovo](https://github.com/re-ovo) 建立的 [RikkaHub](https://github.com/rikkahub/rikkahub)。感謝原作者及貢獻者。
 
-<a href="https://www.star-history.com/?type=date&repos=re-ovo%2Frikkahub">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=re-ovo/rikkahub&type=date&theme=dark&legend=top-left&sealed_token=qSytWeq7LkzQQViTjK0MYlvvA_qkfuwjOxOqgbRpLUZZwok5rO6LXhpVL7Mq-q3o89BfKpzE7g66BCy18H6eiqTsD8czD0J-HejLqmHy-npcvCTHu11wZw" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=re-ovo/rikkahub&type=date&legend=top-left&sealed_token=qSytWeq7LkzQQViTjK0MYlvvA_qkfuwjOxOqgbRpLUZZwok5rO6LXhpVL7Mq-q3o89BfKpzE7g66BCy18H6eiqTsD8czD0J-HejLqmHy-npcvCTHu11wZw" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=re-ovo/rikkahub&type=date&legend=top-left&sealed_token=qSytWeq7LkzQQViTjK0MYlvvA_qkfuwjOxOqgbRpLUZZwok5rO6LXhpVL7Mq-q3o89BfKpzE7g66BCy18H6eiqTsD8czD0J-HejLqmHy-npcvCTHu11wZw" />
- </picture>
-</a>
-
-## 📄 許可證
-
-本項目基於 [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0) 開源。
+專案保留 [GNU Affero General Public License v3.0](LICENSE) 與原有著作權聲明。
