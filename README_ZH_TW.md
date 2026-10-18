@@ -43,6 +43,17 @@
 
 - 移除 Web 伺服器、瀏覽器聊天介面、相關背景服務與前端建構相依套件。
 
+## 自動建構與雲端發佈
+
+儲存庫預設開發分支為 `1.0`。
+
+- **每日自動建構**：北京時間每天 02:00、17:00 檢查更新，沒有新提交時略過。簽章安裝包發佈至獨立的 [1.0-nightly](https://github.com/Hoixg/rikkaplus/releases/tag/1.0-nightly)。
+- **手動雲端建構**：進入 [Actions](https://github.com/Hoixg/rikkaplus/actions/workflows/release.yml)，選擇 `1.0` 分支及 `release`／`debug` 類型，完成後下載建構產物。手動建構不發佈新版本。
+- **版本發佈**：推送與應用程式版本相符的附註標籤，例如 `1.0-v3.0.1`，觸發簽章建構與發佈。與舊 custom 版本的標籤分開管理。
+- **更新說明**：正式發佈優先讀取 `docs/releases/<應用程式版本號>.md`，參考[說明範本](docs/releases/TEMPLATE.md)；其他建構依分類整理提交標題與內文。
+
+雲端建構沿用儲存庫密鑰 `KEY_BASE64`、`SIGNING_CONFIG` 與 `GOOGLE_SERVICES_JSON`，亦可為本分支另設優先使用的 `GOOGLE_SERVICES_JSON_1_0`。沿用既有 Firebase 專案設定時，建構會比對目前套件名稱；使用 Firebase 服務時，應透過分支專屬密鑰提供已註冊的 Android 用戶端設定。
+
 ## 開發
 
 主要技術為 Kotlin、Jetpack Compose、Material 3 Expressive、Room 與 DataStore。

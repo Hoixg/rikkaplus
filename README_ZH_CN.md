@@ -43,6 +43,17 @@
 
 - 移除 Web 服务器、浏览器聊天界面、相关后台服务与前端构建依赖。
 
+## 自动构建与云端发布
+
+仓库默认开发分支为 `1.0`。
+
+- **每日自动构建**：北京时间每天 02:00、17:00 检查更新，无新提交时跳过。签名安装包发布至独立的 [1.0-nightly](https://github.com/Hoixg/rikkaplus/releases/tag/1.0-nightly)。
+- **手动云构建**：进入 [Actions](https://github.com/Hoixg/rikkaplus/actions/workflows/release.yml)，选择 `1.0` 分支和 `release`／`debug` 类型，完成后下载构建产物。手动构建不发布新版本。
+- **版本发布**：推送与应用版本匹配的附注标签，例如 `1.0-v3.0.1`，触发签名构建与发布。与旧 custom 版本的标签分开管理。
+- **更新说明**：正式发布优先读取 `docs/releases/<应用版本号>.md`，参考[说明模板](docs/releases/TEMPLATE.md)；其他构建按分类整理提交标题和正文。
+
+云构建复用仓库密钥 `KEY_BASE64`、`SIGNING_CONFIG` 和 `GOOGLE_SERVICES_JSON`，也可为本分支单独配置优先使用的 `GOOGLE_SERVICES_JSON_1_0`。复用已有 Firebase 项目配置时，构建会匹配当前包名；使用 Firebase 服务时，应通过分支专属密钥提供已注册的 Android 客户端配置。
+
 ## 开发
 
 主要技术为 Kotlin、Jetpack Compose、Material 3 Expressive、Room 和 DataStore。

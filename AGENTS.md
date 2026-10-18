@@ -28,6 +28,32 @@ Material 3 look (cards with dividers, plain forms).
 ./gradlew spotlessCheck          # 只检查格式不改文件
 ```
 
+## Branch, commits and releases
+
+The active development branch is `1.0`. Keep the historical `custom` branch on GitHub; do not recreate a local
+`custom` checkout unless the user requests it. Preserve the removal of the Web server when syncing upstream.
+
+Use Chinese commit subjects in the form `type(scope): 改动摘要`. Explain the changes and their reason in the body
+when needed. After pushing, report the changes, verification result and commit hash in Chinese. Do not rewrite
+published commits merely to improve their wording.
+
+Build workflows:
+
+- `daily-build.yml`: daily signed development builds published as `1.0-nightly`; skip if the source has not changed.
+- `release.yml`: manual Debug/Release cloud builds uploaded as Actions artifacts. Tags `1.0-v<versionName>` publish
+  an explicitly versioned release. Keep these tags separate from the historical custom releases.
+- Use `docs/releases/<versionName>.md` for curated Chinese release notes. Describe user-visible changes by category;
+  avoid generic merge titles. The workflow falls back to categorized commit subjects and bodies.
+
+When the user says only `提交`, prepare the next rebuild release: review local changes, sync upstream while preserving
+the rebuild's changes, increment the final versionName component and versionCode, verify the necessary code, commit
+and push `1.0`, then create an annotated `1.0-v<versionName>` tag. Verify the tag is unused first. Wait for the workflow
+and APK assets before reporting a successful release. Ordinary push requests do not publish a version tag.
+
+For local verification, leave CPU headroom: use roughly half the available logical cores, below-normal priority where
+supported, and a small Gradle worker limit. Prefer focused checks and avoid repeated full builds. Never commit signing
+keys, passwords, Google Services configuration, or generated build metadata.
+
 ## Module Structure
 
 - **app**: Main application module with UI, ViewModels, and core logic

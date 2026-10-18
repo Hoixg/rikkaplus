@@ -1,0 +1,77 @@
+name: 构建并校验安装包
+description: 1.0 分支共用的 Android 云构建流程
+inputs:
+  variant:
+    description: debug 或 release
+    default: release
+  key-base64:
+    description: Release 签名密钥
+    required: false
+  signing-config:
+    description: Release 签名配置
+    required: false
+  google-services:
+    description: Google Services 配置
+    required: true
+outputs:
+  version:
+    description: 应用版本
+    value: ${{ steps.prepare.outputs.version }}
+  commit:
+    description: 源码提交
+    value: ${{ steps.prepare.outputs.commit }}
+runs:
+  using: composite
+  steps:
+    - name: 配置 JDK
+      uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: '21'
+    - name: 缓存 Gradle
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.gradle/caches
+          ~/.gradle/wrapper
+        key: ${{ runner.os }}-rebuild-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+    - name: 准备构建配置
+      id: prepare
+      shell: bash
+      env:
+        BUILD_VARIANT: ${{ inputs.variant }}
+        KEY_BASE64: ${{ inputs.key-base64 }}
+        SIGNING_CONFIG: ${{ inputs.signing-config }}
+        GOOGLE_SERVICES_JSON: ${{ inputs.google-services }}
+      run: |
+        set -euo pipefail
+        python3 .github/scripts/build_support.py prepare
+        if [ "$BUILD_VARIANT" = release ]; then
+          test -n "$KEY_BASE64" || { echo "::error::缺少 KEY_BASE64"; exit 1; }
+          test -n "$SIGNING_CONFIG" || { echo "::error::缺少 SIGNING_CONFIG"; exit 1; }
+          printf '%s' "$KEY_BASE64" | base64 --decode > app/app.key
+          printf '%s\n' "$SIGNING_CONFIG" > local.properties
+        fi
+    - name: 构建 APK
+      shell: bash
+      env:
+        BUILD_VARIANT: ${{ inputs.variant }}
+      run: |
+        set -euo pipefail
+        chmod +x gradlew
+        ./gradlew ":app:assemble${BUILD_VARIANT^}" --max-workers=2 --no-daemon --console=plain
+    - name: 检查签名、版本及校验值
+      shell: bash
+      env:
+        BUILD_VARIANT: ${{ inputs.variant }}
+      run: |
+        set -euo pipefail
+        python3 .github/scripts/build_support.py verify
+        apksigner=$(find "$ANDROID_HOME/build-tools" -maxdepth 2 -type f -name apksigner | sort -V | tail -n 1)
+        test -n "$apksigner"
+        for apk in app/build/outputs/apk/"$BUILD_VARIANT"/*.apk; do
+          "$apksigner" verify "$apk"
+        done
+    - name: 生成中文更新说明
+      shell: bash
+      run: python3 .github/scripts/build_support.py notes

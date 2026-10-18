@@ -1,0 +1,74 @@
+name: 1.0 云端构建与版本发布
+
+on:
+  workflow_dispatch:
+    inputs:
+      variant:
+        description: 安装包类型（手动构建只上传构建产物）
+        type: choice
+        options: [release, debug]
+        default: release
+  push:
+    tags:
+      - '1.0-v*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: rebuild-cloud-${{ github.ref }}-${{ inputs.variant || 'release' }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.ref == 'refs/heads/1.0' || startsWith(github.ref, 'refs/tags/1.0-v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+      - name: 核对源码分支和发布标签
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          git fetch origin 1.0
+          git merge-base --is-ancestor HEAD FETCH_HEAD
+          if [ "$EVENT_NAME" = push ]; then
+            version=$(sed -nE 's/^[[:space:]]*versionName = "([^"]+)"/\1/p' app/build.gradle.kts | head -n 1)
+            test "$TAG" = "1.0-v$version"
+          fi
+      - name: 构建并校验 APK
+        id: build
+        uses: ./.github/actions/build-apks
+        with:
+          variant: ${{ inputs.variant || 'release' }}
+          key-base64: ${{ secrets.KEY_BASE64 }}
+          signing-config: ${{ secrets.SIGNING_CONFIG }}
+          google-services: ${{ secrets.GOOGLE_SERVICES_JSON_1_0 || secrets.GOOGLE_SERVICES_JSON }}
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: rikkaplus-1.0-${{ steps.build.outputs.version }}-${{ inputs.variant || 'release' }}-${{ steps.build.outputs.commit }}
+          retention-days: 14
+          if-no-files-found: error
+          path: |
+            app/build/outputs/apk/${{ inputs.variant || 'release' }}/*.apk
+            SHA256SUMS.txt
+            release-notes.md
+            build-info.json
+      - name: 发布版本
+        if: github.event_name == 'push'
+        uses: softprops/action-gh-release@v3
+        with:
+          name: RikkaPlus 1.0 · ${{ steps.build.outputs.version }}
+          body_path: release-notes.md
+          prerelease: false
+          make_latest: false
+          fail_on_unmatched_files: true
+          files: |
+            app/build/outputs/apk/release/*.apk
+            SHA256SUMS.txt

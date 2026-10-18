@@ -43,6 +43,17 @@ Existing customized builds are available from [RikkaPlus Releases](https://githu
 
 - Removed the Web server, browser-based chat interface, related background service, and frontend build dependencies.
 
+## Automated builds and releases
+
+The default development branch is `1.0`.
+
+- **Daily builds:** 02:00 and 17:00 Asia/Shanghai, skipping unchanged source. Signed APKs are published under [1.0-nightly](https://github.com/Hoixg/rikkaplus/releases/tag/1.0-nightly).
+- **Manual cloud builds:** open [Actions](https://github.com/Hoixg/rikkaplus/actions/workflows/release.yml), select branch `1.0`, and choose `release` or `debug`. Download the artifacts after the workflow completes. This does not publish a release.
+- **Versioned releases:** an annotated tag such as `1.0-v3.0.1`, matching the application's versionName, triggers a signed release. Historical custom release tags remain separate.
+- **Release notes:** maintain categorized Chinese notes in `docs/releases/<versionName>.md`; see the [template](docs/releases/TEMPLATE.md). Other builds use categorized commit subjects and bodies.
+
+Cloud builds use repository secrets `KEY_BASE64`, `SIGNING_CONFIG`, and `GOOGLE_SERVICES_JSON`. An optional `GOOGLE_SERVICES_JSON_1_0` takes precedence for this branch. When reusing the shared Firebase project configuration, the build matches its client entry to the package name; configure a registered Android client in the dedicated secret for Firebase services.
+
 ## Development
 
 Built with Kotlin, Jetpack Compose, Material 3 Expressive, Room, and DataStore.
