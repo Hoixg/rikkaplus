@@ -96,8 +96,10 @@ data class NetworkSetting(
 enum class ChatFontFamily {
     @SerialName("default")
     DEFAULT,
+
     @SerialName("serif")
     SERIF,
+
     @SerialName("monospace")
     MONOSPACE,
 
@@ -150,6 +152,7 @@ data class DisplaySetting(
     val ttsOnlyReadQuoted: Boolean = false,
     val ttsOnlyReadOutsideBrackets: Boolean = false,
     val autoPlayTTSAfterGeneration: Boolean = false,
+    val voiceModeListenWhileReplying: Boolean = true,
     val pasteLongTextAsFile: Boolean = false,
     val pasteLongTextThreshold: Int = 1000,
     val sendOnEnter: Boolean = false,
