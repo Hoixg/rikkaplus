@@ -56,10 +56,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Add01
 import me.rerere.hugeicons.stroke.AlertCircle
@@ -69,15 +65,17 @@ import me.rerere.hugeicons.stroke.McpServer
 import me.rerere.hugeicons.stroke.MessageBlocked
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.Screen
-import me.rerere.rikkahub.data.ai.mcp.McpCommonOptions
 import me.rerere.rikkahub.data.ai.mcp.McpManager
 import me.rerere.rikkahub.data.ai.mcp.McpServerConfig
 import me.rerere.rikkahub.data.ai.mcp.McpStatus
+import me.rerere.rikkahub.data.ai.mcp.parseMcpServersFromJson
 import me.rerere.rikkahub.ui.components.nav.BackButton
+import me.rerere.rikkahub.ui.components.ui.CardGroup
 import me.rerere.rikkahub.ui.components.ui.ItemAction
 import me.rerere.rikkahub.ui.components.ui.ItemActionMenu
 import me.rerere.rikkahub.ui.components.ui.Tag
 import me.rerere.rikkahub.ui.components.ui.TagType
+import me.rerere.rikkahub.ui.components.ui.switchItem
 import me.rerere.rikkahub.ui.context.LocalNavController
 import me.rerere.rikkahub.ui.theme.CustomColors
 import me.rerere.rikkahub.ui.theme.extendColors
@@ -157,6 +155,33 @@ fun SettingMcpPage(vm: SettingVM = koinViewModel()) {
                     bottom = innerPadding.calculateBottomPadding() + 16.dp,
                 )
             ) {
+                item("aiMcpManagement") {
+                    CardGroup {
+                        switchItem(
+                            checked = settings.allowAiManageMcp,
+                            onCheckedChange = { enabled ->
+                                vm.updateSettings { it.copy(allowAiManageMcp = enabled) }
+                            },
+                            headlineContent = { Text("允许 AI 管理 MCP") },
+                            supportingContent = { Text("允许 AI 查看、新增和编辑 MCP 配置；删除服务前需要你批准。") },
+                        )
+                    }
+                }
+                if (mcpConfigs.isEmpty()) {
+                    item {
+                        Column(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            Text(stringResource(R.string.setting_mcp_page_no_mcp_servers_found))
+                            Text(
+                                stringResource(R.string.setting_mcp_page_add_one_to_get_started),
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                    }
+                }
                 items(mcpConfigs, key = { it.id }) { mcpConfig ->
                     McpServerItem(
                         item = mcpConfig,
@@ -171,20 +196,6 @@ fun SettingMcpPage(vm: SettingVM = koinViewModel()) {
                             }
                         },
                         modifier = Modifier.animateItem()
-                    )
-                }
-            }
-
-            if (mcpConfigs.isEmpty()) {
-                Column(
-                    modifier = Modifier.align(Alignment.Center),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    Text(text = stringResource(R.string.setting_mcp_page_no_mcp_servers_found))
-                    Text(
-                        text = stringResource(R.string.setting_mcp_page_add_one_to_get_started),
-                        style = MaterialTheme.typography.bodySmall,
                     )
                 }
             }
@@ -381,24 +392,6 @@ private fun McpServerItem(
         onDismiss = { showDeleteDialog = false },
     ) {
         Text(stringResource(R.string.common_delete_confirm_message, item.commonOptions.name))
-    }
-}
-
-private fun parseMcpServersFromJson(json: String): List<McpServerConfig> {
-    val root = Json.parseToJsonElement(json).jsonObject
-    val mcpServers = root["mcpServers"]?.jsonObject ?: return emptyList()
-    return mcpServers.entries.mapNotNull { (name, element) ->
-        val obj = element.jsonObject
-        val type = obj["type"]?.jsonPrimitive?.contentOrNull ?: "streamable_http"
-        val url = obj["url"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
-        val headers = obj["headers"]?.jsonObject?.entries?.map { (k, v) ->
-            k to (v.jsonPrimitive.contentOrNull ?: "")
-        } ?: emptyList()
-        val commonOptions = McpCommonOptions(name = name, headers = headers)
-        when (type) {
-            "sse" -> McpServerConfig.SseTransportServer(commonOptions = commonOptions, url = url)
-            else -> McpServerConfig.StreamableHTTPServer(commonOptions = commonOptions, url = url)
-        }
     }
 }
 

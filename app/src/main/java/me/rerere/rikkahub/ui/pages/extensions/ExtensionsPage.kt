@@ -19,6 +19,7 @@ import me.rerere.rikkahub.R
 import me.rerere.hugeicons.stroke.Book03
 import me.rerere.hugeicons.stroke.File02
 import me.rerere.hugeicons.stroke.Folder01
+import me.rerere.hugeicons.stroke.McpServer
 import me.rerere.hugeicons.stroke.Puzzle
 import me.rerere.hugeicons.stroke.Zap
 import me.rerere.rikkahub.Screen
@@ -74,6 +75,14 @@ fun ExtensionsPage() {
                         leadingContent = { CardGroupIcon(HugeIcons.Puzzle, containerColor = containerColor, contentColor = contentColor) },
                         headlineContent = { Text(stringResource(R.string.extensions_page_agent_skills)) },
                         supportingContent = { Text(stringResource(R.string.extensions_page_agent_skills_desc)) },
+                    )
+                    item(
+                        onClick = { navController.navigate(Screen.SettingMcp) },
+                        leadingContent = {
+                            CardGroupIcon(HugeIcons.McpServer, containerColor = containerColor, contentColor = contentColor)
+                        },
+                        headlineContent = { Text(stringResource(R.string.setting_page_mcp)) },
+                        supportingContent = { Text(stringResource(R.string.setting_page_mcp_desc)) },
                     )
                     item(
                         onClick = { navController.navigate(Screen.Workspaces) },

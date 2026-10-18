@@ -8,8 +8,10 @@ import me.rerere.ai.provider.BuiltInTools
 import me.rerere.ai.provider.Model
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.rikkahub.data.ai.mcp.McpManager
+import me.rerere.rikkahub.data.ai.mcp.isValidMcpName
 import me.rerere.rikkahub.data.ai.tools.local.LocalTools
 import me.rerere.rikkahub.data.datastore.Settings
+import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.files.FileFolders
 import me.rerere.rikkahub.data.skills.SkillManager
 import me.rerere.rikkahub.data.model.Assistant
@@ -44,6 +46,7 @@ class ChatToolFactory(
     private val mcpManager: McpManager,
     private val skillManager: SkillManager,
     private val workspaceRepository: WorkspaceRepository,
+    private val settingsStore: SettingsStore,
 ) {
     suspend fun createTools(
         settings: Settings,
@@ -60,6 +63,7 @@ class ChatToolFactory(
                 addAll(createSearchTools(settings))
             }
             addAll(localTools.getTools(assistant.localTools))
+            addAll(createMcpManagementTools(settingsStore))
             if (assistant.enableRecentChatsReference) {
                 addAll(createConversationTools(conversationRepository, assistant.id))
             }
@@ -77,7 +81,7 @@ class ChatToolFactory(
             val invalidNames = mcpTools
                 .map { it.second }
                 .distinct()
-                .filter { name -> name.isEmpty() || !name.all { it in 'a'..'z' || it in 'A'..'Z' || it in '0'..'9' } }
+                .filter { name -> name.isEmpty() || !isValidMcpName(name) }
             if (invalidNames.isNotEmpty()) {
                 throw InvalidMcpServerNamesException(invalidNames)
             }

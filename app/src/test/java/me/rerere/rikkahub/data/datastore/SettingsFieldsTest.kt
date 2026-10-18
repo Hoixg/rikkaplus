@@ -73,6 +73,7 @@ class SettingsFieldsTest {
         assertEquals(DEFAULT_ASSISTANT_ID, settings.assistantId)
         assertEquals(DEFAULT_SYSTEM_TTS_ID, settings.selectedTTSProviderId)
         assertEquals(null, settings.selectedASRProviderId)
+        assertEquals(false, settings.allowAiManageMcp)
         assertEquals(true, settings.dynamicColor)
     }
 
@@ -142,6 +143,7 @@ private val SAMPLE = Settings(
     searchCommonOptions = SearchCommonOptions(resultSize = 3),
     searchServiceSelected = 1,
     mcpServers = listOf(McpServerConfig.SseTransportServer(id = id(8), url = "https://example.com/sse")),
+    allowAiManageMcp = true,
     webDavConfig = WebDavConfig(url = "https://dav.example.com"),
     s3Config = S3Config(bucket = "backup"),
     uploadS3Config = S3Config(bucket = "upload"),
@@ -188,6 +190,7 @@ private val STORED_KEYS = setOf(
     "search_common",
     "search_selected",
     "mcp_servers",
+    "allow_ai_manage_mcp",
     "webdav_config",
     "s3_config",
     "upload_s3_config",

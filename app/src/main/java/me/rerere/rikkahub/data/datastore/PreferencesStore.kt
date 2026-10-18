@@ -138,6 +138,7 @@ class SettingsStore internal constructor(
 
         // MCP
         val MCP_SERVERS = stringPreferencesKey("mcp_servers")
+        val ALLOW_AI_MANAGE_MCP = booleanPreferencesKey("allow_ai_manage_mcp")
 
         // WebDAV
         val WEBDAV_CONFIG = stringPreferencesKey("webdav_config")

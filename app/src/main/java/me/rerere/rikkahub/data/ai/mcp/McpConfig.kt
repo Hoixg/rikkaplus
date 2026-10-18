@@ -2,7 +2,15 @@ package me.rerere.rikkahub.data.ai.mcp
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.boolean
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import me.rerere.ai.core.InputSchema
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import kotlin.uuid.Uuid
 
 @Serializable
@@ -100,3 +108,50 @@ val McpServerConfig.serverUrl: String
         is McpServerConfig.SseTransportServer -> url
         is McpServerConfig.StreamableHTTPServer -> url
     }
+
+fun isValidMcpName(name: String): Boolean =
+    name.isEmpty() || name.all { it in 'a'..'z' || it in 'A'..'Z' || it in '0'..'9' }
+
+val McpServerConfig.transportType: String
+    get() = when (this) {
+        is McpServerConfig.SseTransportServer -> "sse"
+        is McpServerConfig.StreamableHTTPServer -> "streamable_http"
+    }
+
+/** The import UI and AI configuration tools use the same connection format. */
+fun parseMcpServersFromJson(json: String): List<McpServerConfig> {
+    val root = Json.parseToJsonElement(json).jsonObject
+    val servers = root["mcpServers"]?.jsonObject ?: return emptyList()
+    return servers.mapNotNull { (name, element) ->
+        val config = element.jsonObject
+        if (config["url"] == null) null else configureMcpServer(name, config)
+    }
+}
+
+/** Merge only connection fields, retaining tool permissions and OAuth state from the latest settings. */
+fun configureMcpServer(
+    name: String,
+    fields: JsonObject,
+    current: McpServerConfig? = null,
+): McpServerConfig {
+    require(name.isNotBlank() && isValidMcpName(name)) { "MCP name must contain only ASCII letters and digits" }
+    val url = fields["url"]?.jsonPrimitive?.contentOrNull?.trim() ?: current?.serverUrl
+    require(!url.isNullOrBlank() && url.toHttpUrlOrNull() != null) { "A valid HTTP or HTTPS MCP URL is required" }
+    val type = fields["type"]?.jsonPrimitive?.contentOrNull ?: current?.transportType ?: "streamable_http"
+    val base = current?.commonOptions ?: McpCommonOptions()
+    val headers = fields["headers"]?.takeUnless { it is JsonNull }?.jsonObject?.map { (key, value) ->
+        key to (value.jsonPrimitive.contentOrNull ?: error("Header values must be strings"))
+    } ?: base.headers
+    val options = base.copy(
+        name = name,
+        headers = headers,
+        enable = fields["enabled"]?.takeUnless { it is JsonNull }?.jsonPrimitive?.boolean ?: base.enable,
+    )
+    val id = current?.id ?: Uuid.random()
+    return when (type) {
+        "sse" -> McpServerConfig.SseTransportServer(id = id, commonOptions = options, url = url)
+        "streamable_http", "http", "streamable-http" ->
+            McpServerConfig.StreamableHTTPServer(id = id, commonOptions = options, url = url)
+        else -> error("Supported MCP transports: sse, streamable_http")
+    }
+}

@@ -44,6 +44,7 @@ Existing customized builds are available from [RikkaPlus Releases](https://githu
 - Removed the Web server, browser-based chat interface, related background service, and frontend build dependencies.
 - Rebuilt API key management: add/edit/delete keys, names and rate annotations, manual selection, and per-model key binding in a Material 3 Expressive segmented interface.
 - Removed bundled reseller presets and promotional recommendations while retaining official providers and common cloud platforms.
+- Moved MCP into extension management, with optional AI configuration management and standard tool approval for deletion.
 
 ## Automated builds and releases
 

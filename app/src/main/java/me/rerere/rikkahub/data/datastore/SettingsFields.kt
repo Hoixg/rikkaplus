@@ -105,6 +105,7 @@ internal val SETTINGS_FIELDS: List<SettingsField<*, *>> = with(SettingsStore) {
 
         // MCP
         json(MCP_SERVERS, Settings::mcpServers) { copy(mcpServers = it) },
+        plain(ALLOW_AI_MANAGE_MCP, Settings::allowAiManageMcp) { copy(allowAiManageMcp = it) },
 
         // WebDAV
         json(WEBDAV_CONFIG, Settings::webDavConfig) { copy(webDavConfig = it) },
