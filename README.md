@@ -39,11 +39,15 @@ Old-data compatibility, database migration, import, and upgrade behavior remain 
 
 Existing customized builds are available from [RikkaPlus Releases](https://github.com/Hoixg/rikkaplus/releases). Check the release notes for the branch associated with each build.
 
+### Completed cleanup
+
+- Removed the Web server, browser-based chat interface, related background service, and frontend build dependencies.
+
 ## Development
 
 Built with Kotlin, Jetpack Compose, Material 3 Expressive, Room, and DataStore.
 
-Use Android Studio and follow the upstream build configuration. Building the Web module also requires Node.js and pnpm; Android builds require the appropriate `app/google-services.json` and local SDK configuration.
+Use Android Studio and follow the upstream build configuration. Android builds require the appropriate `app/google-services.json` and local SDK configuration.
 
 Feature plans and changes for this branch should be discussed in [this repository](https://github.com/Hoixg/rikkaplus/issues).
 

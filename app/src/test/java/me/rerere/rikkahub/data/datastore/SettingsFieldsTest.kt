@@ -53,7 +53,6 @@ class SettingsFieldsTest {
 
         assertEquals(STORED_KEYS, stored.keys)
         assertEquals(false, stored["dynamic_color"])
-        assertEquals(9090, stored["web_server_port"])
         assertEquals(1.5f, stored["default_tts_playback_speed"])
         assertEquals("title", stored["title_prompt"])
         assertEquals("00000000-0000-0000-0000-000000000001", stored["chat_model"])
@@ -74,7 +73,6 @@ class SettingsFieldsTest {
         assertEquals(DEFAULT_SYSTEM_TTS_ID, settings.selectedTTSProviderId)
         assertEquals(null, settings.selectedASRProviderId)
         assertEquals(true, settings.dynamicColor)
-        assertEquals(8080, settings.webServerPort)
     }
 
     @Test
@@ -155,11 +153,6 @@ private val SAMPLE = Settings(
     modeInjections = listOf(PromptInjection.ModeInjection(id = id(14), name = "mode")),
     lorebooks = listOf(Lorebook(id = id(12), name = "lorebook")),
     quickMessages = listOf(QuickMessage(id = id(13), title = "hi")),
-    webServerEnabled = true,
-    webServerPort = 9090,
-    webServerJwtEnabled = true,
-    webServerAccessPassword = "secret",
-    webServerLocalhostOnly = true,
     backupReminderConfig = BackupReminderConfig(enabled = true),
     sponsorAlertDismissedAt = 7,
 )
@@ -203,11 +196,6 @@ private val STORED_KEYS = setOf(
     "default_tts_playback_speed",
     "asr_providers",
     "selected_asr_provider",
-    "web_server_enabled",
-    "web_server_port",
-    "web_server_jwt_enabled",
-    "web_server_access_password",
-    "web_server_localhost_only",
     "mode_injections",
     "lorebooks",
     "quick_messages",

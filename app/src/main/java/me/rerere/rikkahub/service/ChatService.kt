@@ -77,8 +77,6 @@ import me.rerere.rikkahub.data.model.withoutConversationFields
 import me.rerere.rikkahub.data.model.withoutUnresumableToolCalls
 import me.rerere.rikkahub.data.repository.ConversationRepository
 import me.rerere.rikkahub.data.repository.FolderRepository
-import me.rerere.rikkahub.web.BadRequestException
-import me.rerere.rikkahub.web.NotFoundException
 import java.net.ConnectException
 import java.net.NoRouteToHostException
 import java.net.SocketTimeoutException
@@ -254,7 +252,7 @@ class ChatService(
         )
     }
 
-    /** 持有会话引用并确保已加载后执行 [block]；[createIfMissing] 为 false 时数据库里没有就抛 NotFoundException */
+    /** 持有会话引用并确保已加载后执行 [block]；[createIfMissing] 为 false 时数据库里没有就抛 ChatItemNotFoundException */
     private suspend fun <T> withLoadedSession(
         conversationId: Uuid,
         createIfMissing: Boolean = true,
@@ -263,7 +261,7 @@ class ChatService(
         session.initialize(
             load = { loadConversation(conversationId) },
             create = {
-                if (createIfMissing) newConversation(conversationId) else throw NotFoundException("Conversation not found")
+                if (createIfMissing) newConversation(conversationId) else throw ChatItemNotFoundException("Conversation not found")
             },
         )
         block(session)
@@ -1155,7 +1153,7 @@ class ChatService(
             .first()
             .mapTo(mutableSetOf()) { it.title }
         val fork = source.fork(messageId, existingTitles, copyFile = ::copyChatFile)
-            ?: throw NotFoundException("Message not found")
+            ?: throw ChatItemNotFoundException("Message not found")
         // 新会话直接落库，打开时再从数据库加载
         val forkConversation = conversationStore.prepareWrite()(fork)
         conversationRepo.insertConversation(forkConversation)
@@ -1173,9 +1171,9 @@ class ChatService(
     ) {
         mutate(conversationId) { conversation ->
             val targetNode = conversation.messageNodes.firstOrNull { it.id == nodeId }
-                ?: throw NotFoundException("Message node not found")
+                ?: throw ChatItemNotFoundException("Message node not found")
             if (selectIndex !in targetNode.messages.indices) {
-                throw BadRequestException("Invalid selectIndex")
+                throw InvalidChatOperationException("Invalid selectIndex")
             }
             if (targetNode.selectIndex == selectIndex) return@mutate conversation
             conversation.selectBranch(nodeId, selectIndex)
@@ -1195,7 +1193,7 @@ class ChatService(
     ) {
         mutate(conversationId) { conversation ->
             conversation.deleteMessage(messageId)
-                ?: if (failIfMissing) throw NotFoundException("Message not found") else conversation
+                ?: if (failIfMissing) throw ChatItemNotFoundException("Message not found") else conversation
         }
     }
 

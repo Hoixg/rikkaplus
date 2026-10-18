@@ -46,7 +46,7 @@ import me.rerere.rikkahub.ui.hooks.writeStringPreference
 import me.rerere.rikkahub.ui.hooks.ChatInputState
 import me.rerere.rikkahub.utils.UiState
 import me.rerere.rikkahub.utils.UpdateChecker
-import me.rerere.rikkahub.web.ApiException
+import me.rerere.rikkahub.service.ChatOperationException
 import java.util.Locale
 import kotlin.uuid.Uuid
 
@@ -341,7 +341,7 @@ class ChatVM(
         viewModelScope.launch {
             try {
                 chatService.selectMessageNode(_conversationId, nodeId, selectIndex)
-            } catch (e: ApiException) {
+            } catch (e: ChatOperationException) {
                 // 界面上的分支已经过时（比如刚被清理掉），切换不了就算了
                 Log.w(TAG, "selectMessageNode: ${e.message}")
             }

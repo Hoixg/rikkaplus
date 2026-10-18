@@ -47245,7 +47245,6 @@ SPLme/rerere/rikkahub/RikkaHubApp;->onCreate()V
 SPLme/rerere/rikkahub/RikkaHubApp;->resumeMediaCreations()V
 SPLme/rerere/rikkahub/RikkaHubApp;->resumeMemoryConsolidation$lambda$0(Lme/rerere/rikkahub/RikkaHubApp;Landroidx/lifecycle/LifecycleOwner;Landroidx/lifecycle/Lifecycle$Event;)V
 SPLme/rerere/rikkahub/RikkaHubApp;->resumeMemoryConsolidation()V
-SPLme/rerere/rikkahub/RikkaHubApp;->startWebServerIfEnabled()V
 SPLme/rerere/rikkahub/RikkaHubApp;->syncManagedFiles()V
 Lme/rerere/rikkahub/RikkaHubApp$$ExternalSyntheticLambda0;
 SPLme/rerere/rikkahub/RikkaHubApp$$ExternalSyntheticLambda0;-><init>(Lme/rerere/rikkahub/RikkaHubApp;)V
@@ -47289,10 +47288,6 @@ Lme/rerere/rikkahub/RikkaHubApp$resumeMemoryConsolidation$2;
 SPLme/rerere/rikkahub/RikkaHubApp$resumeMemoryConsolidation$2;-><init>(Lme/rerere/rikkahub/RikkaHubApp;Lkotlin/coroutines/Continuation;)V
 SPLme/rerere/rikkahub/RikkaHubApp$resumeMemoryConsolidation$2;->create(Ljava/lang/Object;Lkotlin/coroutines/Continuation;)Lkotlin/coroutines/Continuation;
 SPLme/rerere/rikkahub/RikkaHubApp$resumeMemoryConsolidation$2;->invokeSuspend(Ljava/lang/Object;)Ljava/lang/Object;
-Lme/rerere/rikkahub/RikkaHubApp$startWebServerIfEnabled$1;
-SPLme/rerere/rikkahub/RikkaHubApp$startWebServerIfEnabled$1;-><init>(Lme/rerere/rikkahub/RikkaHubApp;Lkotlin/coroutines/Continuation;)V
-SPLme/rerere/rikkahub/RikkaHubApp$startWebServerIfEnabled$1;->create(Ljava/lang/Object;Lkotlin/coroutines/Continuation;)Lkotlin/coroutines/Continuation;
-SPLme/rerere/rikkahub/RikkaHubApp$startWebServerIfEnabled$1;->invokeSuspend(Ljava/lang/Object;)Ljava/lang/Object;
 Lme/rerere/rikkahub/RikkaHubApp$syncManagedFiles$1;
 SPLme/rerere/rikkahub/RikkaHubApp$syncManagedFiles$1;-><init>(Lme/rerere/rikkahub/RikkaHubApp;Lkotlin/coroutines/Continuation;)V
 SPLme/rerere/rikkahub/RikkaHubApp$syncManagedFiles$1;->create(Ljava/lang/Object;Lkotlin/coroutines/Continuation;)Lkotlin/coroutines/Continuation;
@@ -47722,7 +47717,6 @@ Lme/rerere/rikkahub/Screen$SettingSearch;
 Lme/rerere/rikkahub/Screen$SettingSearchDetail;
 Lme/rerere/rikkahub/Screen$SettingSpeech;
 Lme/rerere/rikkahub/Screen$SettingTheme;
-Lme/rerere/rikkahub/Screen$SettingWeb;
 Lme/rerere/rikkahub/Screen$ShareHandler;
 Lme/rerere/rikkahub/Screen$SkillDetail;
 Lme/rerere/rikkahub/Screen$Skills;
@@ -48531,11 +48525,6 @@ SPLme/rerere/rikkahub/data/datastore/Settings;->getTranslateThinkingBudget()I
 SPLme/rerere/rikkahub/data/datastore/Settings;->getTtsProviders()Ljava/util/List;
 SPLme/rerere/rikkahub/data/datastore/Settings;->getUploadS3Config()Lme/rerere/rikkahub/data/sync/s3/S3Config;
 SPLme/rerere/rikkahub/data/datastore/Settings;->getWebDavConfig()Lme/rerere/rikkahub/data/datastore/WebDavConfig;
-SPLme/rerere/rikkahub/data/datastore/Settings;->getWebServerAccessPassword()Ljava/lang/String;
-SPLme/rerere/rikkahub/data/datastore/Settings;->getWebServerEnabled()Z
-SPLme/rerere/rikkahub/data/datastore/Settings;->getWebServerJwtEnabled()Z
-SPLme/rerere/rikkahub/data/datastore/Settings;->getWebServerLocalhostOnly()Z
-SPLme/rerere/rikkahub/data/datastore/Settings;->getWebServerPort()I
 Lme/rerere/rikkahub/data/datastore/Settings$$ExternalSyntheticLambda0;
 SPLme/rerere/rikkahub/data/datastore/Settings$$ExternalSyntheticLambda0;-><init>()V
 Lme/rerere/rikkahub/data/datastore/Settings$$ExternalSyntheticLambda1;
@@ -49314,11 +49303,6 @@ SPLme/rerere/rikkahub/data/datastore/SettingsStore;->access$getTTS_PROVIDERS$cp(
 SPLme/rerere/rikkahub/data/datastore/SettingsStore;->access$getUPLOAD_S3_CONFIG$cp()Landroidx/datastore/preferences/core/Preferences$Key;
 SPLme/rerere/rikkahub/data/datastore/SettingsStore;->access$getVERSION$cp()Landroidx/datastore/preferences/core/Preferences$Key;
 SPLme/rerere/rikkahub/data/datastore/SettingsStore;->access$getWEBDAV_CONFIG$cp()Landroidx/datastore/preferences/core/Preferences$Key;
-SPLme/rerere/rikkahub/data/datastore/SettingsStore;->access$getWEB_SERVER_ACCESS_PASSWORD$cp()Landroidx/datastore/preferences/core/Preferences$Key;
-SPLme/rerere/rikkahub/data/datastore/SettingsStore;->access$getWEB_SERVER_ENABLED$cp()Landroidx/datastore/preferences/core/Preferences$Key;
-SPLme/rerere/rikkahub/data/datastore/SettingsStore;->access$getWEB_SERVER_JWT_ENABLED$cp()Landroidx/datastore/preferences/core/Preferences$Key;
-SPLme/rerere/rikkahub/data/datastore/SettingsStore;->access$getWEB_SERVER_LOCALHOST_ONLY$cp()Landroidx/datastore/preferences/core/Preferences$Key;
-SPLme/rerere/rikkahub/data/datastore/SettingsStore;->access$getWEB_SERVER_PORT$cp()Landroidx/datastore/preferences/core/Preferences$Key;
 SPLme/rerere/rikkahub/data/datastore/SettingsStore;->access$setPersisted$p(Lme/rerere/rikkahub/data/datastore/SettingsStore;Lme/rerere/rikkahub/data/datastore/Settings;)V
 SPLme/rerere/rikkahub/data/datastore/SettingsStore;->awaitLoaded(Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 SPLme/rerere/rikkahub/data/datastore/SettingsStore;->getSettingsFlow()Lkotlinx/coroutines/flow/StateFlow;
@@ -49382,11 +49366,6 @@ SPLme/rerere/rikkahub/data/datastore/SettingsStore$Companion;->getTTS_PROVIDERS(
 SPLme/rerere/rikkahub/data/datastore/SettingsStore$Companion;->getUPLOAD_S3_CONFIG()Landroidx/datastore/preferences/core/Preferences$Key;
 SPLme/rerere/rikkahub/data/datastore/SettingsStore$Companion;->getVERSION()Landroidx/datastore/preferences/core/Preferences$Key;
 SPLme/rerere/rikkahub/data/datastore/SettingsStore$Companion;->getWEBDAV_CONFIG()Landroidx/datastore/preferences/core/Preferences$Key;
-SPLme/rerere/rikkahub/data/datastore/SettingsStore$Companion;->getWEB_SERVER_ACCESS_PASSWORD()Landroidx/datastore/preferences/core/Preferences$Key;
-SPLme/rerere/rikkahub/data/datastore/SettingsStore$Companion;->getWEB_SERVER_ENABLED()Landroidx/datastore/preferences/core/Preferences$Key;
-SPLme/rerere/rikkahub/data/datastore/SettingsStore$Companion;->getWEB_SERVER_JWT_ENABLED()Landroidx/datastore/preferences/core/Preferences$Key;
-SPLme/rerere/rikkahub/data/datastore/SettingsStore$Companion;->getWEB_SERVER_LOCALHOST_ONLY()Landroidx/datastore/preferences/core/Preferences$Key;
-SPLme/rerere/rikkahub/data/datastore/SettingsStore$Companion;->getWEB_SERVER_PORT()Landroidx/datastore/preferences/core/Preferences$Key;
 Lme/rerere/rikkahub/data/datastore/SettingsStore$awaitLoaded$2;
 SPLme/rerere/rikkahub/data/datastore/SettingsStore$awaitLoaded$2;-><init>(Lkotlin/coroutines/Continuation;)V
 SPLme/rerere/rikkahub/data/datastore/SettingsStore$awaitLoaded$2;->create(Ljava/lang/Object;Lkotlin/coroutines/Continuation;)Lkotlin/coroutines/Continuation;
@@ -53997,7 +53976,6 @@ SPLme/rerere/rikkahub/utils/Version;->unbox-impl()Ljava/lang/String;
 Lme/rerere/rikkahub/utils/Version$Companion;
 SPLme/rerere/rikkahub/utils/Version$Companion;-><init>()V
 SPLme/rerere/rikkahub/utils/Version$Companion;-><init>(Lkotlin/jvm/internal/DefaultConstructorMarker;)V
-Lme/rerere/rikkahub/web/WebServerManager;
 Lme/rerere/search/SearchCommonOptions;
 SPLme/rerere/search/SearchCommonOptions;-><clinit>()V
 SPLme/rerere/search/SearchCommonOptions;-><init>(I)V

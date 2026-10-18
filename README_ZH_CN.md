@@ -39,11 +39,15 @@
 
 现有定制版安装包见 [RikkaPlus Releases](https://github.com/Hoixg/rikkaplus/releases)，请根据对应发布说明确认版本所属分支。
 
+### 已完成的整理
+
+- 移除 Web 服务器、浏览器聊天界面、相关后台服务与前端构建依赖。
+
 ## 开发
 
 主要技术为 Kotlin、Jetpack Compose、Material 3 Expressive、Room 和 DataStore。
 
-使用 Android Studio 打开项目，按上游构建配置准备环境。构建 Web 模块还需要 Node.js 和 pnpm；Android 构建需要相应的 `app/google-services.json` 与本地 SDK 配置。
+使用 Android Studio 打开项目，按上游构建配置准备环境。Android 构建需要相应的 `app/google-services.json` 与本地 SDK 配置。
 
 本分支的功能规划和问题请在[本仓库](https://github.com/Hoixg/rikkaplus/issues)讨论。
 
