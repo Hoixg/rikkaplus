@@ -62,6 +62,7 @@ import me.rerere.hugeicons.stroke.LeftToRightListBullet
 import me.rerere.hugeicons.stroke.Menu03
 import me.rerere.hugeicons.stroke.MessageAdd01
 import me.rerere.rikkahub.R
+import me.rerere.rikkahub.Screen
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.findProvider
 import me.rerere.rikkahub.data.datastore.getSelectedASRProvider
@@ -287,6 +288,11 @@ private fun ChatPageContent(
     val scope = rememberCoroutineScope()
     val toaster = LocalToaster.current
     val workspaceRepository: WorkspaceRepository = koinInject()
+    val workspaces by remember(workspaceRepository) { workspaceRepository.listFlow() }
+        .collectAsStateWithLifecycle(initialValue = emptyList())
+    val boundWorkspace = remember(workspaces, assistant.workspaceId) {
+        workspaces.find { it.id == assistant.workspaceId?.toString() }
+    }
 
     var previewMode by rememberSaveable { mutableStateOf(false) }
     val hazeState = rememberHazeState()
@@ -358,6 +364,12 @@ private fun ChatPageContent(
                     chatModel = currentChatModel,
                     hazeState = hazeState,
                     completionProviders = completionProviders,
+                    workspace = boundWorkspace,
+                    onWorkspaceClick = {
+                        boundWorkspace?.let { workspace ->
+                            navController.navigate(Screen.WorkspaceDetail(id = workspace.id, openFiles = true))
+                        }
+                    },
                     onCancelClick = {
                         vm.stopGeneration()
                     },

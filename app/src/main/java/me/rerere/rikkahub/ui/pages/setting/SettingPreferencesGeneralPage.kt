@@ -90,6 +90,12 @@ fun SettingPreferencesGeneralPage(vm: SettingVM = koinViewModel()) {
                         supportingContent = { Text(stringResource(R.string.setting_display_page_send_on_enter_desc)) },
                         headlineContent = { Text(stringResource(R.string.setting_display_page_send_on_enter_title)) },
                     )
+                    switchItem(
+                        checked = displaySetting.showWorkspaceShortcut,
+                        onCheckedChange = { updateDisplaySetting(displaySetting.copy(showWorkspaceShortcut = it)) },
+                        headlineContent = { Text(stringResource(R.string.setting_display_page_show_workspace_shortcut_title)) },
+                        supportingContent = { Text(stringResource(R.string.setting_display_page_show_workspace_shortcut_desc)) },
+                    )
                 }
             }
 

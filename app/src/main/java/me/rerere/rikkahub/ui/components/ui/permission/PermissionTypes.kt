@@ -67,6 +67,13 @@ val PermissionRecordAudio = PermissionInfo(
     required = true
 )
 
+val PermissionTermux = PermissionInfo(
+    permission = "com.termux.permission.RUN_COMMAND",
+    displayName = { Text("Termux 命令执行") },
+    usage = { Text("允许已开启 Termux 工具的助手执行命令和控制终端会话") },
+    required = true,
+)
+
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
 val PermissionNotification = PermissionInfo(
     permission = Manifest.permission.POST_NOTIFICATIONS,

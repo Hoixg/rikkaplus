@@ -1201,6 +1201,11 @@
   <string name="extensions_page_workspace">Workspace</string>
   <string name="extensions_page_workspace_desc">Manage local working directories accessible by Agent</string>
   <string name="workspace_select">Select Workspace</string>
+  <string name="workspace_open_files">Open workspace files</string>
+  <string name="assistant_page_local_tools_termux_title">Termux Terminal</string>
+  <string name="assistant_page_local_tools_termux_desc">Let AI run commands and control persistent terminal sessions in Termux</string>
+  <string name="setting_display_page_show_workspace_shortcut_title">Show Workspace Shortcut</string>
+  <string name="setting_display_page_show_workspace_shortcut_desc">Show the workspace files button when the current conversation is bound to a workspace</string>
   <string name="workspace_no_binding">No binding</string>
   <string name="workspace_manage">Manage Workspaces</string>
   <string name="workspace_detail">Workspace Details</string>

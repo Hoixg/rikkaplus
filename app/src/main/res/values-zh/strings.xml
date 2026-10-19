@@ -1175,6 +1175,11 @@
   <string name="extensions_page_workspace">工作区</string>
   <string name="extensions_page_workspace_desc">管理可由Agent访问的本地工作目录</string>
   <string name="workspace_select">选择工作区</string>
+  <string name="workspace_open_files">打开工作区文件</string>
+  <string name="assistant_page_local_tools_termux_title">Termux 手机终端</string>
+  <string name="assistant_page_local_tools_termux_desc">让 AI 在 Termux 中执行命令并控制持久终端会话</string>
+  <string name="setting_display_page_show_workspace_shortcut_title">显示工作区快捷按钮</string>
+  <string name="setting_display_page_show_workspace_shortcut_desc">当前会话绑定工作区时，在聊天输入区显示工作区文件按钮</string>
   <string name="workspace_no_binding">未绑定</string>
   <string name="workspace_manage">管理工作区</string>
   <string name="workspace_detail">工作空间详情</string>

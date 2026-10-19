@@ -121,6 +121,7 @@ import me.rerere.rikkahub.ui.pages.setting.SettingDonatePage
 import me.rerere.rikkahub.ui.pages.setting.SettingFilesPage
 import me.rerere.rikkahub.ui.pages.setting.SettingMcpDetailPage
 import me.rerere.rikkahub.ui.pages.setting.SettingMcpPage
+import me.rerere.rikkahub.ui.pages.setting.SettingTermuxPage
 import me.rerere.rikkahub.ui.pages.setting.SettingModelPage
 import me.rerere.rikkahub.ui.pages.setting.SettingPage
 import me.rerere.rikkahub.ui.pages.setting.SettingProviderDetailPage
@@ -544,8 +545,12 @@ class RouteActivity : ComponentActivity() {
                                 WorkspacePage()
                             }
 
+                            entry<Screen.SettingTermux> {
+                                SettingTermuxPage()
+                            }
+
                             entry<Screen.WorkspaceDetail> { key ->
-                                WorkspaceDetailPage(key.id)
+                                WorkspaceDetailPage(key.id, openFiles = key.openFiles)
                             }
 
                             entry<Screen.WorkspaceTerminal> { key ->
@@ -774,7 +779,10 @@ sealed interface Screen : NavKey {
     data object Workspaces : Screen
 
     @Serializable
-    data class WorkspaceDetail(val id: String) : Screen
+    data object SettingTermux : Screen
+
+    @Serializable
+    data class WorkspaceDetail(val id: String, val openFiles: Boolean = false) : Screen
 
     @Serializable
     data class WorkspaceTerminal(val id: String) : Screen

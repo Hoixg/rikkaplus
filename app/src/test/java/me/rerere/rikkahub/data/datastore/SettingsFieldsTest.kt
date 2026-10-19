@@ -10,6 +10,7 @@ import me.rerere.asr.ASRProviderSetting
 import me.rerere.mediagen.provider.MediaGenerationProviderSetting
 import me.rerere.rikkahub.data.ai.mcp.McpServerConfig
 import me.rerere.rikkahub.data.model.Assistant
+import me.rerere.rikkahub.data.model.TermuxConfig
 import me.rerere.rikkahub.data.model.Lorebook
 import me.rerere.rikkahub.data.model.PromptInjection
 import me.rerere.rikkahub.data.model.QuickMessage
@@ -144,6 +145,7 @@ private val SAMPLE = Settings(
     searchServiceSelected = 1,
     mcpServers = listOf(McpServerConfig.SseTransportServer(id = id(8), url = "https://example.com/sse")),
     allowAiManageMcp = true,
+    termuxConfig = TermuxConfig(approvalRequired = false, commandTimeoutMs = 120_000),
     webDavConfig = WebDavConfig(url = "https://dav.example.com"),
     s3Config = S3Config(bucket = "backup"),
     uploadS3Config = S3Config(bucket = "upload"),
@@ -191,6 +193,7 @@ private val STORED_KEYS = setOf(
     "search_selected",
     "mcp_servers",
     "allow_ai_manage_mcp",
+    "termux_config",
     "webdav_config",
     "s3_config",
     "upload_s3_config",

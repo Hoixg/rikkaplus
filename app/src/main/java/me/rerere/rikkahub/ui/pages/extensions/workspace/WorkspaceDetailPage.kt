@@ -145,14 +145,16 @@ private enum class WorkspaceDetailTab(
 }
 
 @Composable
-fun WorkspaceDetailPage(id: String) {
+fun WorkspaceDetailPage(id: String, openFiles: Boolean = false) {
     val navController = LocalNavController.current
     val vm: WorkspaceDetailVM = koinViewModel(parameters = { parametersOf(id) })
     val state by vm.state.collectAsStateWithLifecycle()
     val installProgress by vm.installProgress.collectAsStateWithLifecycle()
     val installError by vm.installError.collectAsStateWithLifecycle()
     val settingsError by vm.settingsError.collectAsStateWithLifecycle()
-    val pagerState = rememberPagerState { WorkspaceDetailTab.entries.size }
+    val pagerState = rememberPagerState(
+        initialPage = if (openFiles) WorkspaceDetailTab.FILES.ordinal else WorkspaceDetailTab.BASIC.ordinal,
+    ) { WorkspaceDetailTab.entries.size }
     var deleteTarget by remember { mutableStateOf<WorkspaceFileEntry?>(null) }
     var showInstallDialog by remember { mutableStateOf(false) }
     var previewImageUri by remember { mutableStateOf<String?>(null) }

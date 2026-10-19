@@ -30,12 +30,14 @@ import me.rerere.hugeicons.stroke.Calendar03
 import me.rerere.hugeicons.stroke.ChartLineData01
 import me.rerere.hugeicons.stroke.ClipboardPaste
 import me.rerere.hugeicons.stroke.Clock01
+import me.rerere.hugeicons.stroke.ComputerTerminal01
 import me.rerere.hugeicons.stroke.JavaScript
 import me.rerere.hugeicons.stroke.MessageQuestion
 import me.rerere.hugeicons.stroke.SmartPhone01
 import me.rerere.hugeicons.stroke.VolumeHigh
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.ai.tools.local.LocalToolOption
+import me.rerere.rikkahub.data.ai.tools.local.TermuxIntegration
 import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.ui.components.nav.BackButton
 import me.rerere.rikkahub.ui.components.ui.CardGroup
@@ -43,6 +45,7 @@ import me.rerere.rikkahub.ui.components.ui.CardGroupIcon
 import me.rerere.rikkahub.ui.components.ui.CardGroupScope
 import me.rerere.rikkahub.ui.components.ui.permission.PermissionInfo
 import me.rerere.rikkahub.ui.components.ui.permission.PermissionManager
+import me.rerere.rikkahub.ui.components.ui.permission.PermissionTermux
 import me.rerere.rikkahub.ui.components.ui.permission.rememberPermissionState
 import me.rerere.rikkahub.ui.components.ui.switchItem
 import me.rerere.rikkahub.ui.context.LocalToaster
@@ -114,8 +117,20 @@ private fun AssistantLocalToolContent(
         )
     )
     PermissionManager(permissionState = calendarPermissionState)
+    val termuxPermissionState = rememberPermissionState(PermissionTermux)
+    PermissionManager(permissionState = termuxPermissionState)
 
     fun toggleLocalTool(option: LocalToolOption, enabled: Boolean) {
+        if (enabled && option == LocalToolOption.Termux) {
+            if (TermuxIntegration.state(context) == TermuxIntegration.State.NOT_INSTALLED) {
+                toaster.show(message = "请先安装并打开 Termux", type = ToastType.Warning)
+                return
+            }
+            if (!termuxPermissionState.allRequiredPermissionsGranted) {
+                termuxPermissionState.requestPermissions()
+                return
+            }
+        }
         if (enabled && option == LocalToolOption.ScreenTime && !context.hasUsageStatsPermission()) {
             toaster.show(message = permissionRequiredText, type = ToastType.Warning)
             context.openUsageAccessSettings()
@@ -221,6 +236,12 @@ private fun AssistantLocalToolContent(
                 icon = HugeIcons.ChartLineData01,
                 title = R.string.assistant_page_local_tools_chart_display_title,
                 description = R.string.assistant_page_local_tools_chart_display_desc,
+            )
+            toolItem(
+                option = LocalToolOption.Termux,
+                icon = HugeIcons.ComputerTerminal01,
+                title = R.string.assistant_page_local_tools_termux_title,
+                description = R.string.assistant_page_local_tools_termux_desc,
             )
         }
     }

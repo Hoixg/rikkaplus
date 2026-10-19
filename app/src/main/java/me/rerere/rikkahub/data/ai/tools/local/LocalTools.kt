@@ -57,6 +57,15 @@ class LocalTools(
         if (options.contains(LocalToolOption.ChartDisplay)) {
             tools.add(chartDisplayTool)
         }
+        if (LocalToolOption.Termux in options) {
+            val config = { settingsStore.settingsFlow.value.termuxConfig }
+            tools.add(termuxRunCommandTool(context, config))
+            tools.add(termuxSessionStartTool(context, config))
+            tools.add(termuxSessionSendTool(context, config))
+            tools.add(termuxSessionReadTool(context, config))
+            tools.add(termuxSessionKillTool(context, config))
+            tools.add(termuxSessionListTool(context, config))
+        }
         return tools
     }
 }

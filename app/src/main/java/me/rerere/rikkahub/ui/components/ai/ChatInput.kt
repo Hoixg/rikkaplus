@@ -89,11 +89,13 @@ import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Add01
 import me.rerere.hugeicons.stroke.ArrowUp02
 import me.rerere.hugeicons.stroke.Cancel01
+import me.rerere.hugeicons.stroke.Codesandbox
 import me.rerere.hugeicons.stroke.Fullscreen
 import me.rerere.hugeicons.stroke.Zap
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.getQuickMessagesOfAssistant
+import me.rerere.rikkahub.data.db.entity.WorkspaceEntity
 import me.rerere.rikkahub.data.files.FilesManager
 import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.data.model.QuickMessage
@@ -112,6 +114,7 @@ import me.rerere.rikkahub.ui.context.LocalSettings
 import me.rerere.rikkahub.ui.context.LocalToaster
 import me.rerere.rikkahub.ui.hooks.ChatInputState
 import me.rerere.rikkahub.utils.SoundEffectPlayer
+import me.rerere.ui.components.ToggleSurface
 import org.koin.compose.koinInject
 import kotlin.time.Duration.Companion.seconds
 import me.rerere.rikkahub.ui.pages.chat.VoicePhase
@@ -143,6 +146,8 @@ fun ChatInput(
     onFinishEditQueuedMessage: (Uuid, List<UIMessagePart>?) -> Unit = { _, _ -> },
     onResumeMessageQueue: () -> Unit = {},
     onStartVoiceMode: (() -> Unit)? = null,
+    workspace: WorkspaceEntity? = null,
+    onWorkspaceClick: () -> Unit = {},
     voiceState: VoiceSessionState = VoiceSessionState(),
     onStopVoiceMode: () -> Unit = {},
 ) {
@@ -331,6 +336,10 @@ fun ChatInput(
                                 )
                             }
 
+                            if (workspace != null && settings.displaySetting.showWorkspaceShortcut) {
+                                WorkspaceButton(onClick = onWorkspaceClick)
+                            }
+
                         }
 
                         ActionIconButton(
@@ -394,6 +403,21 @@ fun ChatInput(
         state = modelListState,
         onSelect = onUpdateChatModel,
     )
+}
+
+@Composable
+private fun WorkspaceButton(onClick: () -> Unit) {
+    ToggleSurface(
+        checked = true,
+        onClick = onClick,
+        modifier = Modifier.testTag("workspace_button"),
+    ) {
+        Icon(
+            imageVector = HugeIcons.Codesandbox,
+            contentDescription = stringResource(R.string.workspace_open_files),
+            modifier = Modifier.padding(8.dp),
+        )
+    }
 }
 
 @Composable
