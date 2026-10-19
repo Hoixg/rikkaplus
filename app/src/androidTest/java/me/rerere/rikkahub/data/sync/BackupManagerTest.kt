@@ -12,6 +12,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.db.AppDatabase
 import me.rerere.rikkahub.data.db.AppDatabaseFactory
+import me.rerere.rikkahub.data.db.entity.WorkspaceEntity
 import me.rerere.rikkahub.utils.JsonInstant
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -42,8 +43,11 @@ class BackupManagerTest {
             override fun getFilesDir() = File(directory, "files").apply { mkdirs() }
             override fun getCacheDir() = File(directory, "cache").apply { mkdirs() }
             override fun getNoBackupFilesDir() = File(directory, "no-backup").apply { mkdirs() }
-            override fun getDatabasePath(name: String): File = if (File(name).isAbsolute) File(name)
-                else File(directory, "databases/$name").also { it.parentFile!!.mkdirs() }
+            override fun getDatabasePath(name: String): File = if (File(name).isAbsolute) {
+                File(name)
+            } else {
+                File(directory, "databases/$name").also { it.parentFile!!.mkdirs() }
+            }
         }
         liveDatabase = AppDatabaseFactory.create(context)
         liveDatabase.openHelper.writableDatabase.execSQL("CREATE TABLE backup_probe (text TEXT)")
@@ -117,7 +121,11 @@ class BackupManagerTest {
         val archive = File(directory, "no-launch-count.zip")
         ZipOutputStream(archive.outputStream()).use { zip ->
             zip.putNextEntry(ZipEntry("settings.json"))
-            zip.write(JsonObject(JsonInstant.parseToJsonElement(settingsJson).jsonObject - "launchCount").toString().toByteArray())
+            zip.write(
+                JsonObject(
+                    JsonInstant.parseToJsonElement(settingsJson).jsonObject - "launchCount"
+                ).toString().toByteArray()
+            )
             zip.closeEntry()
         }
         manager.stageRestore(archive, includeDatabase = false, includeFiles = false)
@@ -170,8 +178,67 @@ class BackupManagerTest {
         assertEquals("live", probe(liveDatabase))
     }
 
+    @Test fun workspaceOnlyBackupKeepsFilesMetadataAndLatestChatsButExcludesRuntime() = runBlocking {
+        val workspace = WorkspaceEntity(
+            id = "7b62b2ee-d0a9-4e60-b346-ec53d40575ee",
+            name = "项目",
+            root = "project",
+            createdAt = 1,
+            updatedAt = 2
+        )
+        liveDatabase.workspaceDao().upsert(workspace)
+        val files = File(context.filesDir, "workspaces/project/files")
+        File(files, "empty").mkdirs()
+        File(files, "document.txt").writeText("workspace data")
+        val runtime = File(context.filesDir, "workspaces/project/linux/bin/sh")
+        runtime.parentFile!!.mkdirs()
+        runtime.writeText("current device runtime")
+        val archive = manager.createBackup(includeDatabase = false, includeFiles = false, includeWorkspaceFiles = true)
+        ZipFile(archive).use { zip ->
+            assertTrue(zip.getEntry(WorkspaceFilesBackup.MANIFEST) != null)
+            assertTrue(zip.getEntry("workspaces/project/files/document.txt") != null)
+            assertTrue(zip.entries().asSequence().none { it.name.contains("/linux/") || it.name.contains("/tmp/") })
+            assertEquals(null, zip.getEntry(DatabaseBackup.ARCHIVE_DATABASE))
+        }
+        manager.stageRestore(archive, includeDatabase = false, includeFiles = false, includeWorkspaceFiles = true)
+        liveDatabase.openHelper.writableDatabase.execSQL("UPDATE backup_probe SET text = 'changed after import'")
+        liveDatabase.workspaceDao().deleteById(workspace.id)
+        files.deleteRecursively()
+        liveDatabase.close()
+        // Avoid touching the real app's settings in this isolated instrumentation fixture.
+        assertTrue(File(context.noBackupFilesDir, "backup-restore/pending/settings.json").delete())
+        assertTrue(BackupManager.applyPendingRestore(context, JsonInstant))
+        liveDatabase = AppDatabaseFactory.create(context)
+        assertEquals("changed after import", probe(liveDatabase))
+        assertEquals(workspace, liveDatabase.workspaceDao().getById(workspace.id))
+        assertEquals("workspace data", File(files, "document.txt").readText())
+        assertTrue(File(files, "empty").isDirectory)
+        assertEquals("current device runtime", runtime.readText())
+    }
+
+    @Test fun workspaceOptionCanBeExcludedOnExportAndImport() = runBlocking {
+        liveDatabase.workspaceDao().upsert(WorkspaceEntity("workspace", "项目", "project", createdAt = 1, updatedAt = 2))
+        val directory = File(context.filesDir, "workspaces/project/files").apply { mkdirs() }
+        File(directory, "keep.txt").writeText("keep")
+        val excluded = manager.createBackup(includeDatabase = false, includeFiles = true, includeWorkspaceFiles = false)
+        ZipFile(excluded).use { zip ->
+            assertTrue(zip.entries().asSequence().none {
+                it.name.startsWith("workspaces/") || it.name == WorkspaceFilesBackup.MANIFEST
+            })
+        }
+        val included = manager.createBackup(includeDatabase = false, includeFiles = false, includeWorkspaceFiles = true)
+        manager.stageRestore(included, includeDatabase = false, includeFiles = false, includeWorkspaceFiles = false)
+        val pending = File(context.noBackupFilesDir, "backup-restore/pending")
+        assertFalse(File(pending, WorkspaceFilesBackup.MANIFEST).exists())
+        assertFalse(File(pending, "payload/files/workspaces").exists())
+        assertEquals("keep", File(directory, "keep.txt").readText())
+    }
+
     private fun probe(database: AppDatabase): String = database.openHelper.readableDatabase
-        .query("SELECT text FROM backup_probe").use { check(it.moveToFirst()); it.getString(0) }
+        .query("SELECT text FROM backup_probe").use {
+            check(it.moveToFirst())
+            it.getString(0)
+        }
 
     private fun addFile(zip: ZipOutputStream, name: String, file: File) {
         zip.putNextEntry(ZipEntry(name))

@@ -169,6 +169,7 @@ fun WebDavTab(
                 when (item) {
                     WebDavConfig.BackupItem.DATABASE -> stringResource(R.string.backup_page_chat_records)
                     WebDavConfig.BackupItem.FILES -> stringResource(R.string.backup_page_files)
+                    WebDavConfig.BackupItem.WORKSPACE_FILES -> stringResource(R.string.backup_page_workspace_files)
                 }
             }
         }

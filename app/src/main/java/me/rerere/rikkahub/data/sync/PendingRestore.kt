@@ -31,7 +31,10 @@ internal class PendingRestore(
         move(staging, pending)
     }
 
-    suspend fun apply(restoreSettings: suspend (String) -> Unit): Boolean {
+    suspend fun apply(
+        preparePayload: suspend (File) -> Unit = {},
+        restoreSettings: suspend (String) -> Unit,
+    ): Boolean {
         // Completed restores must never be replayed, even if cleanup was interrupted.
         root.listFiles()?.filter {
             it.name.startsWith("completed-") || it.name.startsWith("preparing-")
@@ -44,6 +47,7 @@ internal class PendingRestore(
             Json.decodeFromString<List<RestoreEntry>>(journal.readText())
         } else {
             try {
+                preparePayload(File(pending, "payload"))
                 buildEntries().also { writeDurably(journal, Json.encodeToString(it)) }
             } catch (e: Exception) {
                 // No live files have been changed yet, so this restore can be safely rejected.
@@ -58,7 +62,9 @@ internal class PendingRestore(
                 val source = File(pending, "payload/${entry.path}")
                 if (entry.install && !source.exists()) {
                     // A previous process already moved this source into place.
-                    check(target.isFile) { "Interrupted restore is missing ${entry.path}" }
+                    check(if (entry.directory) target.isDirectory else target.isFile) {
+                        "Interrupted restore is missing ${entry.path}"
+                    }
                 } else {
                     if (entry.hadOriginal && !original.exists()) move(target, original)
                     if (entry.install) move(source, target)
@@ -88,12 +94,20 @@ internal class PendingRestore(
 
     private fun buildEntries(): List<RestoreEntry> {
         val payload = File(pending, "payload")
-        val paths = payload.walkTopDown().filter { it.isFile }.map {
+        val paths = payload.walkTopDown().filter {
+            it.isFile || (it.isDirectory && it != payload && it.listFiles()?.isEmpty() == true)
+        }.map {
             it.relativeTo(payload).invariantSeparatorsPath
         }.toList().sorted()
         val entries = paths.map { path ->
-            RestoreEntry(path, install = true, hadOriginal = targetFile(path).exists())
-        }.toMutableList()
+            val directory = File(payload, path).isDirectory
+            val target = targetFile(path)
+            if (directory && target.isDirectory) {
+                null // Keep existing contents when merging an empty folder.
+            } else {
+                RestoreEntry(path, install = true, hadOriginal = target.exists(), directory = directory)
+            }
+        }.filterNotNull().toMutableList()
         if (paths.contains("database/${databaseFile.name}")) {
             // The new database is standalone. Keep the old DB's sidecars with the old DB only.
             for (suffix in listOf("-wal", "-shm", "-journal")) {
@@ -119,20 +133,29 @@ internal class PendingRestore(
             path.startsWith("database/") -> {
                 val name = path.removePrefix("database/")
                 require(name in listOf(
-                    databaseFile.name, databaseFile.name + "-wal",
-                    databaseFile.name + "-shm", databaseFile.name + "-journal"
+                    databaseFile.name,
+                    databaseFile.name + "-wal",
+                    databaseFile.name + "-shm",
+                    databaseFile.name + "-journal"
                 )) {
                     "Invalid restore database path"
                 }
                 File(databaseFile.parentFile, name)
             }
+            path.startsWith("files/${WorkspaceFilesBackup.DIRECTORY}/") ->
+                WorkspaceFilesBackup.resolveTarget(filesDir, path.removePrefix("files/"))
             path.startsWith("files/") -> resolveInside(filesDir, path.removePrefix("files/"))
             else -> error("Invalid restore path: $path")
         }
     }
 
     @Serializable
-    private data class RestoreEntry(val path: String, val install: Boolean, val hadOriginal: Boolean)
+    private data class RestoreEntry(
+        val path: String,
+        val install: Boolean,
+        val hadOriginal: Boolean,
+        val directory: Boolean = false,
+    )
 
     companion object {
         fun resolveInside(root: File, relativePath: String): File {
@@ -165,4 +188,6 @@ internal class PendingRestore(
 }
 
 /** Only thrown when original files are intact and the failed import has been isolated. */
-internal class RestoreFailedException(cause: Exception) : Exception("Backup restore failed; original files restored", cause)
+internal class RestoreFailedException(
+    cause: Exception
+) : Exception("Backup restore failed; original files restored", cause)

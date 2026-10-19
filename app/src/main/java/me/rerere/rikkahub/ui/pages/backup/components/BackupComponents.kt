@@ -101,6 +101,7 @@ internal fun <T> CardGroupScope.backupContentItem(
     label: @Composable (T) -> String,
 ) = formItem(
     headlineContent = { Text(stringResource(R.string.backup_page_backup_items)) },
+    supportingContent = { Text(stringResource(R.string.backup_page_workspace_files_desc)) },
 ) {
     ConnectedMultiChoiceButtons(
         options = options,

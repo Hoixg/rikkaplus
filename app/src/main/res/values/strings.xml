@@ -1634,4 +1634,6 @@
   <string name="stats_page_source_ocr">OCR</string>
   <string name="image_preview_saving">Saving…</string>
   <string name="image_preview_saved">Image saved</string>
+  <string name="backup_page_workspace_files">Workspace files</string>
+  <string name="backup_page_workspace_files_desc">Includes files and folders in each workspace’s Files tab. The Rootfs runtime is excluded.</string>
 </resources>

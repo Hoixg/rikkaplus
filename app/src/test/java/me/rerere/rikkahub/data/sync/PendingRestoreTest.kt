@@ -16,7 +16,9 @@ class PendingRestoreTest {
     @get:Rule val temporary = TemporaryFolder()
 
     private fun restore() = PendingRestore(
-        File(temporary.root, "restore"), database(), File(temporary.root, "files")
+        File(temporary.root, "restore"),
+        database(),
+        File(temporary.root, "files")
     )
 
     private fun database() = File(temporary.root, "databases/rikka_hub")
@@ -163,6 +165,78 @@ class PendingRestoreTest {
     @Test fun cannotReplaceAlreadyPendingRestore() {
         stage(restore())
         assertThrows(IllegalStateException::class.java) { restore().createStagingDirectory() }
+    }
+
+    @Test fun emptyDirectoriesAreRestoredWithoutClearingExistingContents() = runBlocking {
+        val restore = restore()
+        val staging = restore.createStagingDirectory()
+        File(staging, "payload/files/workspaces/project/files/new-empty").mkdirs()
+        File(staging, "payload/files/workspaces/project/files/existing").mkdirs()
+        write(File(temporary.root, "files/workspaces/project/files/existing/keep.txt"), "keep")
+        restore.publish(staging)
+        restore.apply { }
+        assertTrue(File(temporary.root, "files/workspaces/project/files/new-empty").isDirectory)
+        assertEquals("keep", File(temporary.root, "files/workspaces/project/files/existing/keep.txt").readText())
+    }
+
+    @Test fun interruptedEmptyDirectoryInstallCanResume() = runBlocking {
+        val restore = restore()
+        val staging = restore.createStagingDirectory()
+        File(staging, "payload/files/workspaces/project/files/empty").mkdirs()
+        write(File(staging, "settings.json"), "settings")
+        restore.publish(staging)
+        try {
+            restore.apply { throw SimulatedProcessDeath() }
+        } catch (_: SimulatedProcessDeath) {
+            assertTrue(File(temporary.root, "files/workspaces/project/files/empty").isDirectory)
+        }
+        assertTrue(restore.apply { })
+        assertTrue(File(temporary.root, "files/workspaces/project/files/empty").isDirectory)
+    }
+
+    @Test fun failedDirectoryInstallRestoresTheFileItReplaced() = runBlocking {
+        val restore = restore()
+        val original = write(File(temporary.root, "files/workspaces/project/files/empty"), "original file")
+        val staging = restore.createStagingDirectory()
+        File(staging, "payload/files/workspaces/project/files/empty").mkdirs()
+        write(File(staging, "settings.json"), "settings")
+        restore.publish(staging)
+        try {
+            restore.apply { throw IOException("Settings failed") }
+            error("Expected failure")
+        } catch (_: RestoreFailedException) {
+            assertEquals("original file", original.readText())
+        }
+    }
+
+    @Test fun payloadPreparationRunsBeforeTheJournalAndIsNotRepeatedAfterInterruption() = runBlocking {
+        val restore = restore()
+        val staging = restore.createStagingDirectory()
+        write(File(staging, "settings.json"), "settings")
+        restore.publish(staging)
+        var calls = 0
+        try {
+            restore.apply(preparePayload = {
+                calls++
+                write(File(it, "files/workspaces/project/files/created.txt"), "prepared")
+            }) { throw SimulatedProcessDeath() }
+        } catch (_: SimulatedProcessDeath) {
+            assertEquals("prepared", File(temporary.root, "files/workspaces/project/files/created.txt").readText())
+        }
+        restore.apply(preparePayload = { error("Journal already exists") }) { }
+        assertEquals(1, calls)
+    }
+
+    @Test fun preparationFailureLeavesOriginalDataUntouched() = runBlocking {
+        write(database(), "original database")
+        stage(restore())
+        try {
+            restore().apply(preparePayload = { throw IOException("Cannot prepare workspace metadata") }) { }
+            error("Expected failure")
+        } catch (_: RestoreFailedException) {
+            assertEquals("original database", database().readText())
+            assertFalse(File(temporary.root, "restore/pending").exists())
+        }
     }
 
     @Test fun rejectsArchiveTraversalPaths() {

@@ -180,13 +180,15 @@ data class WebDavConfig(
     val path: String = "rikkahub_backups",
     val items: List<BackupItem> = listOf(
         BackupItem.DATABASE,
-        BackupItem.FILES
+        BackupItem.FILES,
+        BackupItem.WORKSPACE_FILES
     ),
 ) {
     @Serializable
     enum class BackupItem {
         DATABASE,
         FILES,
+        WORKSPACE_FILES,
     }
 }
 

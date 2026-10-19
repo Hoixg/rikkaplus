@@ -1,6 +1,7 @@
 package me.rerere.rikkahub.data.sync
 
 import android.content.Context
+import androidx.room.withTransaction
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -18,14 +19,16 @@ import kotlinx.serialization.json.jsonPrimitive
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.datastore.migration.SettingsJsonMigrator
-import me.rerere.rikkahub.data.db.AppDatabaseFactory
 import me.rerere.rikkahub.data.db.AppDatabase
+import me.rerere.rikkahub.data.db.AppDatabaseFactory
 import me.rerere.rikkahub.data.db.SQLiteConfiguration
 import me.rerere.rikkahub.data.files.FileFolders
 import me.rerere.rikkahub.data.files.MediaCreationFiles
 import java.io.File
 import java.io.FileOutputStream
 import java.nio.file.Files
+import java.nio.file.StandardCopyOption.ATOMIC_MOVE
+import java.nio.file.StandardCopyOption.REPLACE_EXISTING
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.zip.ZipEntry
@@ -41,7 +44,11 @@ class BackupManager(
 ) {
     private val restoreMutex = Mutex()
 
-    suspend fun createBackup(includeDatabase: Boolean, includeFiles: Boolean): File = withContext(Dispatchers.IO) {
+    suspend fun createBackup(
+        includeDatabase: Boolean,
+        includeFiles: Boolean,
+        includeWorkspaceFiles: Boolean = false,
+    ): File = withContext(Dispatchers.IO) {
         val timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"))
         val archive = File.createTempFile("backup_${timestamp}_", ".zip", context.cacheDir)
         val staging = Files.createTempDirectory(context.cacheDir.toPath(), "backup-").toFile()
@@ -60,19 +67,32 @@ class BackupManager(
                 if (includeFiles) {
                     for (folder in ATTACHMENT_FOLDERS) {
                         val directory = File(context.filesDir, folder)
-                        val files = if (folder in NESTED_ATTACHMENT_FOLDERS) directory.walkTopDown().asSequence()
-                        else directory.listFiles().orEmpty().asSequence()
+                        val files = if (folder in NESTED_ATTACHMENT_FOLDERS) {
+                            directory.walkTopDown().asSequence()
+                        } else {
+                            directory.listFiles().orEmpty().asSequence()
+                        }
                         for (file in files.filter { it.isFile }) {
                             currentCoroutineContext().ensureActive()
                             // A media result still being downloaded is incomplete and gets renamed when it finishes.
                             if (folder == FileFolders.MEDIA_CREATION &&
                                 file.name.endsWith(MediaCreationFiles.PARTIAL_SUFFIX)
-                            ) continue
+                            ) {
+                                continue
+                            }
                             val relative = file.relativeTo(directory).invariantSeparatorsPath
                             PendingRestore.resolveInside(directory, relative)
                             addFile(zip, file, "$folder/$relative")
                         }
                     }
+                }
+                if (includeWorkspaceFiles) {
+                    WorkspaceFilesBackup.write(
+                        zip,
+                        context.filesDir,
+                        WorkspaceFilesBackup.records(database.workspaceDao().getAll()),
+                        json
+                    )
                 }
             }
             archive
@@ -84,7 +104,12 @@ class BackupManager(
         }
     }
 
-    suspend fun stageRestore(archive: File, includeDatabase: Boolean, includeFiles: Boolean) =
+    suspend fun stageRestore(
+        archive: File,
+        includeDatabase: Boolean,
+        includeFiles: Boolean,
+        includeWorkspaceFiles: Boolean = false,
+    ) =
         withContext(Dispatchers.IO) {
             restoreMutex.withLock {
                 val restore = pendingRestore(context)
@@ -98,17 +123,33 @@ class BackupManager(
                     ZipFile(archive).use { zip ->
                         for (entry in zip.entries()) {
                             currentCoroutineContext().ensureActive()
-                            if (entry.isDirectory) continue
+                            val workspaceEntry = includeWorkspaceFiles &&
+                                WorkspaceFilesBackup.accepts(entry.name, entry.isDirectory)
+                            if (entry.isDirectory && !workspaceEntry) continue
                             val target = when (entry.name) {
                                 "settings.json" -> File(staging, "settings.json")
                                 DatabaseBackup.ARCHIVE_DATABASE -> if (includeDatabase) stagedDatabase else null
                                 DatabaseBackup.WAL -> if (includeDatabase) stagedWal else null
                                 DatabaseBackup.SHM -> null // Rebuilt by SQLite; never restore shared-memory state.
-                                else -> if (includeFiles && isAttachment(entry.name)) {
+                                WorkspaceFilesBackup.MANIFEST -> if (includeWorkspaceFiles) {
+                                    File(staging, WorkspaceFilesBackup.MANIFEST)
+                                } else {
+                                    null
+                                }
+                                else -> if (workspaceEntry) {
+                                    PendingRestore.resolveInside(File(payload, "files"), entry.name.removeSuffix("/"))
+                                } else if (includeFiles && isAttachment(entry.name)) {
                                     PendingRestore.resolveInside(File(payload, "files"), entry.name)
-                                } else null
+                                } else {
+                                    null
+                                }
                             } ?: continue
-                            require(seen.add(entry.name)) { "Duplicate backup entry: ${entry.name}" }
+                            require(seen.add(entry.name.removeSuffix("/"))) { "Duplicate backup entry: ${entry.name}" }
+                            if (entry.isDirectory) {
+                                check(target.isDirectory || target.mkdirs()) { "Cannot stage workspace directory" }
+                                restoredEntries++
+                                continue
+                            }
                             check(target.parentFile!!.isDirectory || target.parentFile!!.mkdirs()) {
                                 "Cannot create backup staging directory"
                             }
@@ -122,6 +163,7 @@ class BackupManager(
                         }
                     }
                     require(restoredEntries > 0) { "No selected data found in the backup" }
+                    if (includeWorkspaceFiles) WorkspaceFilesBackup.validatePayload(payload, json)
                     require(!stagedWal.exists() || stagedDatabase.exists()) { "Backup WAL has no matching database" }
                     if (stagedDatabase.exists()) {
                         DatabaseBackup.normalize(context, stagedDatabase)
@@ -141,7 +183,10 @@ class BackupManager(
                         val settings = json.decodeFromString<Settings>(migrated)
                         require(!settings.init) { "Backup contains uninitialized settings" }
                         // Persist the migrated value once, including generated IDs, for restart/retry consistency.
-                        PendingRestore.writeDurably(settingsFile, json.encodeSettings(settings, json.launchCountOf(migrated)))
+                        PendingRestore.writeDurably(
+                            settingsFile,
+                            json.encodeSettings(settings, json.launchCountOf(migrated))
+                        )
                     }
                     currentCoroutineContext().ensureActive()
                     restore.publish(staging)
@@ -193,13 +238,56 @@ class BackupManager(
 
         /** Must finish before Koin, Room, SettingsStore or any background consumers are initialized. */
         suspend fun applyPendingRestore(context: Context, json: Json): Boolean = withContext(Dispatchers.IO) {
-            pendingRestore(context).apply { settingsJson ->
+            pendingRestore(context).apply(preparePayload = { payload ->
+                prepareWorkspaceRestore(context, payload, json)
+            }) { settingsJson ->
                 SettingsStore.restoreBeforeInitialization(
                     context = context,
                     settings = json.decodeFromString<Settings>(settingsJson),
                     launchCount = json.launchCountOf(settingsJson),
                 )
             }
+        }
+
+        /** Merge missing workspace records into a staged DB using the existing atomic restore journal. */
+        private suspend fun prepareWorkspaceRestore(context: Context, payload: File, json: Json) {
+            val manifest = WorkspaceFilesBackup.validatePayload(payload, json) ?: return
+            if (manifest.workspaces.isEmpty()) return
+            val stagedDatabase = File(payload, "database/${SQLiteConfiguration.DATABASE_NAME}")
+            if (!stagedDatabase.exists()) {
+                // Snapshot at restart, not when import is staged: preserve chats changed before restarting.
+                check(stagedDatabase.parentFile!!.isDirectory || stagedDatabase.parentFile!!.mkdirs())
+                val temporary = File(stagedDatabase.parentFile, "workspace-snapshot.tmp")
+                check(!temporary.exists() || temporary.delete())
+                val live = AppDatabaseFactory.create(context)
+                try {
+                    DatabaseBackup.createSnapshot(live.openHelper.writableDatabase, temporary)
+                } finally {
+                    live.close()
+                }
+                Files.move(temporary.toPath(), stagedDatabase.toPath(), ATOMIC_MOVE, REPLACE_EXISTING)
+            }
+            val staged = AppDatabaseFactory.create(context, stagedDatabase.absolutePath)
+            try {
+                staged.withTransaction {
+                    val dao = staged.workspaceDao()
+                    val existing = dao.getAll()
+                    for (record in manifest.workspaces) {
+                        val sameId = existing.firstOrNull { it.id == record.id }
+                        require(
+                            sameId == null || sameId.root == record.root
+                        ) { "Workspace root conflicts with existing data" }
+                        require(existing.none { it.root == record.root && it.id != record.id }) {
+                            "Workspace directory belongs to another workspace"
+                        }
+                        if (sameId == null) dao.upsert(record.toEntity())
+                    }
+                }
+                DatabaseBackup.checkpoint(staged.openHelper.writableDatabase)
+            } finally {
+                staged.close()
+            }
+            DatabaseBackup.removeSidecars(stagedDatabase)
         }
     }
 }
