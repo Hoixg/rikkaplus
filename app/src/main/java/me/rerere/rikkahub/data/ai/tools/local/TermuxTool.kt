@@ -34,10 +34,7 @@ private const val TERMUX_RUN_COMMAND_ACTION = "com.termux.RUN_COMMAND"
 private const val TERMUX_BIN_DIR = "/data/data/com.termux/files/usr/bin"
 private const val TERMUX_HOME_DIR = "/data/data/com.termux/files/home"
 
-internal fun wrapDetachedCommand(command: String): String =
-    "nohup sh -c ${shellSingleQuote(command)} >/dev/null 2>&1 </dev/null & echo \"rikkahub_bg_pid=\$!\""
-
-private fun shellSingleQuote(value: String): String =
+internal fun shellSingleQuote(value: String): String =
     "'" + value.replace("'", "'\"'\"'") + "'"
 
 // Termux delivers stdout / stderr / exitCode via a result Bundle attached to the
@@ -109,6 +106,8 @@ internal sealed class CaptureResult {
         val stdout: String,
         val stderr: String,
         val exitCode: Int,
+        val stdoutTruncated: Boolean = false,
+        val stderrTruncated: Boolean = false,
     ) : CaptureResult()
     data object Timeout : CaptureResult()
     data object Denied : CaptureResult()
@@ -178,6 +177,7 @@ internal suspend fun runCommandCapture(
     // Default reads from the runtime holder so callers that don't pass a timeout get the
     // user-configured value, not a stale compile-time constant.
     timeoutMs: Long = TermuxDefaults.DEFAULT_COMMAND_TIMEOUT_MS,
+    stdin: String? = null,
 ): CaptureResult {
     val resultDeferred = CompletableDeferred<Bundle>()
     val resultAction = "${ctx.packageName}.TERMUX_RESULT_${UUID.randomUUID()}"
@@ -259,6 +259,7 @@ internal suspend fun runCommandCapture(
         putExtra("com.termux.RUN_COMMAND_ARGUMENTS", wrappedArguments)
         putExtra("com.termux.RUN_COMMAND_WORKDIR", workingDir)
         putExtra("com.termux.RUN_COMMAND_BACKGROUND", true)
+        stdin?.let { putExtra("com.termux.RUN_COMMAND_STDIN", it) }
         putExtra(EXTRA_PENDING_INTENT, pi)
     }
 
@@ -288,6 +289,10 @@ internal suspend fun runCommandCapture(
                     stdout = stripTerminationMarker(bundle.getString(RESULT_KEY_STDOUT).orEmpty(), marker),
                     stderr = bundle.getString(RESULT_KEY_STDERR).orEmpty(),
                     exitCode = bundle.getInt(RESULT_KEY_EXIT_CODE, -1),
+                    stdoutTruncated = (bundle.getString("stdout_original_length")?.toLongOrNull() ?: 0) >
+                        bundle.getString(RESULT_KEY_STDOUT).orEmpty().length,
+                    stderrTruncated = (bundle.getString("stderr_original_length")?.toLongOrNull() ?: 0) >
+                        bundle.getString(RESULT_KEY_STDERR).orEmpty().length,
                 )
             }
         }
@@ -313,7 +318,12 @@ internal suspend fun runCommandCapture(
  * for the legacy "open visible Termux session" mode where the user sees output live but
  * the bot cannot read it.
  */
-fun termuxRunCommandTool(context: Context, getConfig: () -> TermuxConfig = { TermuxConfig() }): Tool = Tool(
+internal fun termuxRunCommandTool(
+    context: Context,
+    scope: TermuxScope,
+    outputCache: TermuxOutputCache,
+    getConfig: () -> TermuxConfig = { TermuxConfig() },
+): Tool = Tool(
     name = "termux_run_command",
     description = """
         Execute a shell command in Termux. By default the command runs in the background and
@@ -325,6 +335,8 @@ fun termuxRunCommandTool(context: Context, getConfig: () -> TermuxConfig = { Ter
         ~/.termux/termux.properties (one-time setup). In command mode, apt/apt-get are
         automatically wrapped with DEBIAN_FRONTEND=noninteractive and safe dpkg defaults;
         do not add extra -y flags unless the user specifically asked for unattended upgrades.
+        Use stdin for multiline scripts or input data. background=true creates a tracked tmux
+        task scoped to this chat: use session_read/list/kill to read output, check status or stop it.
     """.trimIndent().replace("\n", " "),
     parameters = {
         InputSchema.Obj(
@@ -359,11 +371,18 @@ fun termuxRunCommandTool(context: Context, getConfig: () -> TermuxConfig = { Ter
                         "If true, opens a visible Termux session and does NOT capture output. Default false (background + capture)."
                     )
                 })
+                put("stdin", buildJsonObject {
+                    put("type", "string")
+                    put(
+                        "description",
+                        "Standard input passed literally via Termux RUN_COMMAND_STDIN, e.g. a script for bash -s or data for python. Capture/background modes only."
+                    )
+                })
                 put("background", buildJsonObject {
                     put("type", "boolean")
                     put(
                         "description",
-                        "Command mode only. If true, launch the command fully detached (nohup, streams redirected) and return immediately with its PID. Use for servers / long-running processes that would otherwise keep the capture pipe open and block until timeout. Default false."
+                        "Run as a tracked tmux background task and return session_id immediately. Output and exit status remain available through termux_session_read/list; stop with termux_session_kill. Supports command or executable+arguments. Default false."
                     )
                 })
                 put("timeout_seconds", buildJsonObject {
@@ -381,6 +400,7 @@ fun termuxRunCommandTool(context: Context, getConfig: () -> TermuxConfig = { Ter
         val rawCommand = input.jsonObject["command"]?.jsonPrimitive?.contentOrNull
         val executable = input.jsonObject["executable"]?.jsonPrimitive?.contentOrNull
         val argumentsArr = input.jsonObject["arguments"]?.jsonArray
+        val stdin = input.jsonObject["stdin"]?.jsonPrimitive?.contentOrNull
         val workingDir = input.jsonObject["working_dir"]?.jsonPrimitive?.contentOrNull
             ?: getConfig().defaultWorkingDir
         val interactive = input.jsonObject["interactive"]?.jsonPrimitive?.contentOrNull
@@ -403,6 +423,16 @@ fun termuxRunCommandTool(context: Context, getConfig: () -> TermuxConfig = { Ter
                     buildJsonObject { put("error", "either 'command' or 'executable' is required") }.toString()
                 )
             )
+        }
+        if (interactive && (background || stdin != null)) {
+            return@Tool listOf(
+                UIMessagePart.Text("""{"error":"interactive cannot be combined with background or stdin"}""")
+            )
+        }
+        val inputBytes = listOfNotNull(rawCommand, executable, argumentsArr?.toString(), stdin)
+            .sumOf { it.toByteArray(Charsets.UTF_8).size }
+        if (inputBytes > 128 * 1024) {
+            return@Tool listOf(UIMessagePart.Text("""{"error":"command and stdin exceed the 128 KiB input budget"}"""))
         }
         if (!rawCommand.isNullOrBlank() && !executable.isNullOrBlank()) {
             return@Tool listOf(
@@ -458,16 +488,25 @@ fun termuxRunCommandTool(context: Context, getConfig: () -> TermuxConfig = { Ter
             } else {
                 ""
             }
-            // background: detach so a long-running child doesn't keep the capture pipe open and
-            // stall the result bundle until timeout. Same inherited-fd hazard as the SSH exec
-            // channel; wrapDetachedCommand applies the identical nohup + redirect + echo-pid fix.
-            val body = if (background) wrapDetachedCommand(rawCommand) else rawCommand
-            "$TERMUX_BIN_DIR/bash" to arrayOf("-c", preamble + body)
+            "$TERMUX_BIN_DIR/bash" to arrayOf("-c", preamble + rawCommand)
         } else {
             val args = argumentsArr?.mapNotNull { it.jsonPrimitive.contentOrNull }
                 ?.toTypedArray()
                 ?: emptyArray()
             executable!! to args
+        }
+
+        if (background) {
+            return@Tool startTermuxBackgroundTask(
+                context,
+                scope,
+                outputCache,
+                getConfig(),
+                resolvedExe,
+                resolvedArgs,
+                workingDir,
+                stdin
+            )
         }
 
         if (interactive) {
@@ -526,10 +565,20 @@ fun termuxRunCommandTool(context: Context, getConfig: () -> TermuxConfig = { Ter
             arguments = resolvedArgs,
             workingDir = workingDir,
             timeoutMs = timeoutMs,
+            stdin = stdin,
         )) {
             is CaptureResult.Success -> buildJsonObject {
-                put("success", true)
+                put("success", res.exitCode == 0)
                 put("mode", "capture")
+                put("execution_status", "completed")
+                put(
+                    "stdout_truncated",
+                    res.stdoutTruncated || res.stdout.toByteArray(Charsets.UTF_8).size > getConfig().maxStdoutBytes
+                )
+                put(
+                    "stderr_truncated",
+                    res.stderrTruncated || res.stderr.toByteArray(Charsets.UTF_8).size > getConfig().maxStderrBytes
+                )
                 put("exit_code", res.exitCode)
                 val maxOut = getConfig().maxStdoutBytes
                 val maxErr = getConfig().maxStderrBytes

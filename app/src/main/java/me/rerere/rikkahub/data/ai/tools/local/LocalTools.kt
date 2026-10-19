@@ -5,6 +5,7 @@ import me.rerere.ai.core.Tool
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.event.AppEventBus
 import me.rerere.tts.provider.TTSManager
+import kotlin.uuid.Uuid
 
 class LocalTools(
     private val context: Context,
@@ -12,6 +13,7 @@ class LocalTools(
     private val ttsManager: TTSManager,
     private val settingsStore: SettingsStore,
 ) {
+    private val termuxOutputCache = TermuxOutputCache()
     val javascriptTool by lazy { buildJavascriptTool() }
 
     val timeTool by lazy { buildTimeInfoTool() }
@@ -30,7 +32,7 @@ class LocalTools(
 
     val chartDisplayTool by lazy { buildChartDisplayTool() }
 
-    fun getTools(options: List<LocalToolOption>): List<Tool> {
+    fun getTools(options: List<LocalToolOption>, conversationId: Uuid): List<Tool> {
         val tools = mutableListOf<Tool>()
         if (options.contains(LocalToolOption.JavascriptEngine)) {
             tools.add(javascriptTool)
@@ -59,12 +61,13 @@ class LocalTools(
         }
         if (LocalToolOption.Termux in options) {
             val config = { settingsStore.settingsFlow.value.termuxConfig }
-            tools.add(termuxRunCommandTool(context, config))
-            tools.add(termuxSessionStartTool(context, config))
-            tools.add(termuxSessionSendTool(context, config))
-            tools.add(termuxSessionReadTool(context, config))
-            tools.add(termuxSessionKillTool(context, config))
-            tools.add(termuxSessionListTool(context, config))
+            val scope = TermuxScope(conversationId.toString())
+            tools.add(termuxRunCommandTool(context, scope, termuxOutputCache, config))
+            tools.add(termuxSessionStartTool(context, scope, termuxOutputCache, config))
+            tools.add(termuxSessionSendTool(context, scope, termuxOutputCache, config))
+            tools.add(termuxSessionReadTool(context, scope, termuxOutputCache, config))
+            tools.add(termuxSessionKillTool(context, scope, termuxOutputCache, config))
+            tools.add(termuxSessionListTool(context, scope))
         }
         return tools
     }

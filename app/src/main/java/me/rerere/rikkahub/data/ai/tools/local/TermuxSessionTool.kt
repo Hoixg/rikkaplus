@@ -3,7 +3,12 @@
 package me.rerere.rikkahub.data.ai.tools.local
 
 import android.content.Context
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.booleanOrNull
@@ -73,6 +78,32 @@ internal object TmuxOps {
 
     fun listArgv(): Array<String> =
         arrayOf("list-sessions", "-F", "#{session_name}\t#{session_created}\t#{session_activity}")
+
+    fun snapshotArgv(session: String, lines: Int): Array<String> =
+        capturePaneArgv("=$session:", lines) + arrayOf(
+            ";",
+            "display-message",
+            "-p",
+            "-t",
+            "=$session:",
+            "$TERMUX_STATE_MARKER#{pane_dead}\t#{pane_dead_status}\t#{pane_dead_signal}\t#{@rk_state}\t#{@rk_exit}\t#{@rk_kind}"
+        )
+
+    fun prepareArgv(session: String, cols: Int, rows: Int, workingDir: String, kind: String): Array<String> =
+        startArgv(session, cols, rows) + arrayOf(
+            "-c", workingDir, "$TERMUX_BIN/sleep", "86400",
+            ";", "set-option", "-w", "-t", "=$session:", "remain-on-exit", "on",
+            ";", "set-option", "-p", "-t", "=$session:", "@rk_kind", kind,
+            ";", "set-option", "-p", "-t", "=$session:", "@rk_state", "running",
+        )
+
+    fun respawnArgv(session: String, command: String): Array<String> =
+        arrayOf("respawn-pane", "-k", "-t", "=$session:", "$TERMUX_BIN/bash", "-c", command)
+
+    fun pendingArgv(session: String): Array<String> = arrayOf(
+        "set-option", "-p", "-t", "=$session:", "@rk_state", "pending",
+        ";", "set-option", "-pu", "-t", "=$session:", "@rk_exit"
+    )
 }
 
 internal data class PaneSample(val elapsedMs: Long, val content: String)
@@ -109,7 +140,7 @@ internal fun evaluatePoll(
     for (i in samples.indices.reversed()) {
         if (samples[i].content == cur.content) stableSince = samples[i].elapsedMs else break
     }
-    if (samples.size >= 2 && cur.elapsedMs - stableSince >= settleMs) {
+    if (waitFor.isNullOrEmpty() && samples.size >= 2 && cur.elapsedMs - stableSince >= settleMs) {
         return PollResult.Done(PollResult.Reason.SETTLED, cur.content)
     }
     if (cur.elapsedMs >= timeoutMs) {
@@ -255,58 +286,53 @@ internal fun takeFirstUtf8Bytes(s: String, maxBytes: Int): String {
     return s.substring(0, i)
 }
 
-private fun truncateOut(s: String, max: Int): String {
-    // capture-pane emits the full terminal height, so the screen arrives padded with a wall
-    // of blank lines below the cursor. Drop trailing blank lines so each read does not burn
-    // tokens on empty padding.
-    val trimmed = s.trimEnd('\n', ' ', '\t')
-    // Bound on UTF-8 bytes, not chars: maxStdoutBytes is a byte budget, and a char-count cut
-    // would over- or under-shoot for multibyte text and could split a code point.
-    return if (trimmed.toByteArray(Charsets.UTF_8).size > max) {
-        takeLastUtf8Bytes(trimmed, max) + "\n…[older scrollback truncated]"
-    } else {
-        trimmed
-    }
+internal data class TermuxPane(val screen: String, val state: TermuxExecutionState, val kind: String)
+
+internal fun parseTermuxPane(stdout: String): TermuxPane {
+    val index = stdout.lastIndexOf(TERMUX_STATE_MARKER)
+    if (index < 0) return TermuxPane(stdout, TermuxExecutionState("unknown"), "unknown")
+    val metadata = stdout.substring(index).trimEnd('\r', '\n')
+    return TermuxPane(
+        stdout.substring(0, index).trimEnd('\r', '\n'),
+        parseTermuxState(metadata),
+        metadata.split('\t').getOrNull(5) ?: "unknown",
+    )
 }
 
-private fun reasonTag(r: PollResult.Reason): String = when (r) {
-    PollResult.Reason.MATCHED -> "MATCHED"
-    PollResult.Reason.SETTLED -> "SETTLED"
-    PollResult.Reason.TIMEOUT -> "TIMEOUT"
-}
-
-/**
- * Poll capture-pane until settled / matched / timed out. Encodes the outcome in a
- * [CaptureResult.Success] where stdout is the screen and stderr carries the reason tag
- * (MATCHED / SETTLED / TIMEOUT). A capture failure (e.g. session gone) is returned as-is.
- */
 private suspend fun readUntilDone(
     context: Context,
     session: String,
     lines: Int,
     waitFor: String?,
     timeoutMs: Long,
+    waitForCompletion: Boolean = false,
 ): CaptureResult {
     val start = android.os.SystemClock.elapsedRealtime()
     val samples = ArrayList<PaneSample>()
     while (true) {
-        val cap = tmux(context, TmuxOps.capturePaneArgv(session, lines))
-        if (cap is CaptureResult.Success) {
-            val elapsed = android.os.SystemClock.elapsedRealtime() - start
-            // Only the beginning and end of the current stable screen are needed.
-            if (samples.lastOrNull()?.content != cap.stdout) samples.clear()
-            samples.add(PaneSample(elapsed, cap.stdout))
-            if (samples.size > 2) samples.removeAt(1)
-            when (val d = evaluatePoll(samples, SETTLE_MS, timeoutMs, waitFor)) {
-                is PollResult.Done -> return CaptureResult.Success(d.content, reasonTag(d.reason), 0)
-                PollResult.Continue -> {}
+        val cap = tmux(context, TmuxOps.snapshotArgv(session, lines))
+        if (cap !is CaptureResult.Success) return cap
+        val elapsed = android.os.SystemClock.elapsedRealtime() - start
+        // Include state changes in the stability check; the command may finish without output.
+        if (samples.lastOrNull()?.content != cap.stdout) samples.clear()
+        samples.add(PaneSample(elapsed, cap.stdout))
+        if (samples.size > 2) samples.removeAt(1)
+        val pane = parseTermuxPane(cap.stdout)
+        val reason = when {
+            !waitFor.isNullOrEmpty() && waitForMatches(pane.screen, waitFor) -> "MATCHED"
+            pane.state.finished && samples.size == 2 && elapsed - samples.first().elapsedMs >= SETTLE_MS -> "COMPLETED"
+            else -> when (val result = evaluatePoll(samples, SETTLE_MS, timeoutMs, null)) {
+                is PollResult.Done -> when (result.reason) {
+                    PollResult.Reason.TIMEOUT -> "TIMEOUT"
+                    // Waiting for specific text must not stop on a quiet screen.
+                    PollResult.Reason.SETTLED -> if (waitFor.isNullOrEmpty() && !waitForCompletion) "SETTLED" else null
+                    PollResult.Reason.MATCHED -> "MATCHED"
+                }
+                PollResult.Continue -> null
             }
-        } else {
-            return cap
         }
-        if (android.os.SystemClock.elapsedRealtime() - start >= timeoutMs) {
-            return CaptureResult.Success(samples.lastOrNull()?.content.orEmpty(), "TIMEOUT", 0)
-        }
+        if (reason != null) return cap.copy(stderr = reason)
+        if (elapsed >= timeoutMs) return cap.copy(stderr = "TIMEOUT")
         delay(POLL_INTERVAL_MS)
     }
 }
@@ -318,313 +344,491 @@ private fun sessionErrorEnvelope(error: String, recovery: String) = listOf(
     }.toString())
 )
 
-private fun preflight(context: Context): List<UIMessagePart>? =
-    when (TermuxIntegration.state(context)) {
-        TermuxIntegration.State.NOT_INSTALLED -> sessionErrorEnvelope(
-            "termux_not_installed",
-            "Install Termux from https://github.com/termux/termux-app/releases ."
+private fun preflight(context: Context): List<UIMessagePart>? = when (TermuxIntegration.state(context)) {
+    TermuxIntegration.State.NOT_INSTALLED -> sessionErrorEnvelope(
+        "termux_not_installed",
+        "Install Termux from https://github.com/termux/termux-app/releases ."
+    )
+    TermuxIntegration.State.NO_PERMISSION -> sessionErrorEnvelope(
+        "termux_permission_not_granted",
+        "Grant the Termux RUN_COMMAND permission in Extensions > Termux."
+    )
+    TermuxIntegration.State.READY -> null
+}
+
+private fun sessionReadEnvelope(
+    session: String,
+    result: CaptureResult.Success,
+    outputCache: TermuxOutputCache,
+    config: TermuxConfig,
+    cursor: String? = null,
+    mode: String? = null,
+): List<UIMessagePart> {
+    val pane = parseTermuxPane(result.stdout)
+    val delta = outputCache.read(session, cursor, pane.screen, config.maxStdoutBytes)
+    return listOf(UIMessagePart.Text(buildJsonObject {
+        put("success", true)
+        put("session_id", session)
+        mode?.let { put("mode", it) }
+        put("kind", pane.kind)
+        put("execution_status", pane.state.status)
+        pane.state.exitCode?.let { put("exit_code", it) }
+        pane.state.signal?.let { put("exit_signal", it) }
+        put("output", delta.output)
+        put("cursor", delta.cursor)
+        put("cursor_reset", delta.reset)
+        put("output_truncated", delta.truncated || result.stdoutTruncated)
+        // Keep the screen field for existing consumers on a full read only.
+        if (cursor == null) put("screen", delta.output)
+        put("matched_wait_for", result.stderr == "MATCHED")
+        put("timed_out", result.stderr == "TIMEOUT")
+        put("read_reason", result.stderr.ifBlank { "SNAPSHOT" })
+    }.toString()))
+}
+
+private fun readFailure(result: CaptureResult): List<UIMessagePart> =
+    if (result is CaptureResult.OtherError && isSessionNotFound(result.message)) {
+        sessionErrorEnvelope("session_not_found", "This chat's session is gone. Start a new session.")
+    } else {
+        sessionErrorEnvelope(
+            "termux_operation_failed",
+            when (result) {
+                CaptureResult.Timeout -> "Termux did not respond; the operation may still be running. Retry reading the same session."
+                CaptureResult.Denied -> "Grant Termux access and enable allow-external-apps=true."
+                is CaptureResult.OtherError -> result.message
+                else -> "Check the Termux connection."
+            }
         )
-        TermuxIntegration.State.NO_PERMISSION -> sessionErrorEnvelope(
-            "termux_permission_not_granted",
-            "Toggle Termux on in Assistant -> Local tools, or run: adb shell pm grant ${context.packageName} com.termux.permission.RUN_COMMAND"
-        )
-        TermuxIntegration.State.READY -> null
     }
 
-private suspend fun sessionNotFoundEnvelope(context: Context, session: String): List<UIMessagePart> {
-    val live =
-        (tmux(context, TmuxOps.listArgv()) as? CaptureResult.Success)?.let { parseSessions(it.stdout) } ?: emptyList()
-    return sessionErrorEnvelope(
-        "session_not_found",
-        "Session '$session' is gone (killed or device rebooted). Live sessions: ${live.joinToString {
-            it.name
-        }.ifEmpty { "none" }}. Start a new one with termux_session_start."
+private val sessionCreationMutex = Mutex()
+
+private data class SessionCreation(val id: String, val read: CaptureResult, val dispatched: Boolean = false)
+
+/** Create in two phases so remain-on-exit is enabled even for an instantly exiting job. */
+private suspend fun createManagedSession(
+    context: Context,
+    scope: TermuxScope,
+    label: String?,
+    cols: Int,
+    rows: Int,
+    workingDir: String,
+    command: (String) -> String,
+    kind: String,
+    stdin: String? = null,
+): SessionCreation = sessionCreationMutex.withLock {
+    val name = scope.sessionName(label)
+    ensureTmux(context)?.let { return@withLock SessionCreation(name, CaptureResult.OtherError(it)) }
+    val response = tmux(context, TmuxOps.listArgv())
+    var live = when (response) {
+        is CaptureResult.Success -> parseSessions(response.stdout, scope.prefix).filter { scope.owns(it.name) }
+        is CaptureResult.OtherError -> if (isSessionNotFound(response.message)) {
+            emptyList()
+        } else {
+            return@withLock SessionCreation(name, response)
+        }
+        else -> return@withLock SessionCreation(name, response)
+    }
+    // A long silent command is not an idle session. Reap only known finished shells/jobs.
+    val stale = staleSessionsToReap(live, System.currentTimeMillis() / 1000, SESSION_TTL_MS)
+    for (session in stale) {
+        val snapshot = tmux(context, TmuxOps.snapshotArgv(session.name, 0)) as? CaptureResult.Success ?: continue
+        if (!parseTermuxPane(snapshot.stdout).state.finished) continue
+        if (tmux(context, TmuxOps.killArgv("=${session.name}")) is CaptureResult.Success) {
+            live = live.filterNot { it.name == session.name }
+        }
+    }
+    if (live.size >= MAX_SESSIONS) {
+        return@withLock SessionCreation(
+            name,
+            CaptureResult.OtherError("Max $MAX_SESSIONS sessions in this chat. Close an old session first.")
+        )
+    }
+    var launched = false
+    try {
+        val prepared = tmux(context, TmuxOps.prepareArgv(name, cols, rows, workingDir, kind))
+        if (prepared !is CaptureResult.Success) return@withLock SessionCreation(name, prepared)
+        if (stdin != null) {
+            val loaded = runCommandCapture(
+                context,
+                "$TERMUX_BIN/tmux",
+                arrayOf("load-buffer", "-b", name, "-"),
+                TERMUX_HOME,
+                TMUX_OP_TIMEOUT_MS,
+                stdin
+            )
+            if (loaded !is CaptureResult.Success || loaded.exitCode != 0) {
+                return@withLock SessionCreation(name, CaptureResult.OtherError("Could not supply stdin to the task."))
+            }
+        }
+        // Once dispatched, cancellation/timeout must keep the task discoverable by its id.
+        launched = true
+        val started = tmux(context, TmuxOps.respawnArgv(name, command(name)))
+        SessionCreation(name, started, dispatched = true)
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } finally {
+        if (!launched) {
+            withContext(NonCancellable) {
+                tmux(context, TmuxOps.killArgv("=$name"))
+                tmux(context, arrayOf("delete-buffer", "-b", name))
+            }
+        }
+    }
+}
+
+internal fun termuxBackgroundScript(executable: String, arguments: Array<String>, buffer: String?): String {
+    val argv = (listOf(executable) + arguments).joinToString(" ", transform = ::shellSingleQuote)
+    if (buffer == null) return "exec $argv </dev/null"
+    val tmux = shellSingleQuote("$TERMUX_BIN/tmux")
+    val name = shellSingleQuote(buffer)
+    return "$tmux save-buffer -b $name - | $argv; ec=\$?; $tmux delete-buffer -b $name; exit \$ec"
+}
+
+internal suspend fun startTermuxBackgroundTask(
+    context: Context,
+    scope: TermuxScope,
+    outputCache: TermuxOutputCache,
+    config: TermuxConfig,
+    executable: String,
+    arguments: Array<String>,
+    workingDir: String,
+    stdin: String?,
+): List<UIMessagePart> {
+    val created = createManagedSession(
+        context, scope, null, DEFAULT_COLS, DEFAULT_ROWS, workingDir,
+        command = { id -> termuxBackgroundScript(executable, arguments, id.takeIf { stdin != null }) },
+        kind = "task", stdin = stdin,
+    )
+    return if (created.read is CaptureResult.Success) {
+        val snapshot = tmux(context, TmuxOps.snapshotArgv(created.id, DEFAULT_READ_LINES))
+        if (snapshot is CaptureResult.Success) {
+            sessionReadEnvelope(created.id, snapshot, outputCache, config, mode = "background")
+        } else {
+            createdSessionEnvelope(created.id, "background")
+        }
+    } else if (created.dispatched) {
+        createdSessionEnvelope(created.id, "background")
+    } else {
+        readFailure(created.read)
+    }
+}
+
+private fun createdSessionEnvelope(
+    session: String,
+    mode: String,
+    note: String = "Session created; use termux_session_read/list to check status. Do not start a duplicate task.",
+): List<UIMessagePart> = listOf(
+    UIMessagePart.Text(buildJsonObject {
+        put("success", true)
+        put("session_id", session)
+        put("mode", mode)
+        put("execution_status", "unknown")
+        put("note", note)
+    }.toString())
+)
+
+private fun sessionIdSchema() = buildJsonObject {
+    put("type", "string")
+    put("description", "Session/task id returned in this chat. Other chats' sessions are inaccessible.")
+}
+
+private fun cursorSchema() = buildJsonObject {
+    put("type", "string")
+    put(
+        "description",
+        "Previous cursor for this session. Returns only new terminal text in output; cursor_reset indicates a rewritten screen/expired cursor. Omit for a full screen."
     )
 }
 
-fun termuxSessionStartTool(context: Context, getConfig: () -> TermuxConfig = { TermuxConfig() }): Tool = Tool(
+private fun waitForSchema() = buildJsonObject {
+    put("type", "string")
+    put(
+        "description",
+        "Wait for this substring/regex on screen, completion, or timeout. A quiet screen does not end this wait."
+    )
+}
+
+private fun timeoutSchema() = buildJsonObject {
+    put("type", "integer")
+    put(
+        "description",
+        "Read timeout: default $DEFAULT_TIMEOUT_S, max $MAX_TIMEOUT_S seconds. A read timeout does not stop the task."
+    )
+}
+
+internal fun termuxSessionStartTool(
+    context: Context,
+    scope: TermuxScope,
+    outputCache: TermuxOutputCache,
+    getConfig: () -> TermuxConfig = { TermuxConfig() },
+): Tool = Tool(
     name = "termux_session_start",
-    description = "Open a persistent, interactive Termux terminal session (tmux-backed, real pty). Use for ssh into a saved host, anything that prompts for a password/sudo, REPLs, or stateful shells. Returns a session_id; drive it with termux_session_send / termux_session_read. Auto-installs tmux on first use.",
+    description = "Open a persistent interactive Termux bash terminal (tmux). Supports SSH, prompts and REPLs. Scoped to this chat. Returns session_id, execution_status, exit_code when available and output cursor. Shell commands complete only when the managed local shell returns; a quiet screen may still be running. Auto-installs tmux if needed.",
     parameters = {
         InputSchema.Obj(properties = buildJsonObject {
-            put("name", buildJsonObject {
-                put("type", "string")
-                put("description", "Optional friendly label for the session.")
-            })
+            put("name", buildJsonObject { put("type", "string") })
             put("command", buildJsonObject {
                 put("type", "string")
-                put("description", "Optional initial command line to run, e.g. 'ssh myhost'.")
+                put("description", "Optional initial shell command, e.g. ssh myhost.")
             })
-            put("cols", buildJsonObject {
-                put("type", "integer")
-                put("description", "Terminal width (default $DEFAULT_COLS).")
-            })
-            put("rows", buildJsonObject {
-                put("type", "integer")
-                put("description", "Terminal height (default $DEFAULT_ROWS).")
-            })
+            put("cols", buildJsonObject { put("type", "integer") })
+            put("rows", buildJsonObject { put("type", "integer") })
         })
     },
     needsApproval = { getConfig().approvalRequired },
     execute = { input ->
         preflight(context)?.let { return@Tool it }
-        ensureTmux(context)?.let { err ->
-            val recovery = if (err == "tmux_installing") {
-                "tmux is still installing (download in progress). Wait a moment and call termux_session_start again."
+        val config = getConfig()
+        val created = createManagedSession(
+            context,
+            scope,
+            input.jsonObject["name"]?.jsonPrimitive?.contentOrNull,
+            (input.jsonObject["cols"]?.jsonPrimitive?.intOrNull ?: DEFAULT_COLS).coerceIn(20, 500),
+            (input.jsonObject["rows"]?.jsonPrimitive?.intOrNull ?: DEFAULT_ROWS).coerceIn(5, 200),
+            config.defaultWorkingDir,
+            { managedTermuxShell() },
+            "terminal"
+        )
+        if (created.read !is CaptureResult.Success) {
+            return@Tool if (created.dispatched) {
+                createdSessionEnvelope(
+                    created.id,
+                    "terminal"
+                )
             } else {
-                "tmux could not be installed. Open Termux, run 'pkg install tmux', and retry."
+                readFailure(created.read)
             }
-            return@Tool sessionErrorEnvelope(err, recovery)
         }
-        var live =
-            (tmux(context, TmuxOps.listArgv()) as? CaptureResult.Success)?.let { parseSessions(it.stdout) }
-                ?: emptyList()
-        // Reap idle sessions before enforcing the cap: nothing else kills forgotten sessions,
-        // so without this the MAX_SESSIONS budget fills permanently. session_activity is epoch
-        // seconds, so compare against wall-clock seconds (not SystemClock.elapsedRealtime).
-        val nowSecs = System.currentTimeMillis() / 1000
-        val stale = staleSessionsToReap(live, nowSecs, SESSION_TTL_MS)
-        if (stale.isNotEmpty()) {
-            // Only drop a stale session from the live count if its kill actually succeeded.
-            // A failed kill (tmux error, session wedged) leaves the session occupying a slot,
-            // so optimistically subtracting it would let live.size dip below the true count and
-            // transiently blow past MAX_SESSIONS. isSessionNotFound also counts as reaped: the
-            // session is already gone, which is the outcome we wanted.
-            val reaped = stale.filter { s ->
-                val killed = tmux(context, TmuxOps.killArgv(s.name))
-                killed is CaptureResult.Success ||
-                    (killed is CaptureResult.OtherError && isSessionNotFound(killed.message))
-            }
-            live = live - reaped.toSet()
-        }
-        if (live.size >= MAX_SESSIONS) {
-            return@Tool sessionErrorEnvelope(
-                "too_many_sessions",
-                "Max $MAX_SESSIONS sessions. Kill one with termux_session_kill first. Live: ${live.joinToString {
-                    it.name
-                }}"
-            )
-        }
-        val name = TmuxOps.sessionName(input.jsonObject["name"]?.jsonPrimitive?.contentOrNull)
-        val cols = (input.jsonObject["cols"]?.jsonPrimitive?.intOrNull ?: DEFAULT_COLS).coerceIn(20, 500)
-        val rows = (input.jsonObject["rows"]?.jsonPrimitive?.intOrNull ?: DEFAULT_ROWS).coerceIn(5, 200)
-        val started = tmux(context, TmuxOps.startArgv(name, cols, rows))
-        if (started !is CaptureResult.Success) {
-            return@Tool sessionErrorEnvelope("session_start_failed", "tmux new-session failed.")
-        }
+        // Let bash finish loading its rc and install the hooks before typing the initial input.
+        val ready = readUntilDone(context, created.id, DEFAULT_READ_LINES, null, DEFAULT_TIMEOUT_S * 1000L, true)
         val initial = input.jsonObject["command"]?.jsonPrimitive?.contentOrNull
         if (!initial.isNullOrBlank()) {
-            tmux(context, TmuxOps.sendTextArgv(name, initial))
-            tmux(context, TmuxOps.enterArgv(name))
-        }
-        // The session is already created at this point, so a failed screen read (Timeout/
-        // Denied/OtherError from readUntilDone) must not crash or report start failure —
-        // the model would retry the start and hit too_many_sessions.
-        val read = readUntilDone(
-            context,
-            name,
-            DEFAULT_READ_LINES,
-            null,
-            DEFAULT_TIMEOUT_S * 1000L
-        ) as? CaptureResult.Success
-        listOf(UIMessagePart.Text(buildJsonObject {
-            put("success", true)
-            put("session_id", name)
-            put("screen", read?.let { truncateOut(it.stdout, getConfig().maxStdoutBytes) } ?: "")
-            if (read ==
-                null) {
-                put(
-                    "note",
-                    "Session created, but the initial screen read failed. Use termux_session_read to see the screen."
+            if (ready !is CaptureResult.Success || parseTermuxPane(ready.stdout).state.status != "completed") {
+                return@Tool createdSessionEnvelope(
+                    created.id,
+                    "terminal",
+                    "Initial command was not sent because the shell is not ready. Read this session, then send the command once the shell is ready."
                 )
             }
-        }.toString()))
+            val sent = sendSessionInput(context, created.id, initial, true, emptyList())
+            if (sent !is CaptureResult.Success) return@Tool readFailure(sent)
+        }
+        val read = if (initial.isNullOrBlank()) {
+            ready
+        } else {
+            readUntilDone(context, created.id, DEFAULT_READ_LINES, null, DEFAULT_TIMEOUT_S * 1000L)
+        }
+        if (read is CaptureResult.Success) {
+            sessionReadEnvelope(created.id, read, outputCache, config)
+        } else {
+            createdSessionEnvelope(created.id, "terminal")
+        }
     }
 )
 
-fun termuxSessionSendTool(context: Context, getConfig: () -> TermuxConfig = { TermuxConfig() }): Tool = Tool(
+private suspend fun sendSessionInput(
+    context: Context,
+    session: String,
+    text: String?,
+    enter: Boolean,
+    keys: List<String>,
+): CaptureResult {
+    if (enter || "Enter" in keys || text?.contains('\n') == true) {
+        val snapshot = tmux(context, TmuxOps.snapshotArgv(session, 0))
+        if (snapshot !is CaptureResult.Success) return snapshot
+        val pane = parseTermuxPane(snapshot.stdout)
+        if (pane.state.status == "completed" && pane.kind == "terminal") {
+            val pending = tmux(context, TmuxOps.pendingArgv(session))
+            if (pending !is CaptureResult.Success) return pending
+        }
+    }
+    val operations = buildList {
+        if (!text.isNullOrEmpty()) add(TmuxOps.sendTextArgv("=$session:", text))
+        if (keys.isNotEmpty()) add(TmuxOps.sendKeysArgv("=$session:", keys))
+        if (enter) add(TmuxOps.enterArgv("=$session:"))
+    }
+    for (argv in operations) {
+        val sent = tmux(context, argv)
+        if (sent !is CaptureResult.Success) return sent
+    }
+    return CaptureResult.Success("", "", 0)
+}
+
+internal fun termuxSessionSendTool(
+    context: Context,
+    scope: TermuxScope,
+    outputCache: TermuxOutputCache,
+    getConfig: () -> TermuxConfig = { TermuxConfig() },
+): Tool = Tool(
     name = "termux_session_send",
-    description = "Type input into a session and read what comes back. Set enter=false to type without a newline (e.g. answering a prompt). Use keys for control keys (tmux names: 'C-c', 'Enter', 'Up', 'Tab'). Pass wait_for (substring/regex) to return as soon as expected text appears (e.g. 'password:'). Returns the screen, matched_wait_for, timed_out.",
+    description = "Type literal input or control keys into this chat's terminal/task. Input is not wrapped as a command, so password/SSH/REPL prompts work. enter defaults true. Returns actual execution_status independently of read_reason; SETTLED means output paused, not command completion. Supply cursor to read incremental output.",
     parameters = {
         InputSchema.Obj(properties = buildJsonObject {
-            put("session_id", buildJsonObject {
-                put("type", "string")
-                put("description", "Session id from termux_session_start.")
-            })
-            put("input", buildJsonObject {
-                put("type", "string")
-                put("description", "Text to type. Optional if keys is given.")
-            })
-            put("enter", buildJsonObject {
-                put("type", "boolean")
-                put("description", "Press Enter after input. Default true.")
-            })
+            put("session_id", sessionIdSchema())
+            put("input", buildJsonObject { put("type", "string") })
+            put("enter", buildJsonObject { put("type", "boolean") })
             put("keys", buildJsonObject {
                 put("type", "array")
-                put("description", "tmux key names to send (e.g. ['C-c']).")
                 put("items", buildJsonObject { put("type", "string") })
+                put("description", "tmux key names, e.g. C-c, Enter, Up, Tab.")
             })
-            put("wait_for", buildJsonObject {
-                put("type", "string")
-                put("description", "Return as soon as this substring/regex appears on screen.")
-            })
-            put("timeout_seconds", buildJsonObject {
-                put("type", "integer")
-                put("description", "Default $DEFAULT_TIMEOUT_S, max $MAX_TIMEOUT_S.")
-            })
+            put("cursor", cursorSchema())
+            put("wait_for", waitForSchema())
+            put("timeout_seconds", timeoutSchema())
         })
     },
     needsApproval = { getConfig().approvalRequired },
     execute = { input ->
+        val session = input.jsonObject["session_id"]?.jsonPrimitive?.contentOrNull?.takeIf(scope::owns)
+            ?: return@Tool sessionErrorEnvelope("session_not_in_current_chat", "Use a session_id created in this chat.")
         preflight(context)?.let { return@Tool it }
-        val session = input.jsonObject["session_id"]?.jsonPrimitive?.contentOrNull?.takeIf(::isManagedTermuxSession)
-            ?: return@Tool sessionErrorEnvelope("missing_session_id", "Pass session_id from termux_session_start.")
-        val text = input.jsonObject["input"]?.jsonPrimitive?.contentOrNull
-        val enter = input.jsonObject["enter"]?.jsonPrimitive?.booleanOrNull ?: true
         val keys = input.jsonObject["keys"]?.jsonArray?.mapNotNull { it.jsonPrimitive.contentOrNull } ?: emptyList()
-        require(keys.none { it.startsWith("-") }) { "Invalid tmux key name" }
-        val waitFor = input.jsonObject["wait_for"]?.jsonPrimitive?.contentOrNull
-        val timeoutMs = resolveTimeoutMs(input)
-        if (!text.isNullOrEmpty()) {
-            val sent = tmux(context, TmuxOps.sendTextArgv(session, text))
-            if (sent is CaptureResult.OtherError && isSessionNotFound(sent.message)) {
-                return@Tool sessionNotFoundEnvelope(context, session)
-            }
-        }
-        // Check the keys/enter sends for a dead session too. Previously these failures were
-        // swallowed and only surfaced indirectly by the later read, so a not-found returned a
-        // generic read_failed instead of the actionable session_not_found envelope.
-        if (keys.isNotEmpty()) {
-            val sentKeys = tmux(context, TmuxOps.sendKeysArgv(session, keys))
-            if (sentKeys is CaptureResult.OtherError && isSessionNotFound(sentKeys.message)) {
-                return@Tool sessionNotFoundEnvelope(context, session)
-            }
-        }
-        if (enter) {
-            val sentEnter = tmux(context, TmuxOps.enterArgv(session))
-            if (sentEnter is CaptureResult.OtherError && isSessionNotFound(sentEnter.message)) {
-                return@Tool sessionNotFoundEnvelope(context, session)
-            }
-        }
-        val read = readUntilDone(context, session, DEFAULT_READ_LINES, waitFor, timeoutMs)
-        if (read is CaptureResult.OtherError && isSessionNotFound(read.message)) {
-            return@Tool sessionNotFoundEnvelope(context, session)
-        }
-        val r = read as? CaptureResult.Success
-            ?: return@Tool sessionErrorEnvelope(
-                "read_failed",
-                "Input was sent, but the screen read failed. Use termux_session_read to see the result."
+        require(keys.none { it.startsWith("-") || it.contains(';') }) { "Invalid tmux key name" }
+        val sent = sendSessionInput(
+            context,
+            session,
+            input.jsonObject["input"]?.jsonPrimitive?.contentOrNull,
+            input.jsonObject["enter"]?.jsonPrimitive?.booleanOrNull ?: true,
+            keys
+        )
+        if (sent !is CaptureResult.Success) return@Tool readFailure(sent)
+        val read = readUntilDone(
+            context,
+            session,
+            DEFAULT_READ_LINES,
+            input.jsonObject["wait_for"]?.jsonPrimitive?.contentOrNull,
+            resolveTimeoutMs(input)
+        )
+        if (read is CaptureResult.Success) {
+            sessionReadEnvelope(
+                session,
+                read,
+                outputCache,
+                getConfig(),
+                input.jsonObject["cursor"]?.jsonPrimitive?.contentOrNull
             )
-        listOf(UIMessagePart.Text(buildJsonObject {
-            put("success", true)
-            put("screen", truncateOut(r.stdout, getConfig().maxStdoutBytes))
-            put("matched_wait_for", r.stderr == "MATCHED")
-            put("timed_out", r.stderr == "TIMEOUT")
-        }.toString()))
+        } else {
+            readFailure(read)
+        }
     }
 )
 
-fun termuxSessionReadTool(context: Context, getConfig: () -> TermuxConfig = { TermuxConfig() }): Tool = Tool(
+internal fun termuxSessionReadTool(
+    context: Context,
+    scope: TermuxScope,
+    outputCache: TermuxOutputCache,
+    getConfig: () -> TermuxConfig = { TermuxConfig() },
+): Tool = Tool(
     name = "termux_session_read",
-    description = "Re-read a session's screen without sending input (e.g. check on a long-running command). Optional wait_for + timeout_seconds to wait for expected text; otherwise returns the current screen immediately. lines sets scrollback depth (default $DEFAULT_READ_LINES).",
+    description = "Read this chat's terminal or background task and its execution_status/exit_code. Pass the previous cursor to receive only new terminal text; omit for a full screen. Rewrites/expired cursors set cursor_reset; bounded scrollback/output may be truncated. Optional wait_for waits for text/completion/timeout. A read timeout leaves the task running.",
     parameters = {
         InputSchema.Obj(properties = buildJsonObject {
-            put("session_id", buildJsonObject {
-                put("type", "string")
-                put("description", "Session id.")
-            })
-            put("wait_for", buildJsonObject {
-                put("type", "string")
-                put("description", "Optional substring/regex to wait for.")
-            })
-            put("timeout_seconds", buildJsonObject {
-                put("type", "integer")
-                put("description", "Used only with wait_for. Default $DEFAULT_TIMEOUT_S.")
+            put("session_id", sessionIdSchema())
+            put("cursor", cursorSchema())
+            put("wait_for", waitForSchema())
+            put("timeout_seconds", timeoutSchema())
+            put("wait_for_completion", buildJsonObject {
+                put("type", "boolean")
+                put(
+                    "description",
+                    "Wait until the managed local command exits instead of returning when output pauses. Default false."
+                )
             })
             put("lines", buildJsonObject {
                 put("type", "integer")
-                put("description", "Scrollback lines (default $DEFAULT_READ_LINES).")
+                put("description", "Scrollback depth, default $DEFAULT_READ_LINES, max 2000.")
             })
         })
     },
     execute = { input ->
+        val session = input.jsonObject["session_id"]?.jsonPrimitive?.contentOrNull?.takeIf(scope::owns)
+            ?: return@Tool sessionErrorEnvelope("session_not_in_current_chat", "Use a session_id created in this chat.")
         preflight(context)?.let { return@Tool it }
-        val session = input.jsonObject["session_id"]?.jsonPrimitive?.contentOrNull?.takeIf(::isManagedTermuxSession)
-            ?: return@Tool sessionErrorEnvelope("missing_session_id", "Pass session_id from termux_session_start.")
         val waitFor = input.jsonObject["wait_for"]?.jsonPrimitive?.contentOrNull
-        val lines = (input.jsonObject["lines"]?.jsonPrimitive?.intOrNull ?: DEFAULT_READ_LINES).coerceIn(1, 2_000)
-        val read = if (waitFor.isNullOrEmpty()) {
-            tmux(context, TmuxOps.capturePaneArgv(session, lines))
+        val waitForCompletion = input.jsonObject["wait_for_completion"]?.jsonPrimitive?.booleanOrNull ?: false
+        val lines = (input.jsonObject["lines"]?.jsonPrimitive?.intOrNull ?: DEFAULT_READ_LINES).coerceIn(1, 2000)
+        val read = if (waitFor.isNullOrEmpty() &&
+            !waitForCompletion) {
+            tmux(context, TmuxOps.snapshotArgv(session, lines))
         } else {
-            readUntilDone(context, session, lines, waitFor, resolveTimeoutMs(input))
+            readUntilDone(context, session, lines, waitFor, resolveTimeoutMs(input), waitForCompletion)
         }
-        if (read is CaptureResult.OtherError && isSessionNotFound(read.message)) {
-            return@Tool sessionNotFoundEnvelope(context, session)
+        if (read is CaptureResult.Success) {
+            sessionReadEnvelope(
+                session,
+                read,
+                outputCache,
+                getConfig(),
+                input.jsonObject["cursor"]?.jsonPrimitive?.contentOrNull
+            )
+        } else {
+            readFailure(read)
         }
-        val r = read as? CaptureResult.Success
-            ?: return@Tool sessionErrorEnvelope("read_failed", "Could not read session.")
-        listOf(UIMessagePart.Text(buildJsonObject {
-            put("success", true)
-            put("screen", truncateOut(r.stdout, getConfig().maxStdoutBytes))
-        }.toString()))
     }
 )
 
-fun termuxSessionKillTool(context: Context, getConfig: () -> TermuxConfig = { TermuxConfig() }): Tool = Tool(
+internal fun termuxSessionKillTool(
+    context: Context,
+    scope: TermuxScope,
+    outputCache: TermuxOutputCache,
+    getConfig: () -> TermuxConfig = { TermuxConfig() },
+): Tool = Tool(
     name = "termux_session_kill",
-    description = "End a Termux session opened by termux_session_start.",
-    parameters = {
-        InputSchema.Obj(properties = buildJsonObject {
-            put("session_id", buildJsonObject {
-                put("type", "string")
-                put("description", "Session id to kill.")
-            })
-        })
-    },
+    description = "Stop and close this chat's Termux terminal/background task, freeing its scrollback and output cursors.",
+    parameters = { InputSchema.Obj(properties = buildJsonObject { put("session_id", sessionIdSchema()) }) },
     needsApproval = { getConfig().approvalRequired },
     execute = { input ->
+        val session = input.jsonObject["session_id"]?.jsonPrimitive?.contentOrNull?.takeIf(scope::owns)
+            ?: return@Tool sessionErrorEnvelope("session_not_in_current_chat", "Use a session_id created in this chat.")
         preflight(context)?.let { return@Tool it }
-        val session = input.jsonObject["session_id"]?.jsonPrimitive?.contentOrNull?.takeIf(::isManagedTermuxSession)
-            ?: return@Tool sessionErrorEnvelope("missing_session_id", "Pass session_id.")
-        val killed = tmux(context, TmuxOps.killArgv(session))
+        val killed = tmux(context, TmuxOps.killArgv("=$session"))
         if (killed !is CaptureResult.Success &&
             !(killed is CaptureResult.OtherError && isSessionNotFound(killed.message))) {
-            return@Tool sessionErrorEnvelope(
-                "session_kill_failed",
-                "Could not close the Termux session; retry after checking the connection."
-            )
+            return@Tool readFailure(killed)
         }
+        tmux(context, arrayOf("delete-buffer", "-b", session))
+        outputCache.remove(session)
         listOf(UIMessagePart.Text(buildJsonObject {
             put("success", true)
             put("killed", session)
+            put("execution_status", "stopped")
         }.toString()))
     }
 )
 
-fun termuxSessionListTool(context: Context, getConfig: () -> TermuxConfig = { TermuxConfig() }): Tool = Tool(
+internal fun termuxSessionListTool(context: Context, scope: TermuxScope): Tool = Tool(
     name = "termux_session_list",
-    description = "List live Termux sessions opened by the agent (id, name, last activity).",
+    description = "List this chat's Termux terminals and background tasks, including execution status and exit codes. Finished tasks remain readable until closed. Other chats' sessions are excluded.",
     parameters = { InputSchema.Obj(properties = buildJsonObject {}) },
     execute = { _ ->
         preflight(context)?.let { return@Tool it }
         val response = tmux(context, TmuxOps.listArgv())
-        val list = when (response) {
-            is CaptureResult.Success -> parseSessions(response.stdout)
-            is CaptureResult.OtherError -> if (isSessionNotFound(response.message)) {
+        val sessions = when (response) {
+            is CaptureResult.Success -> parseSessions(response.stdout, scope.prefix).filter { scope.owns(it.name) }
+            is CaptureResult.OtherError -> if (isSessionNotFound(
+                    response.message
+                )) {
                 emptyList()
             } else {
-                return@Tool sessionErrorEnvelope("session_list_failed", response.message)
+                return@Tool readFailure(response)
             }
-            else -> return@Tool sessionErrorEnvelope("session_list_failed", "Check the Termux connection and retry.")
+            else -> return@Tool readFailure(response)
         }
         listOf(UIMessagePart.Text(buildJsonObject {
             put("success", true)
             put("sessions", buildJsonArray {
-                list.forEach { s ->
+                for (session in sessions) {
+                    val snapshot = tmux(context, TmuxOps.snapshotArgv(session.name, 0)) as? CaptureResult.Success
+                    val pane = snapshot?.let { parseTermuxPane(it.stdout) }
                     add(buildJsonObject {
-                        put("session_id", s.name)
-                        put("created", s.created)
-                        put("last_activity", s.lastActivity)
+                        put("session_id", session.name)
+                        put("created", session.created)
+                        put("last_activity", session.lastActivity)
+                        put("kind", pane?.kind ?: "unknown")
+                        put("execution_status", pane?.state?.status ?: "unknown")
+                        pane?.state?.exitCode?.let { put("exit_code", it) }
+                        pane?.state?.signal?.let { put("exit_signal", it) }
                     })
                 }
             })

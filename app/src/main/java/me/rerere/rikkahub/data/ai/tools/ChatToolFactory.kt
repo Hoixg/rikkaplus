@@ -52,6 +52,7 @@ class ChatToolFactory(
         settings: Settings,
         assistant: Assistant,
         model: Model,
+        conversationId: Uuid,
         workspaceCwd: String? = null,
     ): List<Tool> {
         val workspaceTools = createWorkspaceToolsIfReady(assistant.workspaceId?.toString(), workspaceCwd)
@@ -62,7 +63,7 @@ class ChatToolFactory(
             if (shouldUseExternalWebSearch(assistant, model)) {
                 addAll(createSearchTools(settings))
             }
-            addAll(localTools.getTools(assistant.localTools))
+            addAll(localTools.getTools(assistant.localTools, conversationId))
             addAll(createMcpManagementTools(settingsStore))
             if (assistant.enableRecentChatsReference) {
                 addAll(createConversationTools(conversationRepository, assistant.id))
@@ -102,7 +103,8 @@ class ChatToolFactory(
     }
 
     private fun withOutputTruncation(tool: Tool): Tool {
-        if (tool.name in TOOLS_WITHOUT_OUTPUT_TRUNCATION) return tool
+        // Termux 自带输出预算和聊天范围内的增量游标，避免再写入共享的工作区 tool_outputs。
+        if (tool.name in TOOLS_WITHOUT_OUTPUT_TRUNCATION || tool.name.startsWith("termux_")) return tool
         val execute = tool.execute
         return tool.copy(execute = { truncateOutput(execute(it)) })
     }
