@@ -192,6 +192,37 @@ class WorkspaceDetailVM(
         }
     }
 
+    fun clearEntryCreationResult() {
+        _state.update { it.copy(entryCreationError = null, createdEntryPath = null) }
+    }
+
+    fun createEntry(name: String, isDirectory: Boolean) {
+        val current = state.value
+        if (current.creatingEntry) return
+        val normalizedName = name.trim()
+        _state.update { it.copy(creatingEntry = true, entryCreationError = null, createdEntryPath = null) }
+        viewModelScope.launch {
+            try {
+                require(current.area == WorkspaceStorageArea.FILES) { "请在工作区文件区域新建" }
+                require(isValidWorkspaceEntryName(normalizedName)) { "名称不能包含路径分隔符，也不能是 . 或 .." }
+                val path = listOf(current.path, normalizedName).filter(String::isNotBlank).joinToString("/")
+                if (isDirectory) {
+                    repository.createDirectory(id, WorkspaceStorageArea.FILES, path)
+                } else {
+                    repository.writeText(id, path, text = "", overwrite = false)
+                }
+                if (state.value.area == current.area && state.value.path == current.path) refresh()
+                _state.update { it.copy(createdEntryPath = path) }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                _state.update { it.copy(entryCreationError = error.message ?: "创建失败") }
+            } finally {
+                _state.update { it.copy(creatingEntry = false) }
+            }
+        }
+    }
+
     fun importFile(inputStream: InputStream, fileName: String) {
         viewModelScope.launch {
             runCatching {
@@ -362,6 +393,9 @@ data class WorkspaceDetailState(
     val entries: List<WorkspaceFileEntry> = emptyList(),
     val loading: Boolean = false,
     val error: String? = null,
+    val creatingEntry: Boolean = false,
+    val entryCreationError: String? = null,
+    val createdEntryPath: String? = null,
     val exporting: Boolean = false,
     val exportCompleted: Int = 0,
     val exportTotal: Int = 0,
@@ -379,3 +413,7 @@ sealed interface WorkspaceTerminalEntry {
     data class Result(val result: WorkspaceCommandResult) : WorkspaceTerminalEntry
     data class Error(val message: String) : WorkspaceTerminalEntry
 }
+
+internal fun isValidWorkspaceEntryName(name: String): Boolean =
+    name.isNotBlank() && name != "." && name != ".." &&
+        name.none { it == '/' || it == '\\' || it == '\u0000' }

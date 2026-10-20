@@ -53,6 +53,13 @@ class WorkspaceFileSystem(
         return file.toEntry(root)
     }
 
+    fun createDirectory(root: File, path: String): WorkspaceFileEntry {
+        val directory = resolvePath(root, path)
+        require(!directory.exists()) { "Path already exists: $path" }
+        require(directory.mkdir()) { "Failed to create directory: $path" }
+        return directory.toEntry(root)
+    }
+
     fun importBytes(root: File, path: String, inputStream: InputStream): WorkspaceFileEntry {
         val file = resolvePath(root, path)
         file.parentFile?.mkdirs()

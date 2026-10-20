@@ -42,6 +42,8 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FloatingToolbarDefaults.ScreenOffset
 import androidx.compose.material3.HorizontalFloatingToolbar
@@ -56,6 +58,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -78,6 +81,7 @@ import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import kotlinx.coroutines.CancellationException
 import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.Add01
 import me.rerere.hugeicons.stroke.Alert02
 import me.rerere.hugeicons.stroke.ArrowTurnBackward
 import me.rerere.hugeicons.stroke.Bash
@@ -87,11 +91,13 @@ import me.rerere.hugeicons.stroke.ComputerTerminal01
 import me.rerere.hugeicons.stroke.Copy01
 import me.rerere.hugeicons.stroke.Delete01
 import me.rerere.hugeicons.stroke.File02
+import me.rerere.hugeicons.stroke.FileAdd
 import me.rerere.hugeicons.stroke.FileEdit
 import me.rerere.hugeicons.stroke.FileExport
 import me.rerere.hugeicons.stroke.FileImport
 import me.rerere.hugeicons.stroke.FileView
 import me.rerere.hugeicons.stroke.Folder01
+import me.rerere.hugeicons.stroke.FolderAdd
 import me.rerere.hugeicons.stroke.FolderOpen
 import me.rerere.hugeicons.stroke.PencilEdit01
 import me.rerere.hugeicons.stroke.Refresh01
@@ -157,6 +163,8 @@ fun WorkspaceDetailPage(id: String, openFiles: Boolean = false) {
     ) { WorkspaceDetailTab.entries.size }
     var deleteTarget by remember { mutableStateOf<WorkspaceFileEntry?>(null) }
     var showInstallDialog by remember { mutableStateOf(false) }
+    var showCreateMenu by remember { mutableStateOf(false) }
+    var createDirectory by rememberSaveable { mutableStateOf<Boolean?>(null) }
     var previewImageUri by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
     val filePicker = rememberLauncherForActivityResult(
@@ -189,6 +197,13 @@ fun WorkspaceDetailPage(id: String, openFiles: Boolean = false) {
 
     val onFilesTab = pagerState.currentPage == WorkspaceDetailTab.FILES.ordinal
 
+    LaunchedEffect(state.createdEntryPath) {
+        if (state.createdEntryPath != null) {
+            createDirectory = null
+            vm.clearEntryCreationResult()
+        }
+    }
+
     BackHandler(enabled = onFilesTab && state.path.isNotBlank()) {
         vm.goUp()
     }
@@ -205,6 +220,37 @@ fun WorkspaceDetailPage(id: String, openFiles: Boolean = false) {
                 },
                 navigationIcon = { BackButton() },
                 actions = {
+                    if (onFilesTab && state.area == WorkspaceStorageArea.FILES) {
+                        Box {
+                            FilledTonalIconButton(
+                                onClick = { showCreateMenu = true },
+                                enabled = state.workspace != null && !state.creatingEntry,
+                            ) {
+                                Icon(HugeIcons.Add01, contentDescription = "新建文件或文件夹")
+                            }
+                            DropdownMenu(
+                                expanded = showCreateMenu,
+                                onDismissRequest = { showCreateMenu = false },
+                            ) {
+                                listOf(false, true).forEach { isDirectory ->
+                                    DropdownMenuItem(
+                                        text = { Text(if (isDirectory) "新建文件夹" else "新建文件") },
+                                        leadingIcon = {
+                                            Icon(
+                                                if (isDirectory) HugeIcons.FolderAdd else HugeIcons.FileAdd,
+                                                contentDescription = null,
+                                            )
+                                        },
+                                        onClick = {
+                                            showCreateMenu = false
+                                            vm.clearEntryCreationResult()
+                                            createDirectory = isDirectory
+                                        },
+                                    )
+                                }
+                            }
+                        }
+                    }
                     if (onFilesTab) {
                         IconButton(onClick = { filePicker.launch(arrayOf("*/*")) }) {
                             Icon(
@@ -330,6 +376,19 @@ fun WorkspaceDetailPage(id: String, openFiles: Boolean = false) {
         }
     }
 
+    createDirectory?.let { isDirectory ->
+        WorkspaceCreateEntryDialog(
+            isDirectory = isDirectory,
+            creating = state.creatingEntry,
+            error = state.entryCreationError,
+            onDismiss = {
+                createDirectory = null
+                vm.clearEntryCreationResult()
+            },
+            onCreate = { vm.createEntry(it, isDirectory) },
+        )
+    }
+
     state.exportResult?.let { result ->
         AlertDialog(
             onDismissRequest = vm::dismissExportResult,
@@ -402,6 +461,48 @@ fun WorkspaceDetailPage(id: String, openFiles: Boolean = false) {
             Text(stringResource(R.string.workspace_detail_will_delete, entry.path))
         }
     }
+}
+
+@Composable
+private fun WorkspaceCreateEntryDialog(
+    isDirectory: Boolean,
+    creating: Boolean,
+    error: String?,
+    onDismiss: () -> Unit,
+    onCreate: (String) -> Unit,
+) {
+    var name by rememberSaveable(isDirectory) { mutableStateOf("") }
+    val normalizedName = name.trim()
+    val validName = isValidWorkspaceEntryName(normalizedName)
+    val message = error ?: if (normalizedName.isNotEmpty() && !validName) {
+        "名称不能包含路径分隔符，也不能是 . 或 .."
+    } else null
+    AlertDialog(
+        onDismissRequest = { if (!creating) onDismiss() },
+        title = { Text(if (isDirectory) "新建文件夹" else "新建文件") },
+        text = {
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                label = { Text(if (isDirectory) "文件夹名称" else "文件名称") },
+                singleLine = true,
+                enabled = !creating,
+                isError = message != null,
+                supportingText = message?.let { { Text(it) } },
+                modifier = Modifier.fillMaxWidth(),
+            )
+        },
+        confirmButton = {
+            Button(onClick = { onCreate(normalizedName) }, enabled = validName && !creating) {
+                Text(if (creating) "创建中…" else "创建")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !creating) {
+                Text(stringResource(R.string.common_cancel))
+            }
+        },
+    )
 }
 
 @Composable
