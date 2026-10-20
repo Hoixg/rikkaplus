@@ -1,69 +1,58 @@
 <div align="center">
   <img src="docs/icon.png" alt="RikkaPlus 圖示" width="100" />
   <h1>RikkaPlus · 1.0</h1>
-  <p>以最新 RikkaHub 原版為基礎，重新建構 RikkaPlus。</p>
+  <p>面向多模型聊天、工作區檔案與工具協作的 Android AI 用戶端。</p>
 
 [English](README.md) | [简体中文](README_ZH_CN.md) | 繁體中文
 </div>
 
-## 分支介紹
+## 專案定位
 
-`1.0` 是 [RikkaPlus](https://github.com/Hoixg/rikkaplus) 的新重構分支，由 Hoixg 維護。
+RikkaPlus 是基於 [RikkaHub](https://github.com/rikkahub/rikkahub) 的 Android 原生 AI 用戶端，由 Hoixg 維護，面向希望在手機上使用多種模型、管理專案檔案並呼叫工具完成任務的個人使用者。
 
-本分支從上游 [RikkaHub](https://github.com/rikkahub/rikkahub) 原版出發，重新整理並實作 `custom` 中累積的客製化功能，逐步處理早期開發留下的技術債務、功能耦合與資料結構負擔，讓後續開發與同步上游更容易維護。
+專案以聊天為主要入口，將模型設定、助手、workspace 檔案、MCP 與 Termux 終端整合在同一個應用程式中。你可以連接自己使用的模型服務，讓 AI 結合對話內容處理資料、操作工作區檔案或執行終端任務。
 
-## 分支分工
+`1.0` 是專案的主要開發分支，注重設定清楚、工具操作可控，以及一致的 Material 3 Expressive 介面體驗。
 
-| 分支 | 定位 |
+## 主要用途
+
+- 日常聊天、內容創作與資料整理，依任務選擇模型和助手。
+- 圍繞 workspace 管理專案檔案，透過聊天查看和處理檔案內容。
+- 透過 MCP 使用擴充工具，或藉助手機上的 Termux 執行腳本、互動命令與背景任務。
+
+## 能力概覽
+
+| 方向 | 內容 |
 | --- | --- |
-| [`1.0`](https://github.com/Hoixg/rikkaplus/tree/1.0) | 新重構開發分支，以原版為基礎重新組織與實作客製化能力。 |
-| [`custom`](https://github.com/Hoixg/rikkaplus/tree/custom) | 現有客製化版本，保留供日常使用與功能對照。 |
+| 模型與金鑰 | 設定多個模型服務，管理多把 API Key，手動選擇金鑰及依模型綁定。 |
+| 助手與對話 | 設定助手、提示詞與工具，依聊天組織上下文和執行紀錄。 |
+| 工作區 | 管理 workspace 的檔案與目錄，從聊天頁進入對應工作區。 |
+| Termux | 執行命令與腳本，使用持久終端和背景任務，查看狀態與輸出。 |
+| MCP | 在擴充管理中設定 MCP 服務，並透過開關和審批設定控制 AI 設定操作。 |
+| 備份與還原 | 使用本機、WebDAV 或 S3 儲存設定、聊天紀錄與檔案；工作區備份涵蓋「檔案」頁的內容。 |
 
-`1.0` 是分支名稱，目前的上游應用程式基線為 **RikkaHub 3.0.0**。
+## 取得安裝包
 
-## 重構目標
+- [版本與安裝包](https://github.com/Hoixg/rikkaplus/releases)
+- [1.0 開發建構](https://github.com/Hoixg/rikkaplus/releases/tag/1.0-nightly)
+- [手動雲端建構](https://github.com/Hoixg/rikkaplus/actions/workflows/release.yml)
 
-- 逐項整理客製化功能，明確定義需要保留、簡化與重新設計的內容。
-- 釐清功能邏輯、聊天生成、介面與資料儲存之間的職責。
-- 依實際使用情況整理廢棄資料表、冗餘欄位與歷史相容邏輯。
-- 統一 Material 3 Expressive 介面與互動。
-- 逐步實作並驗證各項功能，讓變更便於審查，也便於持續同步上游。
+## 分支
 
-排程任務、子代理、生圖審批與工具互動等其餘客製化能力將納入評估，具體保留範圍與實作進度以後續開發紀錄為準。
+| 分支 | 用途 |
+| --- | --- |
+| [`1.0`](https://github.com/Hoixg/rikkaplus/tree/1.0) | 專案的主要開發分支。 |
+| [`custom`](https://github.com/Hoixg/rikkaplus/tree/custom) | 歷史客製化分支，供既有使用者使用與功能參考。 |
 
-## 目前狀態
-
-**重構仍處於起步階段。** 目前以上游原版為基礎，已完成多 Key 管理，其餘客製化功能逐項重建。
-
-舊資料相容、資料庫遷移、匯入及覆蓋升級方案尚未確定，後續另行討論。
-
-現有客製化安裝包請見 [RikkaPlus Releases](https://github.com/Hoixg/rikkaplus/releases)，並依對應的發佈說明確認版本所屬分支。
-
-### 已完成的整理
-
-- 移除 Web 伺服器、瀏覽器聊天介面、相關背景服務與前端建構相依套件。
-- 重建多 Key 管理：新增、編輯、刪除、名稱與倍率備註、手動切換、依模型指定金鑰，採用 Material 3 Expressive 分段介面。
-- 移除內建中轉站預設與推廣推薦入口，保留官方供應商和常用雲端平台。
-- MCP 入口移入擴充管理，可透過開關允許 AI 管理設定；刪除 MCP 服務使用一般工具審批。
-
-## 自動建構與雲端發佈
-
-儲存庫預設開發分支為 `1.0`。
-
-- **每日自動建構**：北京時間每天 02:00、17:00 檢查更新，沒有新提交時略過。簽章安裝包發佈至獨立的 [1.0-nightly](https://github.com/Hoixg/rikkaplus/releases/tag/1.0-nightly)。
-- **手動雲端建構**：進入 [Actions](https://github.com/Hoixg/rikkaplus/actions/workflows/release.yml)，選擇 `1.0` 分支及 `release`／`debug` 類型，完成後下載建構產物。手動建構不發佈新版本。
-- **版本發佈**：推送與應用程式版本相符的附註標籤，例如 `1.0-v3.0.1`，觸發簽章建構與發佈。與舊 custom 版本的標籤分開管理。
-- **更新說明**：正式發佈優先讀取 `docs/releases/<應用程式版本號>.md`，參考[說明範本](docs/releases/TEMPLATE.md)；其他建構依分類整理提交標題與內文。
-
-雲端建構沿用儲存庫密鑰 `KEY_BASE64`、`SIGNING_CONFIG` 與 `GOOGLE_SERVICES_JSON`，亦可為本分支另設優先使用的 `GOOGLE_SERVICES_JSON_1_0`。沿用既有 Firebase 專案設定時，建構會比對目前套件名稱；使用 Firebase 服務時，應透過分支專屬密鑰提供已註冊的 Android 用戶端設定。
+`1.0` 是分支名稱，應用程式版本以安裝包標示為準。
 
 ## 開發
 
 主要技術為 Kotlin、Jetpack Compose、Material 3 Expressive、Room 與 DataStore。
 
-使用 Android Studio 開啟專案，依上游建構設定準備環境。Android 建構需要相應的 `app/google-services.json` 與本機 SDK 設定。
+使用 Android Studio 開啟專案，依專案建構設定準備 Android SDK 和相應的 `app/google-services.json`。
 
-本分支的功能規劃與問題請在[本儲存庫](https://github.com/Hoixg/rikkaplus/issues)討論。
+問題與建議請在[本儲存庫 Issues](https://github.com/Hoixg/rikkaplus/issues)討論。
 
 ## 上游與授權條款
 

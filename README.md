@@ -1,69 +1,58 @@
 <div align="center">
   <img src="docs/icon.png" alt="RikkaPlus icon" width="100" />
   <h1>RikkaPlus · 1.0</h1>
-  <p>A rebuild of RikkaPlus on the latest RikkaHub foundation.</p>
+  <p>An Android AI client for multi-model chat, workspace files, and tool use.</p>
 
 English | [简体中文](README_ZH_CN.md) | [繁體中文](README_ZH_TW.md)
 </div>
 
-## About this branch
+## Project focus
 
-The `1.0` branch is the new rebuilding branch of [RikkaPlus](https://github.com/Hoixg/rikkaplus), maintained by Hoixg.
+RikkaPlus is a native Android AI client based on [RikkaHub](https://github.com/rikkahub/rikkahub), maintained by Hoixg. It is designed for individuals who want to use multiple models, manage project files, and work with tools from their phones.
 
-Starting from upstream [RikkaHub](https://github.com/rikkahub/rikkahub), this branch will review and rebuild the custom features developed on `custom`. The aim is to address accumulated technical debt, clarify responsibilities between features, and make future development and upstream synchronization easier.
+Chat is the main entry point for model settings, assistants, workspace files, MCP services, and the Termux terminal. Connect the model services you use, then work with the AI to organize information, handle workspace files, or run terminal tasks in the context of a conversation.
+
+`1.0` is the project's primary development branch. It focuses on clear configuration, controllable tool operations, and a consistent Material 3 Expressive interface.
+
+## What it is for
+
+- Everyday conversations, writing, and organizing information, with models and assistants chosen for each task.
+- Managing project files in a workspace and working with their contents through chat.
+- Using MCP tools or running scripts, interactive commands, and background tasks in Termux on the phone.
+
+## Capabilities
+
+| Area | Scope |
+| --- | --- |
+| Models and keys | Configure multiple model services, manage API keys, select keys manually, and bind keys to models. |
+| Assistants and chat | Configure assistants, prompts, and tools, with conversation context and execution records organized by chat. |
+| Workspaces | Manage workspace files and directories, and open the relevant workspace from the chat page. |
+| Termux | Run commands and scripts, use persistent terminals and background tasks, and inspect status and output. |
+| MCP | Configure MCP services in extension management, with switches and approval settings for AI configuration operations. |
+| Backup and restore | Save settings, conversations, and files locally or through WebDAV or S3. Workspace backups cover the Files tab. |
+
+## Downloads
+
+- [Releases and APKs](https://github.com/Hoixg/rikkaplus/releases)
+- [1.0 development builds](https://github.com/Hoixg/rikkaplus/releases/tag/1.0-nightly)
+- [Manual cloud builds](https://github.com/Hoixg/rikkaplus/actions/workflows/release.yml)
 
 ## Branches
 
 | Branch | Purpose |
 | --- | --- |
-| [`1.0`](https://github.com/Hoixg/rikkaplus/tree/1.0) | New rebuilding branch, starting from upstream RikkaHub. |
-| [`custom`](https://github.com/Hoixg/rikkaplus/tree/custom) | Existing customized implementation, retained for use and feature reference. |
+| [`1.0`](https://github.com/Hoixg/rikkaplus/tree/1.0) | The project's primary development branch. |
+| [`custom`](https://github.com/Hoixg/rikkaplus/tree/custom) | Historical customized branch, available for existing users and feature reference. |
 
-`1.0` is the branch name. The current upstream application baseline is **RikkaHub 3.0.0**.
-
-## Rebuilding goals
-
-- Review the custom features individually and define what to retain, simplify, or redesign.
-- Separate feature logic from chat generation, interface code, and persistence.
-- Review unused tables, redundant fields, and historical compatibility code against their actual use.
-- Keep the Material 3 Expressive design consistent across the application.
-- Verify each rebuilt feature and keep its changes easy to review and synchronize with upstream.
-
-Remaining custom features such as scheduled tasks, subagents, image generation approvals, and tool interactions will be evaluated as part of this work. Their scope and progress will be documented as implementation proceeds.
-
-## Current status
-
-**The rebuilding work is at its starting stage.** Based on upstream RikkaHub, multiple API key management is implemented; the remaining custom features are being rebuilt individually.
-
-Old-data compatibility, database migration, import, and upgrade behavior remain undecided. This introduction does not establish a data migration policy.
-
-Existing customized builds are available from [RikkaPlus Releases](https://github.com/Hoixg/rikkaplus/releases). Check the release notes for the branch associated with each build.
-
-### Completed cleanup
-
-- Removed the Web server, browser-based chat interface, related background service, and frontend build dependencies.
-- Rebuilt API key management: add/edit/delete keys, names and rate annotations, manual selection, and per-model key binding in a Material 3 Expressive segmented interface.
-- Removed bundled reseller presets and promotional recommendations while retaining official providers and common cloud platforms.
-- Moved MCP into extension management, with optional AI configuration management and standard tool approval for deletion.
-
-## Automated builds and releases
-
-The default development branch is `1.0`.
-
-- **Daily builds:** 02:00 and 17:00 Asia/Shanghai, skipping unchanged source. Signed APKs are published under [1.0-nightly](https://github.com/Hoixg/rikkaplus/releases/tag/1.0-nightly).
-- **Manual cloud builds:** open [Actions](https://github.com/Hoixg/rikkaplus/actions/workflows/release.yml), select branch `1.0`, and choose `release` or `debug`. Download the artifacts after the workflow completes. This does not publish a release.
-- **Versioned releases:** an annotated tag such as `1.0-v3.0.1`, matching the application's versionName, triggers a signed release. Historical custom release tags remain separate.
-- **Release notes:** maintain categorized Chinese notes in `docs/releases/<versionName>.md`; see the [template](docs/releases/TEMPLATE.md). Other builds use categorized commit subjects and bodies.
-
-Cloud builds use repository secrets `KEY_BASE64`, `SIGNING_CONFIG`, and `GOOGLE_SERVICES_JSON`. An optional `GOOGLE_SERVICES_JSON_1_0` takes precedence for this branch. When reusing the shared Firebase project configuration, the build matches its client entry to the package name; configure a registered Android client in the dedicated secret for Firebase services.
+`1.0` is a branch name. Refer to the APK for the application version.
 
 ## Development
 
 Built with Kotlin, Jetpack Compose, Material 3 Expressive, Room, and DataStore.
 
-Use Android Studio and follow the upstream build configuration. Android builds require the appropriate `app/google-services.json` and local SDK configuration.
+Open the project in Android Studio and prepare the Android SDK and appropriate `app/google-services.json` according to the project's build configuration.
 
-Feature plans and changes for this branch should be discussed in [this repository](https://github.com/Hoixg/rikkaplus/issues).
+Discuss issues and suggestions in [this repository's Issues](https://github.com/Hoixg/rikkaplus/issues).
 
 ## Upstream and license
 
