@@ -46,8 +46,8 @@ jobs:
         uses: ./.github/actions/build-apks
         with:
           variant: ${{ inputs.variant || 'release' }}
-          key-base64: ${{ secrets.KEY_BASE64 }}
-          signing-config: ${{ secrets.SIGNING_CONFIG }}
+          key-base64: ${{ secrets.KEY_BASE64_1_0 }}
+          signing-config: ${{ secrets.SIGNING_CONFIG_1_0 }}
           google-services: ${{ secrets.GOOGLE_SERVICES_JSON_1_0 || secrets.GOOGLE_SERVICES_JSON }}
       - name: 上传构建产物
         uses: actions/upload-artifact@v4

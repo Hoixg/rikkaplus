@@ -49,8 +49,9 @@ runs:
         if [ "$BUILD_VARIANT" = release ]; then
           test -n "$KEY_BASE64" || { echo "::error::缺少 KEY_BASE64"; exit 1; }
           test -n "$SIGNING_CONFIG" || { echo "::error::缺少 SIGNING_CONFIG"; exit 1; }
-          printf '%s' "$KEY_BASE64" | base64 --decode > app/app.key
-          printf '%s\n' "$SIGNING_CONFIG" > local.properties
+          umask 077
+          printf '%s' "$KEY_BASE64" | base64 --decode > app/rikkaplus-1.0.p12
+          printf '%s\n' "$SIGNING_CONFIG" > signing-1.0.properties
         fi
     - name: 构建 APK
       shell: bash
@@ -70,7 +71,7 @@ runs:
         apksigner=$(find "$ANDROID_HOME/build-tools" -maxdepth 2 -type f -name apksigner | sort -V | tail -n 1)
         test -n "$apksigner"
         for apk in app/build/outputs/apk/"$BUILD_VARIANT"/*.apk; do
-          "$apksigner" verify "$apk"
+          "$apksigner" verify --print-certs "$apk"
         done
     - name: 生成中文更新说明
       shell: bash

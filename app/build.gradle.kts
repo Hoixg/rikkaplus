@@ -23,11 +23,16 @@ android {
     }
 
     defaultConfig {
-        applicationId = "me.rerere.rikkahub"
+        applicationId = "io.github.hoixg.rikkaplus"
         minSdk = 26
         targetSdk = 37
         versionCode = 193
         versionName = "3.1.0"
+
+        val appPackageName = requireNotNull(applicationId)
+        resValue("string", "shortcut_target_package", appPackageName)
+        resValue("string", "shortcut_translate_action", "$appPackageName.action.TRANSLATE")
+        resValue("string", "shortcut_media_creation_action", "$appPackageName.action.MEDIA_CREATION")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -36,22 +41,10 @@ android {
         }
     }
 
-    splits {
-        abi {
-            // AppBundle tasks usually contain "bundle" in their name
-            //noinspection WrongGradleMethod
-            val isBuildingBundle = gradle.startParameter.taskNames.any { it.lowercase().contains("bundle") }
-            isEnable = !isBuildingBundle
-            reset()
-            include("arm64-v8a", "x86_64")
-            isUniversalApk = true
-        }
-    }
-
     signingConfigs {
         create("release") {
             val localProperties = Properties()
-            val localPropertiesFile = rootProject.file("local.properties")
+            val localPropertiesFile = rootProject.file("signing-1.0.properties")
 
             if (localPropertiesFile.exists()) {
                 localProperties.load(FileInputStream(localPropertiesFile))
@@ -84,6 +77,10 @@ android {
         }
         debug {
             applicationIdSuffix = ".debug"
+            val appPackageName = "${defaultConfig.applicationId}.debug"
+            resValue("string", "shortcut_target_package", appPackageName)
+            resValue("string", "shortcut_translate_action", "$appPackageName.action.TRANSLATE")
+            resValue("string", "shortcut_media_creation_action", "$appPackageName.action.MEDIA_CREATION")
             buildConfigField("String", "VERSION_NAME", "\"${android.defaultConfig.versionName}\"")
             buildConfigField("String", "VERSION_CODE", "\"${android.defaultConfig.versionCode}\"")
         }
@@ -95,6 +92,7 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+        resValues = true
     }
     sourceSets {
         getByName("androidTest").assets.srcDirs("$projectDir/schemas")

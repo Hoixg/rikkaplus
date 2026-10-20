@@ -33,6 +33,10 @@ Material 3 look (cards with dividers, plain forms).
 The active development branch is `1.0`. Keep the historical `custom` branch on GitHub; do not recreate a local
 `custom` checkout unless the user requests it. Preserve the removal of the Web server when syncing upstream.
 
+The `1.0` application ID is `io.github.hoixg.rikkaplus` (`.debug` for Debug). Build only the universal APK
+containing ARM64 and x86_64. Release signing uses ignored `signing-1.0.properties`; cloud builds use dedicated
+`KEY_BASE64_1_0` / `SIGNING_CONFIG_1_0` secrets. Never fall back to the historical custom signing configuration.
+
 Use Chinese commit subjects in the form `type(scope): 改动摘要`. Explain the changes and their reason in the body
 when needed. After pushing, report the changes, verification result and commit hash in Chinese. Do not rewrite
 published commits merely to improve their wording.

@@ -8,6 +8,11 @@
 .externalNativeBuild
 .cxx
 local.properties
+/signing-1.0.properties
+*.p12
+*.jks
+*.keystore
+*.key
 .cursor
 .history
 .kotlin

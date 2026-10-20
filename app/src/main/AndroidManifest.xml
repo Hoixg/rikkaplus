@@ -91,12 +91,12 @@
       </intent-filter>
 
       <intent-filter>
-        <action android:name="me.rerere.rikkahub.action.TRANSLATE" />
+        <action android:name="${applicationId}.action.TRANSLATE" />
         <category android:name="android.intent.category.DEFAULT" />
       </intent-filter>
 
       <intent-filter>
-        <action android:name="me.rerere.rikkahub.action.MEDIA_CREATION" />
+        <action android:name="${applicationId}.action.MEDIA_CREATION" />
         <category android:name="android.intent.category.DEFAULT" />
       </intent-filter>
 
@@ -115,7 +115,7 @@
 
         <data
           android:host="shortcut"
-          android:scheme="rikkahub" />
+          android:scheme="rikkaplus" />
       </intent-filter>
     </activity>
     <activity

@@ -63,11 +63,11 @@ def verify():
     if metadata["applicationId"] != info["application_id"]:
         raise ValueError("APK application ID mismatch")
     elements = metadata["elements"]
-    if len(elements) != 3 or any(e["versionName"] != info["version"] or e["versionCode"] != info["version_code"] for e in elements):
-        raise ValueError("APK version or split count mismatch")
-    names = {"app-" + abi + "-" + info["variant"] + ".apk" for abi in ("arm64-v8a", "universal", "x86_64")}
-    if {e["outputFile"] for e in elements} != names:
-        raise ValueError("Unexpected APK splits")
+    if len(elements) != 1 or any(e["versionName"] != info["version"] or e["versionCode"] != info["version_code"] for e in elements):
+        raise ValueError("APK version or output count mismatch")
+    names = {"app-" + info["variant"] + ".apk"}
+    if {e["outputFile"] for e in elements} != names or {p.name for p in directory.glob("*.apk")} != names:
+        raise ValueError("Unexpected APK outputs")
     sums = []
     for name in sorted(names):
         path = directory / name
@@ -93,7 +93,7 @@ def notes():
         "",
         "分支：`1.0` · 版本代码：`" + str(info["version_code"]) + "` · 源码：`" + info["commit"][:8] + "`",
         "",
-        "包名：`" + info["application_id"] + "`。大多数 Android 手机请选择 ARM64 安装包。",
+        "包名：`" + info["application_id"] + "`。提供包含 ARM64 和 x86_64 的通用安装包。",
         "",
     ]
     if not release:
