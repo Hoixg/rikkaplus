@@ -93,6 +93,7 @@ import me.rerere.ai.provider.ProviderSetting
 import me.rerere.ai.provider.apiKeyEntries
 import me.rerere.ai.provider.withApiKeyEntries
 import me.rerere.ai.provider.TextGenerationParams
+import me.rerere.ai.provider.supportsQuota
 import me.rerere.ai.registry.ModelRegistry
 import me.rerere.ai.ui.UIMessage
 import me.rerere.hugeicons.HugeIcons
@@ -108,12 +109,13 @@ import me.rerere.hugeicons.stroke.Share01
 import me.rerere.hugeicons.stroke.Tick01
 import me.rerere.hugeicons.stroke.Tools
 import me.rerere.rikkahub.R
+import me.rerere.rikkahub.data.ai.account.preserveCredential
 import me.rerere.rikkahub.ui.components.ai.ExtensionEmptyState
 import me.rerere.rikkahub.ui.components.ai.ModelAbilityTag
 import me.rerere.rikkahub.ui.components.ai.ModelModalityTag
 import me.rerere.rikkahub.ui.components.ai.ModelSelector
 import me.rerere.rikkahub.ui.components.ai.ModelTypeTag
-import me.rerere.rikkahub.ui.components.ai.ProviderBalanceText
+import me.rerere.rikkahub.ui.components.ai.ProviderQuotaText
 import me.rerere.rikkahub.ui.components.nav.BackButton
 import me.rerere.rikkahub.ui.components.ui.AutoAIIcon
 import me.rerere.rikkahub.ui.components.ui.CardGroup
@@ -139,7 +141,7 @@ import me.rerere.rikkahub.ui.pages.assistant.detail.CustomBodies
 import me.rerere.rikkahub.ui.pages.assistant.detail.CustomHeaders
 import me.rerere.rikkahub.ui.pages.setting.components.ProviderConfigure
 import me.rerere.rikkahub.ui.pages.setting.components.ProviderConnectionTester
-import me.rerere.rikkahub.ui.pages.setting.components.SettingProviderBalanceOption
+import me.rerere.rikkahub.ui.pages.setting.components.SettingProviderQuotaQuery
 import me.rerere.rikkahub.ui.theme.CustomColors
 import me.rerere.rikkahub.ui.theme.extendColors
 import me.rerere.rikkahub.utils.UiState
@@ -188,7 +190,7 @@ fun SettingProviderDetailPage(id: Uuid, vm: SettingVM = koinViewModel()) {
             latest.copy(
                 providers = latest.providers.map {
                     if (newProvider.id == it.id) {
-                        newProvider
+                        newProvider.preserveCredential(it)
                     } else {
                         it
                     }
@@ -221,14 +223,17 @@ fun SettingProviderDetailPage(id: Uuid, vm: SettingVM = koinViewModel()) {
                     }
                 },
                 actions = {
-                    val shareSheetState = rememberShareSheetState()
-                    ShareSheet(shareSheetState)
-                    IconButton(
-                        onClick = {
-                            shareSheetState.show(provider)
+                    // 账号型提供商离开账号就没法用，不提供分享
+                    if (provider !is ProviderSetting.Account) {
+                        val shareSheetState = rememberShareSheetState()
+                        ShareSheet(shareSheetState)
+                        IconButton(
+                            onClick = {
+                                shareSheetState.show(provider)
+                            }
+                        ) {
+                            Icon(HugeIcons.Share01, null)
                         }
-                    ) {
-                        Icon(HugeIcons.Share01, null)
                     }
                 }
             )
@@ -303,7 +308,8 @@ private fun SettingProviderConfigPage(
         } else {
             // Keep form drafts while refreshing models and immediately saved key changes.
             internalProvider.copyProvider(models = provider.models)
-                .withApiKeyEntries(provider.apiKeyEntries(), provider.selectedApiKeyId)
+                .withApiKeyEntries(provider.apiKeyEntries(), (provider as? ProviderSetting.ApiKey)?.selectedApiKeyId)
+                .preserveCredential(provider)
         }
         savedProvider = provider
     }
@@ -335,19 +341,19 @@ private fun SettingProviderConfigPage(
                 },
                 onApiKeysChange = {
                     internalProvider = it
-                    onEdit(provider.withApiKeyEntries(it.apiKeyEntries(), it.selectedApiKeyId))
+                    onEdit(provider.withApiKeyEntries(it.apiKeyEntries(), (it as? ProviderSetting.ApiKey)?.selectedApiKeyId))
                 },
             )
 
-            if (internalProvider is ProviderSetting.OpenAI) {
-                SettingProviderBalanceOption(
-                    provider = internalProvider,
-                    balanceOption = internalProvider.balanceOption,
-                    // 余额按已保存的配置查，没开就不留这一行
-                    supportingContent = if (provider.balanceOption.enabled) {
-                        { ProviderBalanceText(providerSetting = provider) }
+            // 账号类的额度查询写死在 Provider 里，没有这一项
+            (internalProvider as? ProviderSetting.ApiKey)?.let { apiKeyProvider ->
+                SettingProviderQuotaQuery(
+                    provider = apiKeyProvider,
+                    // 额度按已保存的配置查，没开就不留这一行
+                    supportingContent = if (provider.supportsQuota) {
+                        { ProviderQuotaText(providerSetting = provider) }
                     } else null,
-                    onEdit = { internalProvider = internalProvider.copyProvider(balanceOption = it) }
+                    onEdit = { internalProvider = apiKeyProvider.withQuotaQuery(it) }
                 )
             }
 
@@ -686,13 +692,16 @@ private fun ModelSettingsForm(
                             .padding(vertical = 16.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        ProviderOverrideSettings(
-                            providerOverride = model.providerOverwrite,
-                            onUpdateProviderOverride = { providerOverride ->
-                                onModelChange(model.copy(providerOverwrite = providerOverride))
-                            },
-                            parentProvider = parentProvider
-                        )
+                        // 覆盖配置是提供商的独立副本，账号凭据不能复制出去，账号型提供商不支持覆盖
+                        if (parentProvider !is ProviderSetting.Account) {
+                            ProviderOverrideSettings(
+                                providerOverride = model.providerOverwrite,
+                                onUpdateProviderOverride = { providerOverride ->
+                                    onModelChange(model.copy(providerOverwrite = providerOverride))
+                                },
+                                parentProvider = parentProvider
+                            )
+                        }
 
                         ModelApiKeySelector(
                             model = model,

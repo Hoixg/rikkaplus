@@ -20,13 +20,14 @@ class FindProviderTest {
         val second = ApiKeyEntry(id = "second", key = "second-secret")
         val model = Model(modelId = "test", apiKeyId = second.id)
         val provider = ProviderSetting.OpenAI(models = listOf(model))
-            .withApiKeyEntries(listOf(first, second), selectedId = first.id)
-        val resolved = model.findProvider(listOf(provider))!!
+            .withApiKeyEntries(listOf(first, second), selectedId = first.id) as ProviderSetting.ApiKey
+        val resolved = model.findProvider(listOf(provider)) as ProviderSetting.ApiKey
         assertEquals(second.id, resolved.selectedApiKeyId)
         assertEquals(listOf(second.copy(name = "Key 2")), resolved.apiKeyEntries())
         assertEquals(first.id, provider.selectedApiKeyId)
         assertEquals(2, model.findProvider(listOf(provider), checkOverwrite = false)!!.apiKeyEntries().size)
-        assertEquals(first.id, model.copy(apiKeyId = "deleted").findProvider(listOf(provider))!!.selectedApiKeyId)
+        val fallback = model.copy(apiKeyId = "deleted").findProvider(listOf(provider)) as ProviderSetting.ApiKey
+        assertEquals(first.id, fallback.selectedApiKeyId)
     }
 
     @Test
@@ -35,7 +36,7 @@ class FindProviderTest {
         val override = ProviderSetting.Google().withApiKeyEntries(listOf(key))
         val model = Model(modelId = "test", apiKeyId = key.id, providerOverwrite = override)
         val provider = ProviderSetting.OpenAI(models = listOf(model), apiKey = "base-secret")
-        val resolved = model.findProvider(listOf(provider))!!
+        val resolved = model.findProvider(listOf(provider)) as ProviderSetting.ApiKey
         assertEquals(override.id, resolved.id)
         assertEquals(key.id, resolved.selectedApiKeyId)
         assertEquals("override-secret", resolved.apiKeyEntries().single().key)

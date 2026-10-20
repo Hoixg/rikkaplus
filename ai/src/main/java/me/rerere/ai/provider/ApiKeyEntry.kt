@@ -15,13 +15,16 @@ data class ApiKeyEntry(
 private val API_KEY_SEPARATOR = Regex("[\\s,]+")
 
 /** Existing upstream settings can still contain comma/whitespace-separated keys. */
-fun ProviderSetting.apiKeyEntries(): List<ApiKeyEntry> = normalizeEntries(
-    apiKeyEntries.ifEmpty {
-        apiKey.split(API_KEY_SEPARATOR).filter(String::isNotBlank).map { key ->
-            ApiKeyEntry(id = legacyKeyId(key), key = key)
+fun ProviderSetting.apiKeyEntries(): List<ApiKeyEntry> {
+    if (this !is ProviderSetting.ApiKey) return emptyList()
+    return normalizeEntries(
+        apiKeyEntries.ifEmpty {
+            apiKey.split(API_KEY_SEPARATOR).filter(String::isNotBlank).map { key ->
+                ApiKeyEntry(id = legacyKeyId(key), key = key)
+            }
         }
-    }
-)
+    )
+}
 
 private fun legacyKeyId(key: String): String = MessageDigest.getInstance("SHA-256")
     .digest(key.toByteArray()).joinToString("") { "%02x".format(it.toInt() and 0xff) }
@@ -40,6 +43,7 @@ private fun normalizeEntries(entries: List<ApiKeyEntry>): List<ApiKeyEntry> = en
 
 /** Every request uses the selected key; unset or removed selections fall back to the first entry. */
 fun ProviderSetting.selectedApiKey(): String {
+    if (this !is ProviderSetting.ApiKey) return ""
     val entries = apiKeyEntries()
     return (entries.find { it.id == selectedApiKeyId } ?: entries.firstOrNull())?.key.orEmpty()
 }
@@ -47,7 +51,7 @@ fun ProviderSetting.selectedApiKey(): String {
 /** The list is authoritative; clear the upstream string so removed keys cannot return. */
 fun ProviderSetting.withApiKeyEntries(
     entries: List<ApiKeyEntry>,
-    selectedId: String? = selectedApiKeyId,
+    selectedId: String? = (this as? ProviderSetting.ApiKey)?.selectedApiKeyId,
 ): ProviderSetting {
     val normalized = normalizeEntries(entries)
     val selected = normalized.find { it.id == selectedId }?.id ?: normalized.firstOrNull()?.id
@@ -55,6 +59,7 @@ fun ProviderSetting.withApiKeyEntries(
         is ProviderSetting.OpenAI -> copy(apiKey = "", apiKeyEntries = normalized, selectedApiKeyId = selected)
         is ProviderSetting.Google -> copy(apiKey = "", apiKeyEntries = normalized, selectedApiKeyId = selected)
         is ProviderSetting.Claude -> copy(apiKey = "", apiKeyEntries = normalized, selectedApiKeyId = selected)
+        is ProviderSetting.Account -> this
     }
 }
 

@@ -1,8 +1,10 @@
 package me.rerere.rikkahub.data.datastore
 
 import androidx.datastore.core.DataStore
+import androidx.datastore.core.okio.OkioStorage
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.PreferencesSerializer
 import androidx.datastore.preferences.core.edit
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -19,6 +21,8 @@ import kotlinx.coroutines.job
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import okio.FileSystem
+import okio.Path.Companion.toPath
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -215,7 +219,17 @@ class SettingsStoreTest {
 
 private class OpenedStore(file: File, loadGate: CompletableDeferred<Unit>?) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    val disk = GatedDataStore(PreferenceDataStoreFactory.create(scope = scope) { file }, loadGate)
+    val disk = GatedDataStore(
+        PreferenceDataStoreFactory.create(
+            storage = OkioStorage(
+                fileSystem = FileSystem.SYSTEM,
+                serializer = PreferencesSerializer,
+                producePath = { file.absolutePath.toPath() },
+            ),
+            scope = scope,
+        ),
+        loadGate,
+    )
     val store = SettingsStore(disk, scope)
 
     suspend fun close() = scope.coroutineContext.job.cancelAndJoin()

@@ -1,14 +1,19 @@
 package me.rerere.ai.provider
 
+import me.rerere.ai.provider.providers.chatgpt.ChatGPTProvider
 import me.rerere.ai.provider.providers.claude.ClaudeProvider
 import me.rerere.ai.provider.providers.google.GoogleProvider
+import me.rerere.ai.provider.providers.grok.GrokProvider
 import me.rerere.ai.provider.providers.openai.OpenAIProvider
 import okhttp3.OkHttpClient
 
 /**
  * Provider管理器，负责注册和获取Provider实例
  */
-class ProviderManager(client: OkHttpClient) {
+class ProviderManager(
+    client: OkHttpClient,
+    accountCredentials: AccountCredentialProvider,
+) {
     // 存储已注册的Provider实例
     private val providers = mutableMapOf<String, Provider<*>>()
 
@@ -17,6 +22,8 @@ class ProviderManager(client: OkHttpClient) {
         registerProvider("openai", OpenAIProvider(client))
         registerProvider("google", GoogleProvider(client))
         registerProvider("claude", ClaudeProvider(client))
+        registerProvider("chatgpt", ChatGPTProvider(client, accountCredentials))
+        registerProvider("grok", GrokProvider(client, accountCredentials))
     }
 
     /**
@@ -51,6 +58,8 @@ class ProviderManager(client: OkHttpClient) {
             is ProviderSetting.OpenAI -> getProvider("openai")
             is ProviderSetting.Google -> getProvider("google")
             is ProviderSetting.Claude -> getProvider("claude")
+            is ProviderSetting.ChatGPT -> getProvider("chatgpt")
+            is ProviderSetting.Grok -> getProvider("grok")
         } as Provider<T>
     }
 }

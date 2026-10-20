@@ -51,7 +51,7 @@ import me.rerere.rikkahub.ui.components.ui.CardGroupValue
 import me.rerere.rikkahub.ui.theme.CustomColors
 
 @Composable
-fun ProviderApiKeys(provider: ProviderSetting, onChange: (ProviderSetting) -> Unit) {
+fun ProviderApiKeys(provider: ProviderSetting.ApiKey, onChange: (ProviderSetting) -> Unit) {
     val entries = provider.apiKeyEntries()
     val selectedId = provider.selectedApiKeyId ?: entries.firstOrNull()?.id
     var editing by remember(provider.id) { mutableStateOf(false) }
@@ -234,12 +234,13 @@ private fun ApiKeyEditSheet(
 @Composable
 fun ModelApiKeySelector(model: Model, provider: ProviderSetting?, onSelected: (String?) -> Unit) {
     val effectiveProvider = model.providerOverwrite ?: provider
+    if (effectiveProvider !is ProviderSetting.ApiKey) return
     if (effectiveProvider is ProviderSetting.Google &&
         effectiveProvider.vertexAI && effectiveProvider.useServiceAccount
     ) {
         return
     }
-    val entries = effectiveProvider?.apiKeyEntries().orEmpty()
+    val entries = effectiveProvider.apiKeyEntries()
     val selected = entries.find { it.id == model.apiKeyId }
     var expanded by remember { mutableStateOf(false) }
     CardGroup {
