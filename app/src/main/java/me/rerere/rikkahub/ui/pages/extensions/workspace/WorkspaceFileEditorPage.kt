@@ -2,11 +2,15 @@ package me.rerere.rikkahub.ui.pages.extensions.workspace
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.text.input.TextFieldLineLimits
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
@@ -16,6 +20,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -32,7 +37,9 @@ import me.rerere.ui.toast.ToastType
 import kotlinx.coroutines.launch
 import me.rerere.rikkahub.data.repository.WorkspaceRepository
 import me.rerere.rikkahub.ui.components.nav.BackButton
+import me.rerere.rikkahub.ui.components.richtext.MarkdownBlock
 import me.rerere.rikkahub.ui.context.LocalToaster
+import me.rerere.rikkahub.ui.context.LocalWorkspaceId
 import me.rerere.rikkahub.ui.theme.CustomColors
 import me.rerere.rikkahub.ui.theme.JetbrainsMono
 import me.rerere.ui.webview.WebView
@@ -57,8 +64,10 @@ fun WorkspaceFileEditorPage(
     val editable = area == WorkspaceStorageArea.FILES
     val fileName = path.substringAfterLast('/').ifBlank { path }
     val extension = fileName.substringAfterLast('.', "").lowercase()
-    val supportsPreview = extension in setOf("html", "htm", "svg")
+    val isMarkdown = extension in setOf("md", "markdown")
+    val supportsPreview = isMarkdown || extension in setOf("html", "htm", "svg")
     var showPreview by rememberSaveable(id, area, path) { mutableStateOf(supportsPreview) }
+    val previewScrollState = rememberScrollState()
 
     // 不能用 rememberTextFieldState: 它会把全文存进 saved state Bundle, 大文件切后台时触发 TransactionTooLargeException (#1953).
     // 内容本就由下方 LaunchedEffect 从磁盘加载, 无需 saveable.
@@ -150,6 +159,22 @@ fun WorkspaceFileEditorPage(
                     text = loadError ?: "",
                     color = MaterialTheme.colorScheme.error,
                 )
+            }
+
+            showPreview && isMarkdown -> CompositionLocalProvider(LocalWorkspaceId provides id) {
+                SelectionContainer(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(innerPadding)
+                        .verticalScroll(previewScrollState)
+                        .padding(16.dp),
+                ) {
+                    MarkdownBlock(
+                        content = textState.text.toString(),
+                        modifier = Modifier.fillMaxWidth(),
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                }
             }
 
             showPreview -> WorkspaceWebPreview(
