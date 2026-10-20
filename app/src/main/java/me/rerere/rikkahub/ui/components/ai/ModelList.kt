@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
@@ -55,6 +54,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastAny
@@ -327,6 +327,8 @@ fun ModelListSheet(
             state.close()
         },
         sheetState = sheetState,
+        sheetGesturesEnabled = false,
+        dragHandle = null,
     ) {
         Column(
             modifier = Modifier
@@ -360,6 +362,7 @@ private fun ColumnScope.ModelList(
     onDismiss: () -> Unit
 ) {
     val coroutineScope = rememberCoroutineScope()
+    val navController = LocalNavController.current
     val settingsStore = koinInject<SettingsStore>()
     val settings = settingsStore.settingsFlow
         .collectAsStateWithLifecycle()
@@ -627,32 +630,42 @@ private fun ColumnScope.ModelList(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(MaterialTheme.shapes.small)
-                        .clickable { toggleCollapsed(providerSetting) }
-                        .padding(horizontal = 8.dp)
-                        .padding(bottom = 4.dp, top = 8.dp),
+                        .padding(horizontal = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    Icon(
-                        imageVector = if (collapsed) HugeIcons.ArrowRight01 else HugeIcons.ArrowDown01,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp),
-                        tint = MaterialTheme.colorScheme.primary,
-                    )
-
                     Text(
                         text = providerSetting.name,
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.primary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(MaterialTheme.shapes.small)
+                            .clickable(role = Role.Button, onClickLabel = "打开供应商设置") {
+                                onDismiss()
+                                navController.navigate(
+                                    Screen.SettingProviderDetail(providerId = providerSetting.id.toString())
+                                )
+                            }
+                            .padding(vertical = 12.dp),
                     )
-
-                    Spacer(modifier = Modifier.weight(1f))
 
                     ProviderQuotaText(
                         providerSetting = providerSetting,
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.primary,
                     )
+
+                    IconButton(onClick = { toggleCollapsed(providerSetting) }) {
+                        Icon(
+                            imageVector = if (collapsed) HugeIcons.ArrowRight01 else HugeIcons.ArrowDown01,
+                            contentDescription = if (collapsed) "展开模型列表" else "收起模型列表",
+                            modifier = Modifier.size(16.dp),
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                    }
                 }
             }
 
