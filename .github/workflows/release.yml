@@ -56,7 +56,7 @@ jobs:
           retention-days: 14
           if-no-files-found: error
           path: |
-            app/build/outputs/apk/${{ inputs.variant || 'release' }}/*.apk
+            app/build/outputs/apk/github/${{ inputs.variant || 'release' }}/*.apk
             SHA256SUMS.txt
             release-notes.md
             build-info.json
@@ -70,5 +70,5 @@ jobs:
           make_latest: false
           fail_on_unmatched_files: true
           files: |
-            app/build/outputs/apk/release/*.apk
+            app/build/outputs/apk/github/release/*.apk
             SHA256SUMS.txt

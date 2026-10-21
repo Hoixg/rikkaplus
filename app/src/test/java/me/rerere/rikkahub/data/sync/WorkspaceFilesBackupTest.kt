@@ -2,6 +2,7 @@ package me.rerere.rikkahub.data.sync
 
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
+import me.rerere.workspace.WorkspaceType
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
@@ -24,6 +25,15 @@ class WorkspaceFilesBackupTest {
     private fun write(path: String, text: String) = File(temporary.root, path).apply {
         parentFile!!.mkdirs()
         writeText(text)
+    }
+
+    @Test fun remoteWorkspacesHaveNoLocalFileBackupRecords() {
+        val local = record.toEntity()
+        val remote = local.copy(id = "ssh-id", root = "ssh-root", type = WorkspaceType.SSH.name)
+
+        val backup = WorkspaceFilesBackup.records(listOf(local, remote))
+
+        assertEquals(listOf(record), backup.workspaces)
     }
 
     @Test fun archiveContainsOnlyFilesAreaAndKeepsNestedAndEmptyFolders() = runBlocking {

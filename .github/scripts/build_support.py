@@ -30,6 +30,7 @@ def prepare():
         "version_code": int(value("versionCode", r"([0-9]+)")),
         "application_id": value("applicationId", r'"([A-Za-z0-9_.]+)"'),
         "variant": variant,
+        "distribution": "github",
         "commit": git("rev-parse", "HEAD"),
     }
     if variant == "debug":
@@ -58,14 +59,14 @@ def prepare():
 
 def verify():
     info = json.loads(Path("build-info.json").read_text())
-    directory = Path("app/build/outputs/apk") / info["variant"]
+    directory = Path("app/build/outputs/apk/github") / info["variant"]
     metadata = json.loads((directory / "output-metadata.json").read_text())
     if metadata["applicationId"] != info["application_id"]:
         raise ValueError("APK application ID mismatch")
     elements = metadata["elements"]
     if len(elements) != 1 or any(e["versionName"] != info["version"] or e["versionCode"] != info["version_code"] for e in elements):
         raise ValueError("APK version or output count mismatch")
-    names = {"app-" + info["variant"] + ".apk"}
+    names = {"app-github-" + info["variant"] + ".apk"}
     if {e["outputFile"] for e in elements} != names or {p.name for p in directory.glob("*.apk")} != names:
         raise ValueError("Unexpected APK outputs")
     sums = []

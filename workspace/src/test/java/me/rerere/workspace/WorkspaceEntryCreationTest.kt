@@ -26,8 +26,9 @@ class WorkspaceEntryCreationTest {
         val manager = manager()
         val root = "project"
         manager.ensureWorkspace(root)
-        val folder = manager.createDirectory(root, "资料目录")
-        val file = manager.writeText(root, "资料目录/notes.md", "", overwrite = false)
+        val backend = manager.backend(root)
+        val folder = backend.createDirectory(WorkspaceStorageArea.FILES, "资料目录")
+        val file = backend.writeText("资料目录/notes.md", "", overwrite = false)
         assertTrue(folder.isDirectory)
         assertEquals("资料目录", folder.path)
         assertFalse(file.isDirectory)

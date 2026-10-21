@@ -60,7 +60,7 @@ runs:
       run: |
         set -euo pipefail
         chmod +x gradlew
-        ./gradlew ":app:assemble${BUILD_VARIANT^}" --max-workers=2 --no-daemon --console=plain
+        ./gradlew ":app:assembleGithub${BUILD_VARIANT^}" --max-workers=2 --no-daemon --console=plain
     - name: 检查签名、版本及校验值
       shell: bash
       env:
@@ -70,7 +70,7 @@ runs:
         python3 .github/scripts/build_support.py verify
         apksigner=$(find "$ANDROID_HOME/build-tools" -maxdepth 2 -type f -name apksigner | sort -V | tail -n 1)
         test -n "$apksigner"
-        for apk in app/build/outputs/apk/"$BUILD_VARIANT"/*.apk; do
+        for apk in app/build/outputs/apk/github/"$BUILD_VARIANT"/*.apk; do
           "$apksigner" verify --print-certs "$apk"
         done
     - name: 生成中文更新说明

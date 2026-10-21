@@ -48,7 +48,9 @@ internal object WorkspaceFilesBackup {
         )
     }
 
-    fun records(workspaces: List<WorkspaceEntity>) = Manifest(workspaces = workspaces.map {
+    fun records(workspaces: List<WorkspaceEntity>) = Manifest(workspaces = workspaces.filter {
+        it.capabilities().localFiles
+    }.map {
         Record(it.id, it.name, it.root, it.createdAt, it.updatedAt)
     })
 
