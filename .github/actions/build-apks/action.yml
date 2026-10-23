@@ -20,6 +20,9 @@ outputs:
   commit:
     description: 源码提交
     value: ${{ steps.prepare.outputs.commit }}
+  mapping:
+    description: Release 混淆映射文件
+    value: ${{ steps.prepare.outputs.mapping }}
 runs:
   using: composite
   steps:

@@ -59,8 +59,19 @@ and APK assets before reporting a successful release. Ordinary push requests do 
 For local verification, leave CPU headroom: use roughly half the available logical cores, below-normal priority where
 supported, and a small Gradle worker limit. Prefer focused checks and avoid repeated full builds. Never commit signing
 keys, passwords, Google Services configuration, or generated build metadata.
+
 App 有一个 `distribution` 维度的 product flavor：`github`（默认）和 `play`，共用同一个 applicationId。
 渠道差异用 `BuildConfig.IS_PLAY_STORE` 判断（如 Play 版不检查更新、不显示更新提醒）。
+
+## Upstream merge boundaries
+
+Read `docs/upstream-sync.md` before syncing upstream. The built-in Web server is intentionally removed from `1.0`.
+Never restore `web/`, `web-ui/`, the app's `web` source/test packages, server settings/routes/startup hooks, or direct
+Web-server-only JWT / JmDNS dependencies. Keep the OAuth loopback callback receiver and its Ktor Core/CIO dependencies
+required for subscription sign-in. Resolve upstream modify/delete conflicts by keeping these deletions, and
+discard newly added server files even when Git reports no conflict. Check newly added locale resources for orphaned
+server strings. Keep WebView/HTML/Markdown previews, web search, WebDAV, MCP, SSH and their client networking support.
+Run the documented removal checks before committing an upstream merge.
 
 ## Module Structure
 

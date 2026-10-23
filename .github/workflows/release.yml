@@ -60,6 +60,7 @@ jobs:
             SHA256SUMS.txt
             release-notes.md
             build-info.json
+            ${{ steps.build.outputs.mapping }}
       - name: 发布版本
         if: github.event_name == 'push'
         uses: softprops/action-gh-release@v3
@@ -72,3 +73,4 @@ jobs:
           files: |
             app/build/outputs/apk/github/release/*.apk
             SHA256SUMS.txt
+            ${{ steps.build.outputs.mapping }}

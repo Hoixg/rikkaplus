@@ -113,6 +113,8 @@ android {
     }
     androidResources {
         generateLocaleConfig = true
+        // 只保留 app 自己翻译过的语言，依赖库（AndroidX、GMS 等）带的其他语言资源不打包
+        localeFilters += listOf("en", "ar", "de", "ja", "ko", "ko-rKR", "ru", "zh", "zh-rTW")
     }
     packaging {
         jniLibs {
@@ -172,6 +174,11 @@ kotlin {
     }
 }
 
+// 搜索配置使用显式工厂，运行时排除不再需要的 kotlin-reflect，避免 R8 保留反射实现。
+configurations.matching { it.name.endsWith("RuntimeClasspath") }.configureEach {
+    exclude(group = "org.jetbrains.kotlin", module = "kotlin-reflect")
+}
+
 // Local JVM tests need the desktop native library instead of the Android AAR.
 configurations.matching { it.name.endsWith("UnitTestRuntimeClasspath") }.configureEach {
     resolutionStrategy.dependencySubstitution {
@@ -218,6 +225,9 @@ dependencies {
     // DataStore
     implementation(libs.androidx.datastore.preferences)
 
+    // EXIF orientation for picked images
+    implementation(libs.androidx.exifinterface)
+
     // Image metadata extractor
     // https://github.com/drewnoakes/metadata-extractor
     implementation(libs.metadata.extractor)
@@ -247,9 +257,6 @@ dependencies {
     implementation(libs.ktor.client.content.negotiation)
     implementation(libs.ktor.serialization.kotlinx.json)
 
-    // ucrop
-    implementation(libs.ucrop)
-
     // pebble (template engine)
     implementation(libs.pebble)
 
@@ -269,13 +276,11 @@ dependencies {
     // YAML front matter
     implementation(libs.snakeyaml)
 
-    // zxing
+    // zxing + CameraX (qrcode scanner)
     implementation(libs.zxing.core)
-
-    // quickie (qrcode scanner)
-    implementation(libs.quickie.bundled)
-    implementation(libs.barcode.scanning)
-    implementation(libs.androidx.camera.core)
+    implementation(libs.androidx.camera.camera2)
+    implementation(libs.androidx.camera.lifecycle)
+    implementation(libs.androidx.camera.compose)
 
     // Room
     implementation(libs.androidx.room.runtime)
@@ -313,8 +318,6 @@ dependencies {
     // mcp
     implementation(libs.modelcontextprotocol.kotlin.sdk)
 
-    // jmDNS (mDNS/Bonjour for .local hostname)
-
     // SLF4J Android binding — routes Ktor/SLF4J logs to logcat
     implementation(libs.slf4j.api)
     implementation(libs.slf4j.android)
@@ -336,7 +339,6 @@ dependencies {
     implementation(project(":terminal"))
     implementation(project(":oauth"))
     implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.jar", "*.aar"))))
-    implementation(kotlin("reflect"))
 
     // Leak Canary
     // debugImplementation(libs.leakcanary.android)

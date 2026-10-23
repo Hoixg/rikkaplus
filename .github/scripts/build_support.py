@@ -54,6 +54,8 @@ def prepare():
     if output:
         with open(output, "a", encoding="utf-8") as stream:
             stream.write("version=" + info["version"] + "\ncommit=" + info["commit"][:8] + "\n")
+            if variant == "release":
+                stream.write("mapping=app/build/outputs/mapping/githubRelease/mapping.txt\n")
     print("Building", info["version"], "(" + str(info["version_code"]) + ")", variant, info["application_id"])
 
 
