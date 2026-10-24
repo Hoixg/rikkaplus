@@ -75,6 +75,10 @@ object AutomationToolUI : ToolUIRenderer {
                 Text(it.name, style = MaterialTheme.typography.titleSmall)
                 Text("${modeLabel(it.mode)} · ${it.schedule.describe()}", style = MaterialTheme.typography.bodySmall)
                 Text("执行模型：${taskModelLabel(it, settings, followingModel)}", style = MaterialTheme.typography.bodySmall)
+                if (it.resetContextBeforeRun) {
+                    Text("每次执行前删除目标聊天的旧消息、分支和压缩摘要，仅保留本轮记录。",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                }
                 if (args.getStringContent("action") == "set_enabled") {
                     Text(if (args["enabled"]?.jsonPrimitive?.booleanOrNull == true) "启用后续排程" else "暂停后续排程", style = MaterialTheme.typography.bodyMedium)
                 }

@@ -51,8 +51,9 @@ suspend fun createAutomationTools(
             options returns fresh task/request UUIDs, configured models, and this assistant's chats. With target_conversation_id it returns selected-branch user message IDs.
             create: use a fresh id from options, definition, enabled (default true). update: first get the task, then send its id, revision, complete NEW definition and enabled. Do not send or concatenate the old prompt.
             delete/set_enabled/run/cancel require id and revision from get. run also requires a fresh request_id from options; retries MUST reuse it. cancel requires run_id from get.
-            definition fields: name, prompt, mode (NEW_CHAT/FOLLOW_UP/REGENERATE), conversationId, userMessageId, modelId, notify, schedule.
+            definition fields: name, prompt, mode (NEW_CHAT/FOLLOW_UP/REGENERATE), conversationId, userMessageId, modelId, notify, resetContextBeforeRun, schedule.
             NEW_CHAT starts a chat; FOLLOW_UP appends to conversationId when idle; REGENERATE copies the selected user message and preceding context into a NEW chat (prompt can be empty).
+            resetContextBeforeRun defaults false and is allowed only for FOLLOW_UP. When true, every run permanently deletes the target chat's previous messages, branches and compression summaries before sending the prompt, keeping chat settings and only the current run's records. Enable only when the human explicitly requests clearing previous chat records.
             schedule fields: kind (ONCE/DAILY/WEEKLY/INTERVAL), at (ONCE Unix epoch milliseconds), timeMinutes (minutes after midnight), intervalMinutes (>=15), weekdays (1=Mon..7=Sun), startDate/endDate (inclusive yyyy-MM-dd, nullable).
             Defaults: DAILY at 09:00, interval 1440 minutes, weekdays Mon-Fri. Requires exact-alarm access to enable; enabled=false saves a draft. run does not change future scheduling.
             After denial, do not retry without a new human request. ${if (scheduled) "This is a scheduled execution: ONLY READ ACTIONS ARE AVAILABLE." else ""}
@@ -74,6 +75,10 @@ suspend fun createAutomationTools(
                             put(it, buildJsonObject { put("type", buildJsonArray { add("string"); add("null") }) })
                         }
                         put("notify", field("boolean"))
+                        put("resetContextBeforeRun", buildJsonObject {
+                            put("type", "boolean")
+                            put("description", "FOLLOW_UP only, default false. Permanently delete old chat messages, branches and compression summaries before every run. Requires an explicit human request to clear previous records.")
+                        })
                         put("schedule", buildJsonObject {
                             put("type", "object")
                             put("properties", buildJsonObject {

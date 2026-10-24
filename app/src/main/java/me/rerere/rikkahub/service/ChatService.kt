@@ -362,7 +362,8 @@ class ChatService(
                     if (!repository.bind(run.id, id.toString(), model.id.toString(), modelLabel)) return@launchGenerationJob
                     if (definition.mode == TaskMode.FOLLOW_UP) definition.validateTarget(session.state.value)
                     if (definition.mode != TaskMode.REGENERATE) session.update { current ->
-                        current.copy(messageNodes = current.messageNodes + UIMessage(role = MessageRole.USER,
+                        val prepared = definition.prepareConversation(current)
+                        prepared.copy(messageNodes = prepared.messageNodes + UIMessage(role = MessageRole.USER,
                             parts = listOf(UIMessagePart.Text(definition.prompt)).replaceUserRegexes(assistant)).toMessageNode())
                     }
                     session.flush()

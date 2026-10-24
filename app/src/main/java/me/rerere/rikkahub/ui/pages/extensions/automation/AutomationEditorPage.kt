@@ -81,6 +81,7 @@ import me.rerere.rikkahub.ui.components.ui.CardGroup
 import me.rerere.rikkahub.ui.components.ui.ConnectedChoiceButtons
 import me.rerere.rikkahub.ui.components.ui.ConnectedChoiceLabel
 import me.rerere.rikkahub.ui.components.ui.ConnectedMultiChoiceButtons
+import me.rerere.rikkahub.ui.components.ui.switchItem
 import me.rerere.rikkahub.ui.context.LocalNavController
 import me.rerere.rikkahub.ui.theme.CustomColors
 import me.rerere.rikkahub.utils.JsonInstant
@@ -182,7 +183,8 @@ fun AutomationEditorPage(taskId: String?) {
                 CardGroup(title = { Text("执行设置") }) {
                     formItem {
                         ConnectedChoiceButtons(options = TaskMode.entries, selected = definition.mode,
-                            onSelect = { change(definition.copy(mode = it, conversationId = null, userMessageId = null)) }) { mode, selected ->
+                            onSelect = { change(definition.copy(mode = it, conversationId = null, userMessageId = null,
+                                resetContextBeforeRun = false)) }) { mode, selected ->
                             ConnectedChoiceLabel(modeLabel(mode), selected)
                         }
                         Text(when (definition.mode) {
@@ -201,6 +203,12 @@ fun AutomationEditorPage(taskId: String?) {
                                 clearDescription = "跟随默认模型")
                         }
                     }
+                    if (definition.mode == TaskMode.FOLLOW_UP) switchItem(
+                        checked = definition.resetContextBeforeRun,
+                        onCheckedChange = { change(definition.copy(resetContextBeforeRun = it)) },
+                        headlineContent = { Text("每次清空上下文和记录") },
+                        supportingContent = { Text("每次执行前删除目标聊天的旧消息、分支和压缩摘要，仅保留本轮记录。") },
+                    )
                     item(onClick = { change(definition.copy(notify = !definition.notify)) }, headlineContent = { Text("执行结果通知") },
                         trailingContent = { Switch(definition.notify, onCheckedChange = { change(definition.copy(notify = it)) }) })
                 }

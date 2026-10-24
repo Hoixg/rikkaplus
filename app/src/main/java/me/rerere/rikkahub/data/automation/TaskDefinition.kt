@@ -81,6 +81,7 @@ data class TaskDefinition(
     val modelId: String? = null,
     val schedule: TaskSchedule = TaskSchedule(),
     val notify: Boolean = true,
+    val resetContextBeforeRun: Boolean = false,
 ) {
     fun validate() {
         require(name.isNotBlank()) { "请输入任务名称" }
@@ -89,10 +90,18 @@ data class TaskDefinition(
         require(mode == TaskMode.REGENERATE || prompt.isNotBlank()) { "请输入任务提示词" }
         require(mode == TaskMode.NEW_CHAT || conversationId != null) { "请选择目标聊天" }
         require(mode != TaskMode.REGENERATE || userMessageId != null) { "请选择要重新生成的用户消息" }
+        require(!resetContextBeforeRun || mode == TaskMode.FOLLOW_UP) { "只有继续聊天任务支持执行前清空上下文和记录" }
         conversationId?.let(Uuid::parse)
         userMessageId?.let(Uuid::parse)
         schedule.validate()
     }
+
+    /** Called once after reserving a follow-up run; approval continuations keep this run's messages. */
+    internal fun prepareConversation(conversation: Conversation): Conversation =
+        if (mode == TaskMode.FOLLOW_UP && resetContextBeforeRun) {
+            // Compression checkpoints and alternative branches live in messageNodes.
+            conversation.copy(messageNodes = emptyList(), chatSuggestions = emptyList())
+        } else conversation
 
     fun validateTarget(target: Conversation?) {
         if (mode == TaskMode.NEW_CHAT) return
