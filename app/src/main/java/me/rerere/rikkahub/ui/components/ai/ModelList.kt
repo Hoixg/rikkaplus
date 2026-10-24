@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -23,8 +24,10 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalTextStyle
@@ -490,6 +493,37 @@ private fun ColumnScope.ModelList(
             currentIndex += visibleModelsByProvider[provider.id].orEmpty().size
             provider.id to position
         }.toMap()
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = stringResource(R.string.model_list_select_model),
+            style = MaterialTheme.typography.titleMediumEmphasized,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        FilledTonalButton(
+            onClick = onDismiss,
+            modifier = Modifier.heightIn(min = 48.dp),
+            shapes = ButtonDefaults.shapes(),
+            contentPadding = ButtonDefaults.ButtonWithIconContentPadding,
+        ) {
+            Icon(
+                imageVector = HugeIcons.Cancel01,
+                contentDescription = null,
+                modifier = Modifier
+                    .padding(end = ButtonDefaults.IconSpacing)
+                    .size(ButtonDefaults.IconSize),
+            )
+            Text(stringResource(R.string.model_list_close))
+        }
     }
 
     Surface(
