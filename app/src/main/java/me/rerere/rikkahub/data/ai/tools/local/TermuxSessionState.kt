@@ -3,19 +3,7 @@
 package me.rerere.rikkahub.data.ai.tools.local
 
 import androidx.collection.LruCache
-import java.security.MessageDigest
 import java.util.UUID
-
-/** Stable across turns/restarts, with no shared namespace between chats. */
-internal class TermuxScope(conversationId: String) {
-    val prefix = "rk_" + MessageDigest.getInstance("SHA-256")
-        .digest(conversationId.toByteArray(Charsets.UTF_8))
-        .take(12).joinToString("") { "%02x".format(it) } + "_"
-
-    fun owns(id: String): Boolean = id.startsWith(prefix) && isManagedTermuxSession(id)
-
-    fun sessionName(label: String?): String = prefix + TmuxOps.sessionName(label).removePrefix("rk_")
-}
 
 internal data class TermuxExecutionState(
     val status: String,

@@ -40,4 +40,8 @@ sealed class LocalToolOption {
     @Serializable
     @SerialName("termux")
     data object Termux : LocalToolOption()
+
+    @Serializable
+    @SerialName("shizuku")
+    data object Shizuku : LocalToolOption()
 }

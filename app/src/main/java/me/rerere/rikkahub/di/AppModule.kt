@@ -109,6 +109,8 @@ val appModule = module {
             skillManager = get(),
             workspaceRepository = get(),
             settingsStore = get(),
+            automationRepository = get(),
+            cancelAutomation = { get<ChatService>().cancelAutomation(it) },
         )
     }
 
@@ -121,6 +123,7 @@ val appModule = module {
             memoryRepository = get(),
             templateTransformer = get(),
             workspaceRepository = get(),
+            automationRepository = get(),
         )
     }
 
@@ -137,6 +140,7 @@ val appModule = module {
             metaGenerator = get(),
             mcpManager = get(),
             filesManager = get(),
+            automationRepository = get(),
             folderRepository = get()
         )
     }

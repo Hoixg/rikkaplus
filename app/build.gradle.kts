@@ -104,6 +104,7 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     buildFeatures {
+        aidl = true
         compose = true
         buildConfig = true
         resValues = true
@@ -188,6 +189,8 @@ configurations.matching { it.name.endsWith("UnitTestRuntimeClasspath") }.configu
 }
 
 dependencies {
+    implementation(libs.shizuku.api)
+    implementation(libs.shizuku.provider)
     implementation(libs.quickjs)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)

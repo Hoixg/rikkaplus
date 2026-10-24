@@ -8,24 +8,19 @@ import org.junit.Test
 
 class TermuxSessionStateTest {
     @Test
-    fun scopeSurvivesRecreationButRejectsOtherChatsAndLegacyIds() {
-        val first = TermuxScope("chat-a")
-        val id = first.sessionName("long label with quotes ' \$ and punctuation!")
-        assertTrue(first.owns(id))
-        assertTrue(TermuxScope("chat-a").owns(id))
-        assertFalse(TermuxScope("chat-b").owns(id))
-        assertFalse(first.owns("rk_legacy_1234"))
-        assertFalse(first.owns("$id:1"))
-        assertFalse(first.owns("${first.prefix}-t"))
+    fun sharedSessionIdsRejectTmuxTargetSyntax() {
+        val id = TmuxOps.sessionName("long label with quotes ' \$ and punctuation!")
+        assertTrue(isManagedTermuxSession(id))
+        assertFalse(isManagedTermuxSession("$id:1"))
+        assertFalse(isManagedTermuxSession("rk_-t"))
     }
 
     @Test
-    fun listingFiltersToCurrentChat() {
-        val scope = TermuxScope("chat-a")
-        val own = scope.sessionName(null)
-        val other = TermuxScope("chat-b").sessionName(null)
-        val output = "$own\t100\t200\n$other\t100\t200\nrk_legacy\t100\t200\n"
-        assertEquals(listOf(own), parseSessions(output, scope.prefix).map { it.name })
+    fun listingIncludesAllManagedSessions() {
+        val first = "rk_shell_12345678"
+        val second = "rk_task_87654321"
+        val output = "$first\t100\t200\n$second\t100\t200\nmanual_terminal\t100\t200\n"
+        assertEquals(listOf(first, second), parseSessions(output).map { it.name })
     }
 
     @Test
@@ -76,10 +71,10 @@ class TermuxSessionStateTest {
     }
 
     @Test
-    fun cursorCannotReadAnotherSessionOrChat() {
+    fun cursorCannotReadAnotherSession() {
         val cache = TermuxOutputCache()
-        val secret = cache.read("chat-a-session", null, "private", 8000)
-        val other = cache.read("chat-b-session", secret.cursor, "other", 8000)
+        val secret = cache.read("session-a", null, "private", 8000)
+        val other = cache.read("session-b", secret.cursor, "other", 8000)
         assertEquals("other", other.output)
         assertTrue(other.reset)
     }

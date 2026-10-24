@@ -23,6 +23,8 @@ import org.koin.dsl.onClose
 import java.io.File
 
 val repositoryModule = module {
+    single { me.rerere.rikkahub.data.automation.AutomationRepository(get(), get(), get(), get()) }
+
     single {
         ConversationRepository(get(), get(), get(), get(), get(), get())
     }

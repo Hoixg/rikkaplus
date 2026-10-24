@@ -465,6 +465,10 @@ class RouteActivity : ComponentActivity() {
                                 SettingPreferencesNotificationPage()
                             }
 
+                            entry<Screen.SettingBackground> {
+                                me.rerere.rikkahub.ui.pages.setting.SettingBackgroundPage()
+                            }
+
                             entry<Screen.SettingPreferencesGeneral> {
                                 SettingPreferencesGeneralPage()
                             }
@@ -551,12 +555,21 @@ class RouteActivity : ComponentActivity() {
                                 SkillsPage()
                             }
 
+                            entry<Screen.Automation> {
+                                me.rerere.rikkahub.ui.pages.extensions.automation.AutomationPage()
+                            }
+                            entry<Screen.AutomationEditor> { key ->
+                                me.rerere.rikkahub.ui.pages.extensions.automation.AutomationEditorPage(key.id)
+                            }
                             entry<Screen.Workspaces> {
                                 WorkspacePage()
                             }
 
                             entry<Screen.SettingTermux> {
                                 SettingTermuxPage()
+                            }
+                            entry<Screen.SettingShizuku> {
+                                me.rerere.rikkahub.ui.pages.setting.shizuku.SettingShizukuPage()
                             }
 
                             entry<Screen.WorkspaceDetail> { key ->
@@ -727,6 +740,9 @@ sealed interface Screen : NavKey {
     data object SettingPreferencesNotification : Screen
 
     @Serializable
+    data object SettingBackground : Screen
+
+    @Serializable
     data object SettingPreferencesGeneral : Screen
 
     @Serializable
@@ -790,10 +806,19 @@ sealed interface Screen : NavKey {
     data object Skills : Screen
 
     @Serializable
+    data object Automation : Screen
+
+    @Serializable
+    data class AutomationEditor(val id: String? = null) : Screen
+
+    @Serializable
     data object Workspaces : Screen
 
     @Serializable
     data object SettingTermux : Screen
+
+    @Serializable
+    data object SettingShizuku : Screen
 
     @Serializable
     data class WorkspaceDetail(val id: String, val openFiles: Boolean = false) : Screen

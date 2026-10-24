@@ -73,6 +73,15 @@ discard newly added server files even when Git reports no conflict. Check newly 
 server strings. Keep WebView/HTML/Markdown previews, web search, WebDAV, MCP, SSH and their client networking support.
 Run the documented removal checks before committing an upstream merge.
 
+## Scheduled tasks
+
+The `1.0` scheduled-task feature is an independent implementation in `data/automation` and
+`ui/pages/extensions/automation`; read `docs/scheduled-tasks.md` before changing it. The `automation_task` and
+`automation_run` tables contain only this branch's data. Do not import historical custom task/job schemas,
+Worker shims, migration chains, timed approvals, or old-prompt comparison metadata. Reuse ChatService,
+ConversationSession, existing model/assistant pickers, and the normal agent tool approvals. Scheduled executions
+must keep task management read-only, and model overrides must not change the assistant or conversation default.
+
 ## Module Structure
 
 - **app**: Main application module with UI, ViewModels, and core logic

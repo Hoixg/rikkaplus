@@ -272,6 +272,15 @@ class ConversationSession(
 
     fun getJob(): Job? = _generationJob.value
 
+    /** User messages and unresolved approvals have priority over background automation. */
+    @Synchronized
+    internal fun tryStartAutomation(job: Job): Boolean {
+        if (!isInitialized || getJob() != null || messageQueue.state.value.messages.isNotEmpty() ||
+            state.value.currentMessages.any { message -> message.getTools().any { it.isPending } }) return false
+        setJob(job)
+        return true
+    }
+
     @Synchronized
     fun cancelJobs(): List<Job> = activeJobs.toList().also { jobs ->
         // Cancel waiters first so a predecessor finishing cannot start the next approval.

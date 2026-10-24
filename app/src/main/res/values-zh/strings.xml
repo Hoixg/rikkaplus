@@ -1767,4 +1767,25 @@
   <string name="floating_chat_status_awaiting_approval">等待确认工具调用</string>
   <string name="floating_chat_status_done">回复完成</string>
   <string name="floating_chat_status_idle">空闲</string>
+  <string name="assistant_page_local_tools_shizuku_title">Shizuku</string>
+  <string name="assistant_page_local_tools_shizuku_desc">以 Shizuku 服务的权限（ADB shell 或 root）运行 shell 命令。需要安装并运行 Shizuku 应用；请在扩展管理 → Shizuku 中授权。每次调用都需授权。</string>
+  <string name="setting_page_shizuku">Shizuku</string>
+  <string name="setting_page_shizuku_desc">为通过 Shizuku 运行的 shell 命令授权并检查状态。</string>
+  <string name="setting_shizuku_title">Shizuku</string>
+  <string name="setting_shizuku_section_status">状态</string>
+  <string name="setting_shizuku_status_app">Shizuku 应用</string>
+  <string name="setting_shizuku_status_app_installed">已安装，点击打开</string>
+  <string name="setting_shizuku_status_app_missing">未安装，点击下载</string>
+  <string name="setting_shizuku_status_service">Shizuku 服务</string>
+  <string name="setting_shizuku_status_service_running">运行中</string>
+  <string name="setting_shizuku_status_service_not_running">未运行，请从 Shizuku 应用中启动</string>
+  <string name="setting_shizuku_status_permission">权限</string>
+  <string name="setting_shizuku_status_permission_granted">已授权，点击重新请求</string>
+  <string name="setting_shizuku_status_permission_missing">未授权，点击请求</string>
+  <string name="setting_shizuku_toast_permission_granted">权限已授予</string>
+  <string name="setting_shizuku_toast_permission_denied">权限被拒绝</string>
+  <string name="setting_shizuku_toast_service_not_running">Shizuku 服务未运行</string>
+  <string name="setting_shizuku_section_help">设置帮助</string>
+  <string name="setting_shizuku_help_title">设置 Shizuku</string>
+  <string name="setting_shizuku_help_body">从其 GitHub 发布页面安装 Shizuku，然后启动其服务：在已 root 的设备上可通过 Shizuku 应用启动，或在 Android 11+ 上通过无线调试配对启动（开发者选项 → 无线调试 → 使用配对码配对设备，然后运行 Shizuku 提供的启动命令）。服务运行后，点击上方的权限以授予 RikkaPlus 访问权限。</string>
 </resources>

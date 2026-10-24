@@ -16,6 +16,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.rikkahub.R
+import me.rerere.hugeicons.stroke.Calendar03
 import me.rerere.hugeicons.stroke.Book03
 import me.rerere.hugeicons.stroke.ComputerTerminal01
 import me.rerere.hugeicons.stroke.File02
@@ -86,6 +87,12 @@ fun ExtensionsPage() {
                         supportingContent = { Text(stringResource(R.string.setting_page_mcp_desc)) },
                     )
                     item(
+                        onClick = { navController.navigate(Screen.Automation) },
+                        leadingContent = { CardGroupIcon(HugeIcons.Calendar03, containerColor = containerColor, contentColor = contentColor) },
+                        headlineContent = { Text("定时任务") },
+                        supportingContent = { Text("安排助手定时执行，查看运行状态与聊天结果") },
+                    )
+                    item(
                         onClick = { navController.navigate(Screen.Workspaces) },
                         leadingContent = { CardGroupIcon(HugeIcons.Folder01, containerColor = containerColor, contentColor = contentColor) },
                         headlineContent = { Text(stringResource(R.string.extensions_page_workspace)) },
@@ -98,6 +105,12 @@ fun ExtensionsPage() {
                         },
                         headlineContent = { Text("Termux") },
                         supportingContent = { Text("连接手机终端，配置命令审批、超时和输出限制") },
+                    )
+                    item(
+                        onClick = { navController.navigate(Screen.SettingShizuku) },
+                        leadingContent = { CardGroupIcon(HugeIcons.ComputerTerminal01, containerColor = containerColor, contentColor = contentColor) },
+                        headlineContent = { Text(stringResource(R.string.setting_page_shizuku)) },
+                        supportingContent = { Text(stringResource(R.string.setting_page_shizuku_desc)) },
                     )
                 }
             }

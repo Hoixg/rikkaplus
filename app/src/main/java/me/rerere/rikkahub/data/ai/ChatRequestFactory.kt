@@ -36,6 +36,7 @@ import me.rerere.rikkahub.data.ai.transformers.transformThinkTags
 import me.rerere.rikkahub.data.ai.transformers.transforms
 import me.rerere.rikkahub.data.ai.transformers.visualTransforms
 import me.rerere.rikkahub.data.datastore.Settings
+import me.rerere.rikkahub.data.datastore.findModelById
 import me.rerere.rikkahub.data.datastore.findProvider
 import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.data.model.Conversation
@@ -77,6 +78,7 @@ class ChatRequestFactory(
     private val memoryRepository: MemoryRepository,
     templateTransformer: TemplateTransformer,
     workspaceRepository: WorkspaceRepository,
+    private val automationRepository: me.rerere.rikkahub.data.automation.AutomationRepository? = null,
 ) {
     private val inputTransformers: List<InputMessageTransformer> = listOf(
         TimeReminderTransformer,
@@ -97,8 +99,12 @@ class ChatRequestFactory(
     /** 解析本轮的助手、模型、记忆和工具；MCP 服务名不合法时抛出 InvalidMcpServerNamesException */
     suspend fun createContext(settings: Settings, conversation: Conversation): ChatTurnContext {
         // 模型、思考级别、搜索、工具等以会话上固定的配置为准
+        val scheduled = automationRepository?.forConversation(conversation.id.toString())
+        val overrideModel = scheduled?.executionModelId?.let {
+            settings.findModelById(Uuid.parse(it)) ?: error("任务指定的模型已删除")
+        }
         val assistant = settings.getAssistantOf(conversation)
-        val model = settings.getChatModelOf(conversation)
+        val model = overrideModel ?: settings.getChatModelOf(conversation)
             ?: throw IllegalStateException("No chat model selected")
         val provider = model.findProvider(settings.providers) ?: error("Provider not found")
         return ChatTurnContext(

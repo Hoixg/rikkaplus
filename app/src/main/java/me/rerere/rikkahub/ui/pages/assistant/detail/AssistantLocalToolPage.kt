@@ -16,6 +16,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -39,6 +40,7 @@ import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.ai.tools.local.LocalToolOption
 import me.rerere.rikkahub.data.ai.tools.local.TermuxIntegration
 import me.rerere.rikkahub.data.model.Assistant
+import me.rerere.rikkahub.shizuku.ShizukuManager
 import me.rerere.rikkahub.ui.components.nav.BackButton
 import me.rerere.rikkahub.ui.components.ui.CardGroup
 import me.rerere.rikkahub.ui.components.ui.CardGroupIcon
@@ -54,6 +56,7 @@ import me.rerere.rikkahub.utils.hasUsageStatsPermission
 import me.rerere.rikkahub.utils.openUsageAccessSettings
 import org.koin.androidx.compose.koinViewModel
 import org.koin.core.parameter.parametersOf
+import rikka.shizuku.Shizuku
 
 @Composable
 fun AssistantLocalToolPage(id: String) {
@@ -119,6 +122,17 @@ private fun AssistantLocalToolContent(
     PermissionManager(permissionState = calendarPermissionState)
     val termuxPermissionState = rememberPermissionState(PermissionTermux)
     PermissionManager(permissionState = termuxPermissionState)
+    DisposableEffect(Unit) {
+        val listener = Shizuku.OnRequestPermissionResultListener { _, result ->
+            val granted = result == android.content.pm.PackageManager.PERMISSION_GRANTED
+            toaster.show(
+                context.getString(if (granted) R.string.setting_shizuku_toast_permission_granted else R.string.setting_shizuku_toast_permission_denied),
+                type = if (granted) ToastType.Success else ToastType.Error,
+            )
+        }
+        ShizukuManager.addRequestPermissionResultListener(listener)
+        onDispose { ShizukuManager.removeRequestPermissionResultListener(listener) }
+    }
 
     fun toggleLocalTool(option: LocalToolOption, enabled: Boolean) {
         if (enabled && option == LocalToolOption.Termux) {
@@ -145,6 +159,9 @@ private fun AssistantLocalToolContent(
             assistant.localTools - option
         }
         onUpdate(assistant.copy(localTools = newLocalTools))
+        if (enabled && option == LocalToolOption.Shizuku && ShizukuManager.isBinderAlive()) {
+            ShizukuManager.requestPermission()
+        }
     }
 
     fun CardGroupScope.toolItem(
@@ -242,6 +259,12 @@ private fun AssistantLocalToolContent(
                 icon = HugeIcons.ComputerTerminal01,
                 title = R.string.assistant_page_local_tools_termux_title,
                 description = R.string.assistant_page_local_tools_termux_desc,
+            )
+            toolItem(
+                option = LocalToolOption.Shizuku,
+                icon = HugeIcons.ComputerTerminal01,
+                title = R.string.assistant_page_local_tools_shizuku_title,
+                description = R.string.assistant_page_local_tools_shizuku_desc,
             )
         }
     }

@@ -105,11 +105,25 @@ class RikkaHubApp : Application() {
         // Resume media generations interrupted by the last process death
         resumeMediaCreations()
         resumeMemoryConsolidation()
+        resumeAutomation()
 
         // Increment launch count
         incrementLaunchCount()
 
         // Composer.setDiagnosticStackTraceMode(ComposeStackTraceMode.Auto)
+    }
+
+    private fun resumeAutomation() {
+        fun reconcile() {
+            get<AppScope>().launch {
+                runCatching { get<me.rerere.rikkahub.data.automation.AutomationRepository>().reconcile() }
+                    .onFailure { Log.e(TAG, "Unable to restore scheduled tasks", it) }
+            }
+        }
+        reconcile()
+        ProcessLifecycleOwner.get().lifecycle.addObserver(LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_START) reconcile()
+        })
     }
 
     private fun resumeMediaCreations() {

@@ -47,6 +47,8 @@ class ChatToolFactory(
     private val skillManager: SkillManager,
     private val workspaceRepository: WorkspaceRepository,
     private val settingsStore: SettingsStore,
+    private val automationRepository: me.rerere.rikkahub.data.automation.AutomationRepository? = null,
+    private val cancelAutomation: suspend (String) -> Unit = {},
 ) {
     suspend fun createTools(
         settings: Settings,
@@ -63,8 +65,11 @@ class ChatToolFactory(
             if (shouldUseExternalWebSearch(assistant, model)) {
                 addAll(createSearchTools(settings))
             }
-            addAll(localTools.getTools(assistant.localTools, conversationId))
+            addAll(localTools.getTools(assistant.localTools))
             addAll(createMcpManagementTools(settingsStore))
+            automationRepository?.let { repository ->
+                addAll(createAutomationTools(repository, conversationRepository, settingsStore, assistant.id, conversationId, cancelAutomation))
+            }
             if (assistant.enableRecentChatsReference) {
                 addAll(createConversationTools(conversationRepository, assistant.id))
             }

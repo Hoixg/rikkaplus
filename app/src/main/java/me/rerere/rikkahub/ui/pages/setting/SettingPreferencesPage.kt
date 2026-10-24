@@ -72,6 +72,12 @@ fun SettingPreferencesPage() {
                         supportingContent = { Text(stringResource(R.string.setting_page_preferences_notification_desc)) },
                     )
                     item(
+                        onClick = { navController.navigate(Screen.SettingBackground) },
+                        leadingContent = { CardGroupIcon(HugeIcons.Settings03, containerColor = containerColor, contentColor = contentColor) },
+                        headlineContent = { Text("后台运行与权限") },
+                        supportingContent = { Text("管理定时触发、通知、电池限制与自启动") },
+                    )
+                    item(
                         onClick = { navController.navigate(Screen.SettingPreferencesGeneral) },
                         leadingContent = { CardGroupIcon(HugeIcons.Settings03, containerColor = containerColor, contentColor = contentColor) },
                         headlineContent = { Text(stringResource(R.string.setting_page_preferences_general)) },

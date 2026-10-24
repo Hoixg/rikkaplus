@@ -5,7 +5,6 @@ import me.rerere.ai.core.Tool
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.event.AppEventBus
 import me.rerere.tts.provider.TTSManager
-import kotlin.uuid.Uuid
 
 class LocalTools(
     private val context: Context,
@@ -32,7 +31,7 @@ class LocalTools(
 
     val chartDisplayTool by lazy { buildChartDisplayTool() }
 
-    fun getTools(options: List<LocalToolOption>, conversationId: Uuid): List<Tool> {
+    fun getTools(options: List<LocalToolOption>): List<Tool> {
         val tools = mutableListOf<Tool>()
         if (options.contains(LocalToolOption.JavascriptEngine)) {
             tools.add(javascriptTool)
@@ -61,13 +60,15 @@ class LocalTools(
         }
         if (LocalToolOption.Termux in options) {
             val config = { settingsStore.settingsFlow.value.termuxConfig }
-            val scope = TermuxScope(conversationId.toString())
-            tools.add(termuxRunCommandTool(context, scope, termuxOutputCache, config))
-            tools.add(termuxSessionStartTool(context, scope, termuxOutputCache, config))
-            tools.add(termuxSessionSendTool(context, scope, termuxOutputCache, config))
-            tools.add(termuxSessionReadTool(context, scope, termuxOutputCache, config))
-            tools.add(termuxSessionKillTool(context, scope, termuxOutputCache, config))
-            tools.add(termuxSessionListTool(context, scope))
+            tools.add(termuxRunCommandTool(context, termuxOutputCache, config))
+            tools.add(termuxSessionStartTool(context, termuxOutputCache, config))
+            tools.add(termuxSessionSendTool(context, termuxOutputCache, config))
+            tools.add(termuxSessionReadTool(context, termuxOutputCache, config))
+            tools.add(termuxSessionKillTool(context, termuxOutputCache, config))
+            tools.add(termuxSessionListTool(context))
+        }
+        if (LocalToolOption.Shizuku in options) {
+            tools.add(shizukuExecTool(context))
         }
         return tools
     }

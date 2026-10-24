@@ -47,8 +47,14 @@ import me.rerere.rikkahub.data.ai.mcp.McpManager
 import me.rerere.rikkahub.data.ai.prompts.buildCompressPrompt
 import me.rerere.rikkahub.data.ai.tools.InvalidMcpServerNamesException
 import me.rerere.rikkahub.data.ai.tools.shouldUseExternalWebSearch
+import me.rerere.rikkahub.data.automation.AutomationRepository
+import me.rerere.rikkahub.data.automation.AutomationRun
+import me.rerere.rikkahub.data.automation.RunState
+import me.rerere.rikkahub.data.automation.TaskMode
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.datastore.getCurrentAssistant
+import me.rerere.rikkahub.data.datastore.findModelById
+import me.rerere.rikkahub.data.datastore.findProvider
 import me.rerere.rikkahub.data.event.AppEvent
 import me.rerere.rikkahub.data.event.AppEventBus
 import me.rerere.rikkahub.data.files.FilesManager
@@ -112,6 +118,7 @@ class ChatService(
     val mcpManager: McpManager,
     private val filesManager: FilesManager,
     private val folderRepository: FolderRepository,
+    private val automationRepository: AutomationRepository? = null,
 ) {
     /** 一轮生成的结果 */
     private sealed interface TurnResult {
@@ -186,6 +193,7 @@ class ChatService(
             session.messageQueue.failReplyWaiters(context.getString(R.string.chat_page_voice_tool_approval))
         }
         appScope.launch { dispatchNextQueuedMessage(session.id) }
+        appScope.launch { automationRepository?.kick() }
     }
 
     // 保留 UI/Web 的入口，生命周期和状态查询统一交给 SessionManager。
@@ -300,7 +308,13 @@ class ChatService(
     private suspend fun mutate(conversationId: Uuid, transform: (Conversation) -> Conversation): Conversation =
         withLoadedSession(conversationId) { session ->
             session.update(transform)
-            session.flush().also { dispatchNextQueuedMessage(conversationId) }
+            session.flush().also { updated ->
+                automationRepository?.forConversation(conversationId.toString())?.takeIf {
+                    it.state == RunState.APPROVAL && !updated.isAwaitingToolApproval
+                }?.let { automationRepository.finish(it.id, RunState.CANCELLED, "待审批内容已被修改或移除") }
+                dispatchNextQueuedMessage(conversationId)
+                automationRepository?.kick()
+            }
         }
 
     // 只删上次落库时引用、这次落库不再引用的文件；只在内存里出现过的文件宁可漏删也不误删
@@ -314,6 +328,79 @@ class ChatService(
         if (deletedFiles.isNotEmpty()) {
             filesManager.deleteChatFiles(deletedFiles)
             Log.w(TAG, "deleteUnreferencedFiles: $deletedFiles")
+        }
+    }
+
+    /** Reserves the live session before touching history; scheduled work cannot replace a user's job. */
+    suspend fun startAutomation(run: AutomationRun): Boolean {
+        val repository = checkNotNull(automationRepository)
+        val definition = run.definition
+        repository.validate(definition)
+        val settings = settingsStore.awaitLoaded()
+        val assistant = settings.assistants.first { it.id.toString() == definition.assistantId }
+        val source = if (definition.mode == TaskMode.NEW_CHAT) null else definition.conversationId?.let {
+            getConversation(Uuid.parse(it))
+        }
+        definition.validateTarget(source)
+        val id = if (definition.mode == TaskMode.FOLLOW_UP) source!!.id else Uuid.parse(run.id)
+        return sessionManager.withSession(id) { session ->
+            session.initialize(load = { loadConversation(id) }, create = {
+                check(definition.mode != TaskMode.FOLLOW_UP) { "目标聊天已删除" }
+                if (definition.mode == TaskMode.REGENERATE) {
+                    checkNotNull(source!!.fork(Uuid.parse(checkNotNull(definition.userMessageId)), emptySet(), ::copyChatFile))
+                        .copy(id = id, title = definition.name)
+                } else Conversation.ofId(id, assistant.id, newConversation = true)
+                    .updateCurrentMessages(assistant.presetMessages).copy(title = definition.name)
+            })
+            val job = launchGenerationJob(id) {
+                try {
+                    val currentSettings = settingsStore.awaitLoaded()
+                    val model = definition.modelId?.let { currentSettings.findModelById(Uuid.parse(it)) ?: error("任务指定的模型已删除") }
+                        ?: currentSettings.getChatModelOf(session.state.value) ?: error("未选择执行模型")
+                    val modelLabel = listOfNotNull(model.displayName.ifBlank { model.modelId }, model.findProvider(currentSettings.providers)?.name).joinToString(" · ")
+                    if (!repository.bind(run.id, id.toString(), model.id.toString(), modelLabel)) return@launchGenerationJob
+                    if (definition.mode == TaskMode.FOLLOW_UP) definition.validateTarget(session.state.value)
+                    if (definition.mode != TaskMode.REGENERATE) session.update { current ->
+                        current.copy(messageNodes = current.messageNodes + UIMessage(role = MessageRole.USER,
+                            parts = listOf(UIMessagePart.Text(definition.prompt)).replaceUserRegexes(assistant)).toMessageNode())
+                    }
+                    session.flush()
+                    runTurn(session)
+                } catch (e: Exception) {
+                    withContext(NonCancellable) {
+                        repository.finish(run.id, if (e is CancellationException) RunState.CANCELLED else RunState.FAILED, e.message.orEmpty())
+                    }
+                    if (e is CancellationException) throw e
+                    addError(e, id)
+                }
+            }
+            if (session.tryStartAutomation(job)) true else {
+                job.cancel()
+                false
+            }
+        }
+    }
+
+    suspend fun cancelAutomation(runId: String) {
+        val repository = checkNotNull(automationRepository)
+        val run = repository.run(runId)?.takeIf { it.activeTaskId != null } ?: return
+        try {
+            run.activeConversationId?.let { raw ->
+                val id = Uuid.parse(raw)
+                stopGeneration(id)
+                if (getConversation(id) != null) withLoadedSession(id, createIfMissing = false) { session ->
+                    if (session.getJob() == null) {
+                        session.tryUpdate { it.cancelInterruptedTools() }
+                        session.flush()
+                    }
+                }
+            }
+        } finally {
+            withContext(NonCancellable) {
+                repository.finish(run.id, RunState.CANCELLED, "已取消本次执行")
+                repository.refreshRetry()
+                repository.kick()
+            }
         }
     }
 
@@ -577,6 +664,51 @@ class ChatService(
      * 失败时报告错误、暂停消息队列并返回 [TurnResult.Failed]；取消时直接抛出。
      */
     private suspend fun runTurn(session: ConversationSession, regenerateNodeId: Uuid? = null): TurnResult {
+        val repository = automationRepository
+        val run = repository?.forConversation(session.id.toString()) ?: return performTurn(session, regenerateNodeId)
+        repository.beginSegment(run.id) ?: return TurnResult.Failed
+        val started = android.os.SystemClock.elapsedRealtime()
+        val wakeLock = context.getSystemService(android.os.PowerManager::class.java)
+            .newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "${context.packageName}:automation")
+        wakeLock.acquire((630_000 - run.generationMs).coerceAtLeast(1000))
+        var state = RunState.FAILED
+        var detail = "模型未能完成本次任务，请查看聊天错误"
+        try {
+            val result = kotlinx.coroutines.withTimeout((600_000 - run.generationMs).coerceAtLeast(1)) {
+                performTurn(session, regenerateNodeId)
+            }
+            state = when {
+                result is TurnResult.Finished && result.reason is AgentFinishReason.AwaitingApproval -> RunState.APPROVAL
+                result is TurnResult.Finished && result.reason == AgentFinishReason.Completed -> RunState.SUCCESS
+                else -> RunState.FAILED
+            }
+            if (state != RunState.FAILED) detail = ""
+            return result
+        } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+            detail = "累计生成时间超过 10 分钟"
+            addError(IllegalStateException(detail), session.id)
+            return TurnResult.Failed
+        } catch (e: CancellationException) {
+            state = RunState.CANCELLED
+            detail = "已停止本次执行"
+            throw e
+        } finally {
+            if (wakeLock.isHeld) wakeLock.release()
+            withContext(NonCancellable) {
+                val finished = repository.finish(run.id, state, detail, android.os.SystemClock.elapsedRealtime() - started)
+                if (finished != null && run.definition.notify) appEventBus.emit(AppEvent.ChatGenerationEnded(
+                    session.id, run.definition.name,
+                    when (state) {
+                        RunState.APPROVAL -> "任务需要工具审批，请打开聊天继续"
+                        RunState.SUCCESS -> session.state.value.currentMessages.lastOrNull()?.toText()?.take(100).orEmpty()
+                        else -> detail
+                    }))
+                repository.refreshRetry()
+            }
+        }
+    }
+
+    private suspend fun performTurn(session: ConversationSession, regenerateNodeId: Uuid? = null): TurnResult {
         val conversationId = session.id
         // 先清理上一轮状态；确定历史后，仅为真正的续写恢复消息 ID。
         session.replyMessageId.value = null
@@ -617,6 +749,7 @@ class ChatService(
             } else {
                 turn.model.displayName
             }
+            val automated = automationRepository?.forConversation(conversationId.toString()) != null
             warnIfToolsUnavailable(turn, conversationId)
 
             val (request, hooks) = requestFactory.createAgent(turn, history, session.processingStatus)
@@ -631,7 +764,7 @@ class ChatService(
                             session.replyMessageId.value = event.message.id
                             // 通知等边缘副作用由 ChatNotificationManager 消费；
                             // tryEmit 不挂起，事件丢失只影响单次通知更新，不能反压生成链
-                            appEventBus.tryEmit(
+                            if (!automated) appEventBus.tryEmit(
                                 AppEvent.ChatGenerationUpdate(conversationId, event.message, senderName)
                             )
                         }
@@ -653,7 +786,7 @@ class ChatService(
                     // 可能被取消了，或者意外结束，兜底保存
                     val finished = session.finishGeneration()
                     // 生成结束：取消 Live Update 通知，后台时发送完成通知
-                    appEventBus.emit(
+                    if (!automated) appEventBus.emit(
                         AppEvent.ChatGenerationEnded(
                             conversationId = conversationId,
                             senderName = senderName,
@@ -1011,6 +1144,7 @@ class ChatService(
     }
 
     suspend fun moveConversationToAssistant(conversationId: Uuid, assistantId: Uuid) {
+        automationRepository?.forConversation(conversationId.toString())?.let { cancelAutomation(it.id) }
         updateConversationMetadata(
             conversationId = conversationId,
             // 文件夹属于助手，移动后清除原助手的文件夹归属。
@@ -1082,6 +1216,7 @@ class ChatService(
      * 还停在这个会话上的页面看到的是空会话，之后再发消息会新建记录，不会写回已删除的那条。
      */
     suspend fun deleteConversation(conversationId: Uuid) {
+        automationRepository?.forConversation(conversationId.toString())?.let { cancelAutomation(it.id) }
         val session = sessionManager.getOrCreate(conversationId)
         discardQueuedMessages(session)
         session.replace(newConversation(conversationId), existsInDatabase = false) { previous ->

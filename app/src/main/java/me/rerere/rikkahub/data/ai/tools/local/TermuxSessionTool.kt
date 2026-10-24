@@ -408,7 +408,6 @@ private data class SessionCreation(val id: String, val read: CaptureResult, val 
 /** Create in two phases so remain-on-exit is enabled even for an instantly exiting job. */
 private suspend fun createManagedSession(
     context: Context,
-    scope: TermuxScope,
     label: String?,
     cols: Int,
     rows: Int,
@@ -417,11 +416,11 @@ private suspend fun createManagedSession(
     kind: String,
     stdin: String? = null,
 ): SessionCreation = sessionCreationMutex.withLock {
-    val name = scope.sessionName(label)
+    val name = TmuxOps.sessionName(label)
     ensureTmux(context)?.let { return@withLock SessionCreation(name, CaptureResult.OtherError(it)) }
     val response = tmux(context, TmuxOps.listArgv())
     var live = when (response) {
-        is CaptureResult.Success -> parseSessions(response.stdout, scope.prefix).filter { scope.owns(it.name) }
+        is CaptureResult.Success -> parseSessions(response.stdout).filter { isManagedTermuxSession(it.name) }
         is CaptureResult.OtherError -> if (isSessionNotFound(response.message)) {
             emptyList()
         } else {
@@ -441,7 +440,7 @@ private suspend fun createManagedSession(
     if (live.size >= MAX_SESSIONS) {
         return@withLock SessionCreation(
             name,
-            CaptureResult.OtherError("Max $MAX_SESSIONS sessions in this chat. Close an old session first.")
+            CaptureResult.OtherError("Max $MAX_SESSIONS managed sessions. Close an old session first.")
         )
     }
     var launched = false
@@ -487,7 +486,6 @@ internal fun termuxBackgroundScript(executable: String, arguments: Array<String>
 
 internal suspend fun startTermuxBackgroundTask(
     context: Context,
-    scope: TermuxScope,
     outputCache: TermuxOutputCache,
     config: TermuxConfig,
     executable: String,
@@ -496,7 +494,7 @@ internal suspend fun startTermuxBackgroundTask(
     stdin: String?,
 ): List<UIMessagePart> {
     val created = createManagedSession(
-        context, scope, null, DEFAULT_COLS, DEFAULT_ROWS, workingDir,
+        context, null, DEFAULT_COLS, DEFAULT_ROWS, workingDir,
         command = { id -> termuxBackgroundScript(executable, arguments, id.takeIf { stdin != null }) },
         kind = "task", stdin = stdin,
     )
@@ -530,7 +528,7 @@ private fun createdSessionEnvelope(
 
 private fun sessionIdSchema() = buildJsonObject {
     put("type", "string")
-    put("description", "Session/task id returned in this chat. Other chats' sessions are inaccessible.")
+    put("description", "Managed session/task id returned by termux_session_list/start. Sessions are shared across chats.")
 }
 
 private fun cursorSchema() = buildJsonObject {
@@ -559,12 +557,11 @@ private fun timeoutSchema() = buildJsonObject {
 
 internal fun termuxSessionStartTool(
     context: Context,
-    scope: TermuxScope,
     outputCache: TermuxOutputCache,
     getConfig: () -> TermuxConfig = { TermuxConfig() },
 ): Tool = Tool(
     name = "termux_session_start",
-    description = "Open a persistent interactive Termux bash terminal (tmux). Supports SSH, prompts and REPLs. Scoped to this chat. Returns session_id, execution_status, exit_code when available and output cursor. Shell commands complete only when the managed local shell returns; a quiet screen may still be running. Auto-installs tmux if needed.",
+    description = "Open a persistent interactive Termux bash terminal (tmux). Supports SSH, prompts and REPLs. Sessions are shared across chats. Returns session_id, execution_status, exit_code when available and output cursor. Shell commands complete only when the managed local shell returns; a quiet screen may still be running. Auto-installs tmux if needed.",
     parameters = {
         InputSchema.Obj(properties = buildJsonObject {
             put("name", buildJsonObject { put("type", "string") })
@@ -582,7 +579,6 @@ internal fun termuxSessionStartTool(
         val config = getConfig()
         val created = createManagedSession(
             context,
-            scope,
             input.jsonObject["name"]?.jsonPrimitive?.contentOrNull,
             (input.jsonObject["cols"]?.jsonPrimitive?.intOrNull ?: DEFAULT_COLS).coerceIn(20, 500),
             (input.jsonObject["rows"]?.jsonPrimitive?.intOrNull ?: DEFAULT_ROWS).coerceIn(5, 200),
@@ -657,12 +653,11 @@ private suspend fun sendSessionInput(
 
 internal fun termuxSessionSendTool(
     context: Context,
-    scope: TermuxScope,
     outputCache: TermuxOutputCache,
     getConfig: () -> TermuxConfig = { TermuxConfig() },
 ): Tool = Tool(
     name = "termux_session_send",
-    description = "Type literal input or control keys into this chat's terminal/task. Input is not wrapped as a command, so password/SSH/REPL prompts work. enter defaults true. Returns actual execution_status independently of read_reason; SETTLED means output paused, not command completion. Supply cursor to read incremental output.",
+    description = "Type literal input or control keys into a managed terminal/task. Input is not wrapped as a command, so password/SSH/REPL prompts work. enter defaults true. Returns actual execution_status independently of read_reason; SETTLED means output paused, not command completion. Supply cursor to read incremental output.",
     parameters = {
         InputSchema.Obj(properties = buildJsonObject {
             put("session_id", sessionIdSchema())
@@ -680,8 +675,8 @@ internal fun termuxSessionSendTool(
     },
     needsApproval = { getConfig().approvalRequired },
     execute = { input ->
-        val session = input.jsonObject["session_id"]?.jsonPrimitive?.contentOrNull?.takeIf(scope::owns)
-            ?: return@Tool sessionErrorEnvelope("session_not_in_current_chat", "Use a session_id created in this chat.")
+        val session = input.jsonObject["session_id"]?.jsonPrimitive?.contentOrNull?.takeIf(::isManagedTermuxSession)
+            ?: return@Tool sessionErrorEnvelope("invalid_session_id", "Use a managed session_id returned by termux_session_list/start.")
         preflight(context)?.let { return@Tool it }
         val keys = input.jsonObject["keys"]?.jsonArray?.mapNotNull { it.jsonPrimitive.contentOrNull } ?: emptyList()
         require(keys.none { it.startsWith("-") || it.contains(';') }) { "Invalid tmux key name" }
@@ -716,12 +711,11 @@ internal fun termuxSessionSendTool(
 
 internal fun termuxSessionReadTool(
     context: Context,
-    scope: TermuxScope,
     outputCache: TermuxOutputCache,
     getConfig: () -> TermuxConfig = { TermuxConfig() },
 ): Tool = Tool(
     name = "termux_session_read",
-    description = "Read this chat's terminal or background task and its execution_status/exit_code. Pass the previous cursor to receive only new terminal text; omit for a full screen. Rewrites/expired cursors set cursor_reset; bounded scrollback/output may be truncated. Optional wait_for waits for text/completion/timeout. A read timeout leaves the task running.",
+    description = "Read a managed terminal or background task and its execution_status/exit_code. Pass the previous cursor to receive only new terminal text; omit for a full screen. Rewrites/expired cursors set cursor_reset; bounded scrollback/output may be truncated. Optional wait_for waits for text/completion/timeout. A read timeout leaves the task running.",
     parameters = {
         InputSchema.Obj(properties = buildJsonObject {
             put("session_id", sessionIdSchema())
@@ -742,8 +736,8 @@ internal fun termuxSessionReadTool(
         })
     },
     execute = { input ->
-        val session = input.jsonObject["session_id"]?.jsonPrimitive?.contentOrNull?.takeIf(scope::owns)
-            ?: return@Tool sessionErrorEnvelope("session_not_in_current_chat", "Use a session_id created in this chat.")
+        val session = input.jsonObject["session_id"]?.jsonPrimitive?.contentOrNull?.takeIf(::isManagedTermuxSession)
+            ?: return@Tool sessionErrorEnvelope("invalid_session_id", "Use a managed session_id returned by termux_session_list/start.")
         preflight(context)?.let { return@Tool it }
         val waitFor = input.jsonObject["wait_for"]?.jsonPrimitive?.contentOrNull
         val waitForCompletion = input.jsonObject["wait_for_completion"]?.jsonPrimitive?.booleanOrNull ?: false
@@ -770,17 +764,16 @@ internal fun termuxSessionReadTool(
 
 internal fun termuxSessionKillTool(
     context: Context,
-    scope: TermuxScope,
     outputCache: TermuxOutputCache,
     getConfig: () -> TermuxConfig = { TermuxConfig() },
 ): Tool = Tool(
     name = "termux_session_kill",
-    description = "Stop and close this chat's Termux terminal/background task, freeing its scrollback and output cursors.",
+    description = "Stop and close a managed Termux terminal/background task, freeing its scrollback and output cursors.",
     parameters = { InputSchema.Obj(properties = buildJsonObject { put("session_id", sessionIdSchema()) }) },
     needsApproval = { getConfig().approvalRequired },
     execute = { input ->
-        val session = input.jsonObject["session_id"]?.jsonPrimitive?.contentOrNull?.takeIf(scope::owns)
-            ?: return@Tool sessionErrorEnvelope("session_not_in_current_chat", "Use a session_id created in this chat.")
+        val session = input.jsonObject["session_id"]?.jsonPrimitive?.contentOrNull?.takeIf(::isManagedTermuxSession)
+            ?: return@Tool sessionErrorEnvelope("invalid_session_id", "Use a managed session_id returned by termux_session_list/start.")
         preflight(context)?.let { return@Tool it }
         val killed = tmux(context, TmuxOps.killArgv("=$session"))
         if (killed !is CaptureResult.Success &&
@@ -797,15 +790,15 @@ internal fun termuxSessionKillTool(
     }
 )
 
-internal fun termuxSessionListTool(context: Context, scope: TermuxScope): Tool = Tool(
+internal fun termuxSessionListTool(context: Context): Tool = Tool(
     name = "termux_session_list",
-    description = "List this chat's Termux terminals and background tasks, including execution status and exit codes. Finished tasks remain readable until closed. Other chats' sessions are excluded.",
+    description = "List managed Termux terminals and background tasks across chats, including execution status and exit codes. Finished tasks remain readable until closed.",
     parameters = { InputSchema.Obj(properties = buildJsonObject {}) },
     execute = { _ ->
         preflight(context)?.let { return@Tool it }
         val response = tmux(context, TmuxOps.listArgv())
         val sessions = when (response) {
-            is CaptureResult.Success -> parseSessions(response.stdout, scope.prefix).filter { scope.owns(it.name) }
+            is CaptureResult.Success -> parseSessions(response.stdout).filter { isManagedTermuxSession(it.name) }
             is CaptureResult.OtherError -> if (isSessionNotFound(
                     response.message
                 )) {

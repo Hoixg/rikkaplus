@@ -320,7 +320,6 @@ internal suspend fun runCommandCapture(
  */
 internal fun termuxRunCommandTool(
     context: Context,
-    scope: TermuxScope,
     outputCache: TermuxOutputCache,
     getConfig: () -> TermuxConfig = { TermuxConfig() },
 ): Tool = Tool(
@@ -336,7 +335,7 @@ internal fun termuxRunCommandTool(
         automatically wrapped with DEBIAN_FRONTEND=noninteractive and safe dpkg defaults;
         do not add extra -y flags unless the user specifically asked for unattended upgrades.
         Use stdin for multiline scripts or input data. background=true creates a tracked tmux
-        task scoped to this chat: use session_read/list/kill to read output, check status or stop it.
+        task shared across chats: use session_read/list/kill to read output, check status or stop it.
     """.trimIndent().replace("\n", " "),
     parameters = {
         InputSchema.Obj(
@@ -499,7 +498,6 @@ internal fun termuxRunCommandTool(
         if (background) {
             return@Tool startTermuxBackgroundTask(
                 context,
-                scope,
                 outputCache,
                 getConfig(),
                 resolvedExe,

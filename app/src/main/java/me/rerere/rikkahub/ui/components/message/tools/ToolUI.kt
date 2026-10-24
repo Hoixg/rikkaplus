@@ -93,6 +93,8 @@ private object DefaultToolUIRenderer : ToolUIRenderer {
  */
 object ToolUIRegistry {
     private val renderers: Map<String, ToolUIRenderer> = listOf(
+        AutomationToolUI,
+        ShizukuToolUI,
         SearchWebToolUI,
         ScrapeWebToolUI,
         GetTimeInfoToolUI,
