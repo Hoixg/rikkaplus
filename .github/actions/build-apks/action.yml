@@ -2,7 +2,7 @@ name: 构建并校验安装包
 description: 1.0 分支共用的 Android 云构建流程
 inputs:
   variant:
-    description: debug 或 release
+    description: 每次仅构建所选类型的一份通用 APK（debug 或 release）
     default: release
   key-base64:
     description: Release 签名密钥
@@ -14,6 +14,9 @@ inputs:
     description: Google Services 配置
     required: true
 outputs:
+  apk:
+    description: 唯一的通用 APK 路径
+    value: ${{ steps.prepare.outputs.apk }}
   version:
     description: 应用版本
     value: ${{ steps.prepare.outputs.version }}

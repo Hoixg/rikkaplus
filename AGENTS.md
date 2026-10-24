@@ -23,7 +23,7 @@ Material 3 look (cards with dividers, plain forms).
 ```bash
 ./gradlew assembleGithubDebug    # 构建 GitHub 渠道的 Debug APK
 ./gradlew assembleGithubRelease  # 构建 GitHub Release / 每日构建用的 APK
-./gradlew bundlePlayRelease      # 构建上架 Google Play 的 AAB
+./gradlew buildAll               # 仅构建一个 GitHub Release 通用 APK
 ./gradlew test                   # 运行所有模块的 JVM 单元测试
 ./gradlew lint                   # 运行 Android Lint
 ./gradlew spotlessApply          # 用 ktlint 格式化相对 origin/master 改动过的 Kotlin 文件
@@ -36,7 +36,11 @@ The active development branch is `1.0`. Keep the historical `custom` branch on G
 `custom` checkout unless the user requests it. Preserve the removal of the Web server when syncing upstream.
 
 The `1.0` application ID is `io.github.hoixg.rikkaplus` (`.debug` for Debug). Build only the universal APK
-containing ARM64 and x86_64. Release signing uses ignored `signing-1.0.properties`; cloud builds use dedicated
+containing ARM64 and x86_64. Each build request produces exactly one APK: Release by default, or Debug only when
+explicitly requested. Never build extra variants, per-ABI APKs, or Play AABs alongside it. `buildAll` also builds
+only the GitHub Release universal APK. Cloud uploads must use the exact verified APK path, and release pages
+must contain exactly one APK. Daily builds remove obsolete APK attachments from `1.0-nightly`; keep historical
+versioned releases unchanged. Release signing uses ignored `signing-1.0.properties`; cloud builds use dedicated
 `KEY_BASE64_1_0` / `SIGNING_CONFIG_1_0` secrets. Never fall back to the historical custom signing configuration.
 
 Use Chinese commit subjects in the form `type(scope): 改动摘要`. Explain the changes and their reason in the body

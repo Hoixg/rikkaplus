@@ -26,9 +26,9 @@ private const val MAX_TIMEOUT_MS = 300_000
  * permission granted from Extensions -> Shizuku; the permission is never requested from this
  * tool or automatically, only from an explicit tap on that settings screen.
  *
- * Uses this branch's existing per-call tool approval.
+ * Uses this branch's existing per-call tool approval, controlled by the Shizuku settings.
  */
-fun shizukuExecTool(context: Context): Tool = Tool(
+fun shizukuExecTool(context: Context, approvalRequired: () -> Boolean = { true }): Tool = Tool(
     name = "shizuku_exec",
     description = """
         Run a shell command with Shizuku's privileges (ADB shell or root, depending on how Shizuku was started). Returns stdout, stderr, and exit code. Requires the Shizuku app
@@ -49,7 +49,7 @@ fun shizukuExecTool(context: Context): Tool = Tool(
             required = listOf("command")
         )
     },
-    needsApproval = { true },
+    needsApproval = { approvalRequired() },
     execute = { input ->
         val command = input.jsonObject["command"]?.jsonPrimitive?.contentOrNull
         if (command.isNullOrBlank()) {

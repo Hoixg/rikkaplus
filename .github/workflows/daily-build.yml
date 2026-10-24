@@ -46,11 +46,18 @@ jobs:
           fetch-depth: 0
           submodules: recursive
       - name: 构建并校验 Release
+        id: build
         uses: ./.github/actions/build-apks
         with:
           key-base64: ${{ secrets.KEY_BASE64_1_0 }}
           signing-config: ${{ secrets.SIGNING_CONFIG_1_0 }}
           google-services: ${{ secrets.GOOGLE_SERVICES_JSON_1_0 || secrets.GOOGLE_SERVICES_JSON }}
+      - name: 清理开发版遗留的其他安装包
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const verify = require('./.github/scripts/release-assets.cjs');
+            await verify({ github, context, core, tag: '1.0-nightly', cleanup: true });
       - name: 更新开发构建标签
         uses: actions/github-script@v7
         with:
@@ -74,6 +81,12 @@ jobs:
           make_latest: false
           fail_on_unmatched_files: true
           files: |
-            app/build/outputs/apk/github/release/*.apk
+            ${{ steps.build.outputs.apk }}
             SHA256SUMS.txt
             app/build/outputs/mapping/githubRelease/mapping.txt
+      - name: 核对开发版只有一个通用安装包
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const verify = require('./.github/scripts/release-assets.cjs');
+            await verify({ github, context, core, tag: '1.0-nightly' });

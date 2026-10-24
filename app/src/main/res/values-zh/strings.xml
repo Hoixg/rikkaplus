@@ -1768,7 +1768,7 @@
   <string name="floating_chat_status_done">回复完成</string>
   <string name="floating_chat_status_idle">空闲</string>
   <string name="assistant_page_local_tools_shizuku_title">Shizuku</string>
-  <string name="assistant_page_local_tools_shizuku_desc">以 Shizuku 服务的权限（ADB shell 或 root）运行 shell 命令。需要安装并运行 Shizuku 应用；请在扩展管理 → Shizuku 中授权。每次调用都需授权。</string>
+  <string name="assistant_page_local_tools_shizuku_desc">以 Shizuku 服务的权限（ADB shell 或 root）运行 shell 命令。需要安装并运行 Shizuku 应用；请在扩展管理 → Shizuku 中授权。</string>
   <string name="setting_page_shizuku">Shizuku</string>
   <string name="setting_page_shizuku_desc">为通过 Shizuku 运行的 shell 命令授权并检查状态。</string>
   <string name="setting_shizuku_title">Shizuku</string>
@@ -1788,4 +1788,7 @@
   <string name="setting_shizuku_section_help">设置帮助</string>
   <string name="setting_shizuku_help_title">设置 Shizuku</string>
   <string name="setting_shizuku_help_body">从其 GitHub 发布页面安装 Shizuku，然后启动其服务：在已 root 的设备上可通过 Shizuku 应用启动，或在 Android 11+ 上通过无线调试配对启动（开发者选项 → 无线调试 → 使用配对码配对设备，然后运行 Shizuku 提供的启动命令）。服务运行后，点击上方的权限以授予 RikkaPlus 访问权限。</string>
+  <string name="setting_shizuku_section_tools">工具权限</string>
+  <string name="setting_shizuku_approval_required">执行前审批</string>
+  <string name="setting_shizuku_approval_required_desc">开启后，AI 每次执行命令前都需要批准；关闭后将直接执行。</string>
 </resources>

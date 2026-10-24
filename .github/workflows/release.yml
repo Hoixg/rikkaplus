@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       variant:
-        description: 安装包类型（手动构建只上传构建产物）
+        description: 单个通用安装包的类型（手动构建只上传构建产物）
         type: choice
         options: [release, debug]
         default: release
@@ -56,7 +56,7 @@ jobs:
           retention-days: 14
           if-no-files-found: error
           path: |
-            app/build/outputs/apk/github/${{ inputs.variant || 'release' }}/*.apk
+            ${{ steps.build.outputs.apk }}
             SHA256SUMS.txt
             release-notes.md
             build-info.json
@@ -71,6 +71,13 @@ jobs:
           make_latest: false
           fail_on_unmatched_files: true
           files: |
-            app/build/outputs/apk/github/release/*.apk
+            ${{ steps.build.outputs.apk }}
             SHA256SUMS.txt
             ${{ steps.build.outputs.mapping }}
+      - name: 核对发布页只有一个通用安装包
+        if: github.event_name == 'push'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const verify = require('./.github/scripts/release-assets.cjs');
+            await verify({ github, context, core, tag: context.ref.replace('refs/tags/', '') });

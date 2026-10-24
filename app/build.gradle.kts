@@ -26,7 +26,7 @@ android {
         applicationId = "io.github.hoixg.rikkaplus"
         minSdk = 26
         targetSdk = 37
-        versionCode = 193
+        versionCode = 194
         versionName = "3.1.0"
 
         val appPackageName = requireNotNull(applicationId)
@@ -161,8 +161,8 @@ composeCompiler {
 }
 
 tasks.register("buildAll") {
-    dependsOn("assembleGithubRelease", "bundlePlayRelease")
-    description = "Build GitHub APK and Play AAB"
+    dependsOn("assembleGithubRelease")
+    description = "Build one universal GitHub Release APK"
 }
 
 ksp {
@@ -175,10 +175,7 @@ kotlin {
     }
 }
 
-// 搜索配置使用显式工厂，运行时排除不再需要的 kotlin-reflect，避免 R8 保留反射实现。
-configurations.matching { it.name.endsWith("RuntimeClasspath") }.configureEach {
-    exclude(group = "org.jetbrains.kotlin", module = "kotlin-reflect")
-}
+// OAuth 的 Ktor 回调接收器需要 kotlin-reflect；保留其传递依赖，由 R8 裁剪未使用代码。
 
 // Local JVM tests need the desktop native library instead of the Android AAR.
 configurations.matching { it.name.endsWith("UnitTestRuntimeClasspath") }.configureEach {

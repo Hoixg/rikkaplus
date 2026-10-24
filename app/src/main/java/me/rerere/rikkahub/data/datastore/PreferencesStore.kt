@@ -142,6 +142,7 @@ class SettingsStore internal constructor(
         val MCP_SERVERS = stringPreferencesKey("mcp_servers")
         val ALLOW_AI_MANAGE_MCP = booleanPreferencesKey("allow_ai_manage_mcp")
         val TERMUX_CONFIG = stringPreferencesKey("termux_config")
+        val SHIZUKU_APPROVAL_REQUIRED = booleanPreferencesKey("shizuku_approval_required")
 
         // WebDAV
         val WEBDAV_CONFIG = stringPreferencesKey("webdav_config")

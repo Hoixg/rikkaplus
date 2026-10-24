@@ -68,7 +68,7 @@ class LocalTools(
             tools.add(termuxSessionListTool(context))
         }
         if (LocalToolOption.Shizuku in options) {
-            tools.add(shizukuExecTool(context))
+            tools.add(shizukuExecTool(context) { settingsStore.settingsFlow.value.shizukuApprovalRequired })
         }
         return tools
     }

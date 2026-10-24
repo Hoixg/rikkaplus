@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+from zipfile import ZipFile
 
 BASE_COMMIT = "76e25d952efa5de3289d916787c7f129fb1b1f1f"
 
@@ -54,6 +55,7 @@ def prepare():
     if output:
         with open(output, "a", encoding="utf-8") as stream:
             stream.write("version=" + info["version"] + "\ncommit=" + info["commit"][:8] + "\n")
+            stream.write("apk=app/build/outputs/apk/github/" + variant + "/app-github-" + variant + ".apk\n")
             if variant == "release":
                 stream.write("mapping=app/build/outputs/mapping/githubRelease/mapping.txt\n")
     print("Building", info["version"], "(" + str(info["version_code"]) + ")", variant, info["application_id"])
@@ -68,6 +70,8 @@ def verify():
     elements = metadata["elements"]
     if len(elements) != 1 or any(e["versionName"] != info["version"] or e["versionCode"] != info["version_code"] for e in elements):
         raise ValueError("APK version or output count mismatch")
+    if elements[0].get("filters") or elements[0].get("type") != "SINGLE":
+        raise ValueError("Only one universal APK is allowed; split APKs are not supported")
     names = {"app-github-" + info["variant"] + ".apk"}
     if {e["outputFile"] for e in elements} != names or {p.name for p in directory.glob("*.apk")} != names:
         raise ValueError("Unexpected APK outputs")
@@ -76,6 +80,11 @@ def verify():
         path = directory / name
         if not path.is_file() or path.stat().st_size == 0:
             raise ValueError("Missing APK: " + name)
+        with ZipFile(path) as archive:
+            abis = {entry.split("/")[1] for entry in archive.namelist()
+                    if entry.startswith("lib/") and entry.endswith(".so")}
+        if abis != {"arm64-v8a", "x86_64"}:
+            raise ValueError("Universal APK must contain exactly ARM64 and x86_64: " + str(sorted(abis)))
         with path.open("rb") as stream:
             digest = hashlib.file_digest(stream, "sha256").hexdigest()
         sums.append(digest + "  " + name)

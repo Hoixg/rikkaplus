@@ -51,6 +51,7 @@ rg -n 'ktor-server-auth|ktor-server-auth-jwt|jmdns|auth0' gradle/libs.versions.t
 
 - 包名 `io.github.hoixg.rikkaplus`，Debug 使用 `.debug` 后缀；源码命名空间与包名分开维护。
 - Release 只读取 `signing-1.0.properties`；云端使用 `KEY_BASE64_1_0` / `SIGNING_CONFIG_1_0`，不得回退到旧 `custom` 签名。
-- 只产出含 ARM64 和 x86_64 的通用 APK；云构建使用 GitHub 渠道，并保留单 APK 校验。
+- 每次构建只产出一份含 ARM64 和 x86_64 的 GitHub 通用 APK：默认 Release，只有明确要求时构建 Debug；不附带构建其他类型、分架构 APK 或 Play AAB。`buildAll` 同样只构建 Release 通用包。保留单 APK、架构及发布附件数量校验；每日构建清理 `1.0-nightly` 遗留的其他 APK，不修改历史正式版本附件。
+- OAuth 的 Ktor 回调接收器依赖 Kotlin 反射库，不得全局排除 `kotlin-reflect` 或用忽略缺失类的规则掩盖依赖问题。
 - 多 Key 手动选择及模型绑定、订阅账号登录、MCP 扩展入口和审批、Shizuku 授权与命令工具、Termux 会话与后台任务（跨聊天共享）、工作区文件备份、聊天页和工作区交互定制。
 - 已移除的内置中转商预设及仓库定位介绍，不随上游恢复。

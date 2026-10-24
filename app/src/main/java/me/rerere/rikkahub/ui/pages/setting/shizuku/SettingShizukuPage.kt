@@ -35,14 +35,18 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import me.rerere.ui.toast.ToastType
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.shizuku.ShizukuManager
 import me.rerere.rikkahub.shizuku.ShizukuStatus
 import me.rerere.rikkahub.ui.components.nav.BackButton
 import me.rerere.rikkahub.ui.components.ui.CardGroup
+import me.rerere.rikkahub.ui.components.ui.switchItem
 import me.rerere.rikkahub.ui.context.LocalToaster
+import me.rerere.rikkahub.ui.pages.setting.SettingVM
 import me.rerere.rikkahub.ui.theme.CustomColors
+import org.koin.androidx.compose.koinViewModel
 import rikka.shizuku.Shizuku
 
 // `moe.shizuku.manager` is only the Java namespace / permission prefix, never an installed
@@ -53,12 +57,13 @@ private const val SHIZUKU_RELEASES_URL = "https://github.com/RikkaApps/Shizuku/r
 
 /**
  * Extensions -> Shizuku. Mirrors the Termux settings page's structure: a status section with
- * tap actions (app installed, service running, permission granted), then a help section.
+ * tap actions (app installed, service running, permission granted), approval settings and help.
  * The permission is only ever requested from the explicit tap here, never at app start or
  * on first chat.
  */
 @Composable
-fun SettingShizukuPage() {
+fun SettingShizukuPage(vm: SettingVM = koinViewModel()) {
+    val settings by vm.settings.collectAsStateWithLifecycle()
     val ctx = LocalContext.current
     val toaster = LocalToaster.current
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
@@ -188,6 +193,19 @@ fun SettingShizukuPage() {
                     leadingContent = {
                         StatusDot(color = if (permissionGranted) StatusColor.Green else StatusColor.Red)
                     },
+                )
+            }
+
+            CardGroup(
+                title = { Text(stringResource(R.string.setting_shizuku_section_tools)) },
+            ) {
+                switchItem(
+                    checked = settings.shizukuApprovalRequired,
+                    onCheckedChange = { enabled ->
+                        vm.updateSettings { it.copy(shizukuApprovalRequired = enabled) }
+                    },
+                    headlineContent = { Text(stringResource(R.string.setting_shizuku_approval_required)) },
+                    supportingContent = { Text(stringResource(R.string.setting_shizuku_approval_required_desc)) },
                 )
             }
 

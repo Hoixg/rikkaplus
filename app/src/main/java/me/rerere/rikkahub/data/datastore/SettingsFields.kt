@@ -107,6 +107,7 @@ internal val SETTINGS_FIELDS: List<SettingsField<*, *>> = with(SettingsStore) {
         json(MCP_SERVERS, Settings::mcpServers) { copy(mcpServers = it) },
         plain(ALLOW_AI_MANAGE_MCP, Settings::allowAiManageMcp) { copy(allowAiManageMcp = it) },
         json(TERMUX_CONFIG, Settings::termuxConfig) { copy(termuxConfig = it) },
+        plain(SHIZUKU_APPROVAL_REQUIRED, Settings::shizukuApprovalRequired) { copy(shizukuApprovalRequired = it) },
 
         // WebDAV
         json(WEBDAV_CONFIG, Settings::webDavConfig) { copy(webDavConfig = it) },

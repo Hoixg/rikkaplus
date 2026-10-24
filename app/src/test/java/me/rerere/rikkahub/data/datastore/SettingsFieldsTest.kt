@@ -55,6 +55,7 @@ class SettingsFieldsTest {
 
         assertEquals(STORED_KEYS, stored.keys)
         assertEquals(false, stored["dynamic_color"])
+        assertEquals(false, stored["shizuku_approval_required"])
         assertEquals(1.5f, stored["default_tts_playback_speed"])
         assertEquals("title", stored["title_prompt"])
         assertEquals("00000000-0000-0000-0000-000000000001", stored["chat_model"])
@@ -75,6 +76,7 @@ class SettingsFieldsTest {
         assertEquals(DEFAULT_SYSTEM_TTS_ID, settings.selectedTTSProviderId)
         assertEquals(null, settings.selectedASRProviderId)
         assertEquals(false, settings.allowAiManageMcp)
+        assertEquals(true, settings.shizukuApprovalRequired)
         assertEquals(true, settings.dynamicColor)
     }
 
@@ -146,6 +148,7 @@ private val SAMPLE = Settings(
     mcpServers = listOf(McpServerConfig.SseTransportServer(id = id(8), url = "https://example.com/sse")),
     allowAiManageMcp = true,
     termuxConfig = TermuxConfig(approvalRequired = false, commandTimeoutMs = 120_000),
+    shizukuApprovalRequired = false,
     webDavConfig = WebDavConfig(url = "https://dav.example.com"),
     s3Config = S3Config(bucket = "backup"),
     uploadS3Config = S3Config(bucket = "upload"),
@@ -194,6 +197,7 @@ private val STORED_KEYS = setOf(
     "mcp_servers",
     "allow_ai_manage_mcp",
     "termux_config",
+    "shizuku_approval_required",
     "webdav_config",
     "s3_config",
     "upload_s3_config",
