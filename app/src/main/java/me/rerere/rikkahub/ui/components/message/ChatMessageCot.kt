@@ -1,11 +1,18 @@
 package me.rerere.rikkahub.ui.components.message
 
 import androidx.compose.ui.util.fastForEachIndexed
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.contentOrNull
+import me.rerere.ai.ui.ToolApprovalState
 import me.rerere.ai.ui.UIMessagePart
+import me.rerere.rikkahub.data.ai.tools.local.MEDIA_GENERATE_TOOL
+import me.rerere.rikkahub.data.ai.tools.local.MEDIA_TASK_CANCEL_TOOL
+import me.rerere.rikkahub.data.ai.tools.local.MEDIA_TASK_READ_TOOL
 import me.rerere.rikkahub.utils.JsonInstant
+import kotlin.uuid.Uuid
 
 internal const val CHART_DISPLAY_TOOL_NAME = "chart_display"
 
@@ -19,6 +26,7 @@ sealed interface ThinkingStep {
 
     data class ToolStep(
         val tool: UIMessagePart.Tool,
+        val showSummary: Boolean = true,
     ) : ThinkingStep
 
     data class ServerToolStep(
@@ -46,6 +54,10 @@ sealed interface MessagePartBlock {
 fun List<UIMessagePart>.groupMessageParts(): List<MessagePartBlock> {
     val result = mutableListOf<MessagePartBlock>()
     var currentThinkingSteps = mutableListOf<ThinkingStep>()
+    // Repeated polls observe the same live record. Keep every call, but show its card only at the latest step.
+    val mediaRecordIds = map { (it as? UIMessagePart.Tool)?.mediaSummaryRecordId() }
+    val lastMediaSummaryIndices = mutableMapOf<Uuid, Int>()
+    mediaRecordIds.forEachIndexed { index, id -> if (id != null) lastMediaSummaryIndices[id] = index }
 
     fun flushThinkingSteps() {
         if (currentThinkingSteps.isNotEmpty()) {
@@ -65,7 +77,8 @@ fun List<UIMessagePart>.groupMessageParts(): List<MessagePartBlock> {
                     flushThinkingSteps()
                     result.add(MessagePartBlock.ChartBlock(part, index))
                 } else {
-                    currentThinkingSteps.add(ThinkingStep.ToolStep(part))
+                    val showSummary = mediaRecordIds[index]?.let { lastMediaSummaryIndices[it] == index } ?: true
+                    currentThinkingSteps.add(ThinkingStep.ToolStep(part, showSummary))
                 }
             }
 
@@ -81,6 +94,30 @@ fun List<UIMessagePart>.groupMessageParts(): List<MessagePartBlock> {
     }
     flushThinkingSteps()
     return result
+}
+
+/** Unknown results, errors and approval requests keep their own summary rather than hiding useful information. */
+private fun UIMessagePart.Tool.mediaSummaryRecordId(): Uuid? {
+    if (toolName != MEDIA_GENERATE_TOOL && toolName != MEDIA_TASK_READ_TOOL &&
+        toolName != MEDIA_TASK_CANCEL_TOOL) {
+        return null
+    }
+    if (isPending || approvalState is ToolApprovalState.Denied) return null
+    if (!isExecuted && toolName != MEDIA_TASK_READ_TOOL) return null
+
+    val arguments = inputAsJson() as? JsonObject
+    val inputKey = if (toolName == MEDIA_GENERATE_TOOL) "_record_id" else "record_id"
+    val inputId = (arguments?.get(inputKey) as? JsonPrimitive)?.contentOrNull
+        ?.let { runCatching { Uuid.parse(it) }.getOrNull() }
+    if (!isExecuted) return inputId
+
+    val outputText = output.filterIsInstance<UIMessagePart.Text>().joinToString("\n") { it.text }
+    val content = runCatching { JsonInstant.parseToJsonElement(outputText) }.getOrNull() as? JsonObject ?: return null
+    if (content["error"]?.let { it != JsonNull } == true) return null
+    val outputId = (content["record_id"] as? JsonPrimitive)?.contentOrNull
+        ?.let { runCatching { Uuid.parse(it) }.getOrNull() } ?: return null
+    if (inputId != null && inputId != outputId) return null
+    return outputId
 }
 
 private fun UIMessagePart.Tool.isSuccessfulChartDisplay(): Boolean {

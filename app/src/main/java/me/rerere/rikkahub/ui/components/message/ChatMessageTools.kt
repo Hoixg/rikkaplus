@@ -102,6 +102,7 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
     tool: UIMessagePart.Tool,
     loading: Boolean = false,
     assistant: Assistant? = null,
+    showSummary: Boolean = true,
     onToolApproval: ((toolCallId: String, approved: Boolean, reason: String) -> Unit)? = null,
     onToolAnswer: ((toolCallId: String, answer: String) -> Unit)? = null,
 ) {
@@ -144,7 +145,8 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
     val duration = rememberToolDuration(tool, loading)
 
     // 摘要由注册的渲染器决定; 图片输出与拒绝原因为所有工具通用
-    val hasExtraContent = renderer.hasSummary(context) || isDenied || images.isNotEmpty()
+    val hasSummary = showSummary && renderer.hasSummary(context)
+    val hasExtraContent = hasSummary || isDenied || images.isNotEmpty()
 
     ControlledChainOfThoughtStep(
         expanded = expanded,
@@ -216,7 +218,7 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
         content = if (hasExtraContent) {
             {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    renderer.Summary(context)
+                    if (hasSummary) renderer.Summary(context)
                     if (images.isNotEmpty()) {
                         LazyRow(
                             horizontalArrangement = Arrangement.spacedBy(4.dp),

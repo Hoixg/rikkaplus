@@ -362,6 +362,7 @@ private fun MessagePartsBlock(
                                 key(step.tool.toolCallId.ifBlank { step.hashCode().toString() }) {
                                     ChatMessageToolStep(
                                         tool = step.tool,
+                                        showSummary = step.showSummary,
                                         loading = loading && !step.tool.isExecuted,
                                         assistant = assistant,
                                         onToolApproval = onToolApproval,
