@@ -1788,7 +1788,6 @@
   <string name="setting_shizuku_section_tools">Tool permissions</string>
   <string name="setting_shizuku_approval_required">Approval before execution</string>
   <string name="setting_shizuku_approval_required_desc">Ask for approval before running commands. Turn off to let AI run commands directly.</string>
-  <string name="model_list_close">Close</string>
   <string name="setting_model_page_memory_model">Memory Consolidation Model</string>
   <string name="setting_model_page_memory_model_desc">Model used to organize conversations into long-term memory in the background; uses the fast model when not set</string>
   <string name="setting_model_page_memory_model_follow_fast">Same as fast model</string>

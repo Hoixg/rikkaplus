@@ -1788,7 +1788,6 @@
   <string name="setting_shizuku_section_tools">工具权限</string>
   <string name="setting_shizuku_approval_required">执行前审批</string>
   <string name="setting_shizuku_approval_required_desc">开启后，AI 每次执行命令前都需要批准；关闭后将直接执行。</string>
-  <string name="model_list_close">关闭</string>
   <string name="setting_model_page_memory_model">记忆整理模型</string>
   <string name="setting_model_page_memory_model_desc">用于在后台将对话整理为长期记忆的模型；未设置时使用快速模型</string>
   <string name="setting_model_page_memory_model_follow_fast">跟随快速模型</string>
