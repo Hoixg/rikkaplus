@@ -35,7 +35,6 @@ import me.rerere.rikkahub.MEDIA_CREATION_NOTIFICATION_CHANNEL_ID
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.files.MediaCreationFiles
-import me.rerere.rikkahub.data.remote.RemoteFileStore
 import me.rerere.rikkahub.data.model.MediaCreationAsset
 import me.rerere.rikkahub.data.model.MediaCreationOutput
 import me.rerere.rikkahub.data.model.MediaCreationParams
@@ -44,6 +43,7 @@ import me.rerere.rikkahub.data.model.MediaCreationStatus
 import me.rerere.rikkahub.data.model.buildMediaGenerationRequest
 import me.rerere.rikkahub.data.model.deriveMediaCreationTitle
 import me.rerere.rikkahub.data.model.supportedBy
+import me.rerere.rikkahub.data.remote.RemoteFileStore
 import me.rerere.rikkahub.data.repository.MediaCreationRepository
 import me.rerere.rikkahub.utils.sendNotification
 import okhttp3.Headers.Companion.toHeaders
@@ -74,6 +74,8 @@ data class MediaCreationSubmission(
     val prompt: String,
     val params: MediaCreationParams,
     val assets: List<MediaCreationAsset>,
+    /** Stable ID for a chat tool request, so a restored call can find its existing record. */
+    val recordId: Uuid = Uuid.random(),
 )
 
 /**
@@ -100,7 +102,7 @@ class MediaCreationService(
     suspend fun submit(submission: MediaCreationSubmission): MediaCreationRecord = inAppScope {
         val capabilities = submission.provider.capabilities(submission.model.kind)
             ?: error(context.getString(R.string.media_creation_error_kind_unsupported, submission.provider.name))
-        val recordId = Uuid.random()
+        val recordId = submission.recordId
         val assets = submission.assets.supportedBy(capabilities)
         val record = MediaCreationRecord(
             id = recordId,
@@ -115,7 +117,7 @@ class MediaCreationService(
             inputs = copyInputs(submission.sessionId, recordId, assets),
         )
         // 先登记任务再写入记录：恢复逻辑把「进行中但没有任务」的记录当作被中断，不能让它看到这个空档
-        val job = register(record.id, record.sessionId)
+        val job = register(record.id, record.sessionId, submission.provider)
             ?: error(context.getString(R.string.media_creation_error_task_exists))
         try {
             repository.insertRecord(record)
@@ -223,11 +225,11 @@ class MediaCreationService(
     }
 
     // 记录已有任务在跑时返回 null
-    private fun register(recordId: Uuid, sessionId: Uuid): Job? {
+    private fun register(recordId: Uuid, sessionId: Uuid, provider: MediaGenerationProviderSetting? = null): Job? {
         val job = appScope.launch(start = CoroutineStart.LAZY) {
             val foreground = MediaCreationForegroundService.acquire(context, recordId, sessionId)
             try {
-                run(recordId)
+                run(recordId, provider)
             } finally {
                 jobs.remove(recordId, coroutineContext.job)
                 if (foreground) MediaCreationForegroundService.release(context, recordId)
@@ -240,9 +242,9 @@ class MediaCreationService(
         return job
     }
 
-    private suspend fun run(recordId: Uuid) {
+    private suspend fun run(recordId: Uuid, provider: MediaGenerationProviderSetting? = null) {
         try {
-            generate(recordId)
+            generate(recordId, provider)
         } catch (e: Throwable) {
             // 被取消时记录的状态由取消方负责
             currentCoroutineContext().ensureActive()
@@ -254,9 +256,9 @@ class MediaCreationService(
         repository.getRecord(recordId)?.let(::notifyFinished)
     }
 
-    private suspend fun generate(recordId: Uuid) {
+    private suspend fun generate(recordId: Uuid, provider: MediaGenerationProviderSetting? = null) {
         val record = repository.getRecord(recordId) ?: return
-        val setting = settingsStore.awaitLoaded()
+        val setting = provider ?: settingsStore.awaitLoaded()
             .mediaGenerationProviders.find { it.id == record.providerId }
             ?: error(context.getString(R.string.media_creation_error_provider_deleted, record.providerName))
         val model = MediaGenerationModel(modelId = record.modelId, kind = record.kind)

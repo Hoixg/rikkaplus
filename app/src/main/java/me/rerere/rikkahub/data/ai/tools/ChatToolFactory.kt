@@ -6,9 +6,12 @@ import kotlinx.serialization.json.jsonObject
 import me.rerere.ai.core.Tool
 import me.rerere.ai.provider.BuiltInTools
 import me.rerere.ai.provider.Model
+import me.rerere.ai.provider.ModelAbility
+import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.rikkahub.data.ai.mcp.McpManager
 import me.rerere.rikkahub.data.ai.mcp.isValidMcpName
+import me.rerere.rikkahub.data.ai.tools.local.LocalToolOption
 import me.rerere.rikkahub.data.ai.tools.local.LocalTools
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.SettingsStore
@@ -47,6 +50,7 @@ class ChatToolFactory(
     private val skillManager: SkillManager,
     private val workspaceRepository: WorkspaceRepository,
     private val settingsStore: SettingsStore,
+    private val chatMediaCreation: ChatMediaCreation,
     private val automationRepository: me.rerere.rikkahub.data.automation.AutomationRepository? = null,
     private val cancelAutomation: suspend (String) -> Unit = {},
 ) {
@@ -56,6 +60,7 @@ class ChatToolFactory(
         model: Model,
         conversationId: Uuid,
         workspaceCwd: String? = null,
+        getMessages: () -> List<UIMessage> = { emptyList() },
     ): List<Tool> {
         val workspaceTools = createWorkspaceToolsIfReady(assistant.workspaceId?.toString(), workspaceCwd)
         val tools = buildList {
@@ -66,6 +71,9 @@ class ChatToolFactory(
                 addAll(createSearchTools(settings))
             }
             addAll(localTools.getTools(assistant.localTools))
+            if (LocalToolOption.MediaCreation in assistant.localTools && ModelAbility.TOOL in model.abilities) {
+                addAll(chatMediaCreation.tools(conversationId, getMessages))
+            }
             addAll(createMcpManagementTools(settingsStore))
             automationRepository?.let { repository ->
                 addAll(

@@ -92,6 +92,17 @@ class MediaCreationRepository(
     suspend fun newSession(): MediaCreationSession =
         getOrCreateEmptySession(MediaCreationDraft(modelId = getLatestSession()?.draft?.modelId))
 
+    /** Chat IDs and media session IDs live in separate tables; this gives each chat its own durable timeline. */
+    suspend fun getOrCreateChatSession(
+        conversationId: Uuid,
+        modelId: Uuid
+    ): MediaCreationSession = database.withTransaction {
+        dao.getSession(conversationId.toString())?.toSession()
+            ?: MediaCreationSession(id = conversationId, draft = MediaCreationDraft(modelId = modelId)).also {
+                dao.insertSession(it.toEntity())
+            }
+    }
+
     suspend fun renameSession(id: Uuid, title: String) = dao.renameSession(id.toString(), title)
 
     suspend fun saveDraft(id: Uuid, draft: MediaCreationDraft) =
@@ -154,6 +165,8 @@ class MediaCreationRepository(
     // ---- 记录 ----
 
     suspend fun getRecord(id: Uuid): MediaCreationRecord? = dao.getRecord(id.toString())?.toRecord()
+
+    fun observeRecord(id: Uuid): Flow<MediaCreationRecord?> = dao.observeRecord(id.toString()).map { it?.toRecord() }
 
     suspend fun getRecordsOfSession(sessionId: Uuid): List<MediaCreationRecord> =
         dao.getRecordsOfSession(sessionId.toString()).map { it.toRecord() }

@@ -67,11 +67,32 @@ internal class AgentLoop(
     private suspend fun requestApprovals(current: UIMessage): Set<String> {
         val updated = current.copy(
             parts = current.parts.map { part ->
-                if (part is UIMessagePart.Tool && !part.isExecuted &&
-                    part.approvalState == ToolApprovalState.Auto &&
-                    findTool(part.toolName)?.needsApproval?.invoke(part.inputAsJson()) == true
-                ) {
-                    part.copy(approvalState = ToolApprovalState.Pending)
+                if (part is UIMessagePart.Tool && !part.isExecuted && part.approvalState == ToolApprovalState.Auto) {
+                    val definition = findTool(part.toolName)
+                    if (definition == null) {
+                        part
+                    } else {
+                        try {
+                            val parsed = runCatching { json.parseToJsonElement(part.input.ifBlank { "{}" }) }
+                                .getOrElse { error("Invalid tool arguments JSON for ${part.toolName}: ${it.message}") }
+                            val args = definition.prepareArguments(parsed)
+                            val approval = if (definition.needsApproval(
+                                    args
+                                )) {
+                                ToolApprovalState.Pending
+                            } else {
+                                ToolApprovalState.Auto
+                            }
+                            part.copy(
+                                input = args.toString(),
+                                approvalState = approval,
+                            )
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            part.copy(output = errorOutput(e.message ?: "Invalid tool arguments"))
+                        }
+                    }
                 } else {
                     part
                 }
@@ -196,6 +217,9 @@ internal class AgentLoop(
         val definition = findTool(tool.toolName) ?: error("Tool ${tool.toolName} not found")
         val args = runCatching { json.parseToJsonElement(tool.input.ifBlank { "{}" }) }
             .getOrElse { error("Invalid tool arguments JSON for ${tool.toolName}: ${it.message}") }
+        check(!definition.needsApproval(args) || tool.approvalState == ToolApprovalState.Approved) {
+            "Explicit approval is required for ${tool.toolName}"
+        }
         definition.execute(args).ifEmpty { listOf(UIMessagePart.Text(EMPTY_TOOL_OUTPUT)) }
     } catch (e: CancellationException) {
         // 取消必须向上传播，否则停止生成会被误报为工具执行错误

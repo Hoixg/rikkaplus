@@ -34,9 +34,11 @@ import me.rerere.hugeicons.stroke.Clock01
 import me.rerere.hugeicons.stroke.ComputerTerminal01
 import me.rerere.hugeicons.stroke.JavaScript
 import me.rerere.hugeicons.stroke.MessageQuestion
+import me.rerere.hugeicons.stroke.ImageToVideo
 import me.rerere.hugeicons.stroke.SmartPhone01
 import me.rerere.hugeicons.stroke.VolumeHigh
 import me.rerere.rikkahub.R
+import me.rerere.rikkahub.Screen
 import me.rerere.rikkahub.data.ai.tools.local.LocalToolOption
 import me.rerere.rikkahub.data.ai.tools.local.TermuxIntegration
 import me.rerere.rikkahub.data.model.Assistant
@@ -51,6 +53,7 @@ import me.rerere.rikkahub.ui.components.ui.permission.PermissionTermux
 import me.rerere.rikkahub.ui.components.ui.permission.rememberPermissionState
 import me.rerere.rikkahub.ui.components.ui.switchItem
 import me.rerere.rikkahub.ui.context.LocalToaster
+import me.rerere.rikkahub.ui.context.LocalNavController
 import me.rerere.rikkahub.ui.theme.CustomColors
 import me.rerere.rikkahub.utils.hasUsageStatsPermission
 import me.rerere.rikkahub.utils.openUsageAccessSettings
@@ -100,6 +103,7 @@ private fun AssistantLocalToolContent(
 ) {
     val context = LocalContext.current
     val toaster = LocalToaster.current
+    val navigator = LocalNavController.current
     val permissionRequiredText =
         stringResource(R.string.assistant_page_local_tools_screen_time_permission_required)
 
@@ -206,6 +210,16 @@ private fun AssistantLocalToolContent(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         CardGroup {
+            toolItem(
+                option = LocalToolOption.MediaCreation,
+                icon = HugeIcons.ImageToVideo,
+                title = R.string.media_creation_title,
+                description = R.string.assistant_page_local_tools_media_creation_desc,
+            )
+            if (LocalToolOption.MediaCreation in assistant.localTools) item(
+                onClick = { navigator.navigate(Screen.SettingMedia) { launchSingleTop = true } },
+                headlineContent = { Text(stringResource(R.string.media_creation_page_manage_providers)) },
+            )
             toolItem(
                 option = LocalToolOption.JavascriptEngine,
                 icon = HugeIcons.JavaScript,

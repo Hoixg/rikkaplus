@@ -140,7 +140,7 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
     var expanded by remember { mutableStateOf(true) }
     val isPending = tool.isPending
     val isDenied = tool.approvalState is ToolApprovalState.Denied
-    val images = tool.output.filterIsInstance<UIMessagePart.Image>()
+    val images = if (renderer.rendersMediaOutputs) emptyList() else tool.output.filterIsInstance<UIMessagePart.Image>()
     val duration = rememberToolDuration(tool, loading)
 
     // 摘要由注册的渲染器决定; 图片输出与拒绝原因为所有工具通用

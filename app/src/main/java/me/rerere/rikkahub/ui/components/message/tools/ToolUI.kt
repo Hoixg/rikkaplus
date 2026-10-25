@@ -57,6 +57,8 @@ data class ToolUIContext(
  * 未注册的工具 fallback 到接口的默认实现 (通用标题/图标 + JSON 详情)
  */
 interface ToolUIRenderer {
+    /** The renderer handles both image and video outputs rather than the generic image strip. */
+    val rendersMediaOutputs: Boolean get() = false
     /** 渲染器对应的工具名 */
     val toolName: String
 
@@ -94,6 +96,7 @@ private object DefaultToolUIRenderer : ToolUIRenderer {
 object ToolUIRegistry {
     private val renderers: Map<String, ToolUIRenderer> = listOf(
         AutomationToolUI,
+        *MediaCreationToolUI.all.toTypedArray(),
         *ShizukuToolUI.all.toTypedArray(),
         SearchWebToolUI,
         ScrapeWebToolUI,

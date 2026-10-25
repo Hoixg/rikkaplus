@@ -11,6 +11,7 @@ import me.rerere.ai.agent.withRetry
 import me.rerere.ai.core.ReasoningLevel
 import me.rerere.ai.core.Tool
 import me.rerere.ai.provider.Model
+import me.rerere.ai.provider.ModelAbility
 import me.rerere.ai.provider.ProviderManager
 import me.rerere.ai.provider.ProviderSetting
 import me.rerere.ai.provider.TextGenerationParams
@@ -19,9 +20,12 @@ import me.rerere.ai.ui.limitContext
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.ai.prompts.buildMemoryPrompt
 import me.rerere.rikkahub.data.ai.tools.ChatToolFactory
+import me.rerere.rikkahub.data.ai.tools.local.LocalToolOption
+import me.rerere.rikkahub.data.ai.tools.local.mediaToolChatModel
 import me.rerere.rikkahub.data.ai.transformers.Base64ImageToLocalFileTransformer
 import me.rerere.rikkahub.data.ai.transformers.DocumentAsPromptTransformer
 import me.rerere.rikkahub.data.ai.transformers.InputMessageTransformer
+import me.rerere.rikkahub.data.ai.transformers.MediaToolResultTransformer
 import me.rerere.rikkahub.data.ai.transformers.OcrTransformer
 import me.rerere.rikkahub.data.ai.transformers.OutputMessageTransformer
 import me.rerere.rikkahub.data.ai.transformers.PlaceholderTransformer
@@ -67,6 +71,7 @@ class ChatTurnContext(
     val workspaceCwd: String?,
     val memories: List<MemoryFile>,
     val tools: List<Tool>,
+    val toolMessages: MutableStateFlow<List<UIMessage>> = MutableStateFlow(emptyList()),
 )
 
 /** 把会话变成发给模型的请求：系统提示词、上下文裁剪、输入输出转换都在这里 */
@@ -88,6 +93,7 @@ class ChatRequestFactory(
         OcrTransformer,
         templateTransformer,
         WorkspaceReminderTransformer(workspaceRepository),
+        MediaToolResultTransformer,
     )
 
     private val outputTransformers: List<OutputMessageTransformer> = listOf(
@@ -104,8 +110,13 @@ class ChatRequestFactory(
             settings.findModelById(Uuid.parse(it)) ?: error("任务指定的模型已删除")
         }
         val assistant = settings.getAssistantOf(conversation)
-        val model = overrideModel ?: settings.getChatModelOf(conversation)
+        val selectedModel = overrideModel ?: settings.getChatModelOf(conversation)
             ?: throw IllegalStateException("No chat model selected")
+        val model = mediaToolChatModel(
+            selectedModel,
+            LocalToolOption.MediaCreation in assistant.localTools && ModelAbility.TOOL in selectedModel.abilities
+        )
+        val toolMessages = MutableStateFlow(conversation.currentMessages)
         val provider = model.findProvider(settings.providers) ?: error("Provider not found")
         return ChatTurnContext(
             settings = settings,
@@ -122,7 +133,9 @@ class ChatRequestFactory(
                 model = model,
                 conversationId = conversation.id,
                 workspaceCwd = conversation.workspaceCwd,
+                getMessages = { toolMessages.value },
             ),
+            toolMessages = toolMessages,
         )
     }
 
@@ -135,6 +148,7 @@ class ChatRequestFactory(
         messages: List<UIMessage>,
         processingStatus: MutableStateFlow<String?>,
     ): Pair<AgentRequest, AgentHooks> {
+        turn.toolMessages.value = messages
         val request = AgentRequest(
             provider = usageRecorder.wrap(
                 providerManager.getProviderByType(turn.providerSetting),
@@ -148,6 +162,7 @@ class ChatRequestFactory(
         )
         val hooks = object : AgentHooks {
             override suspend fun prepareStep(messages: List<UIMessage>): StepRequest {
+                turn.toolMessages.value = messages
                 Log.i(TAG, "prepareStep: ${turn.model.id}")
                 return buildStep(turn, messages, processingStatus)
             }
@@ -157,12 +172,15 @@ class ChatRequestFactory(
                     it.visualTransforms(outputTransformers, context, turn.model, turn.assistant, turn.settings)
                 }
 
-            override suspend fun finishStep(message: UIMessage, newPartsFrom: Int) =
-                message.transformNewParts(newPartsFrom) {
+            override suspend fun finishStep(message: UIMessage, newPartsFrom: Int): UIMessage {
+                val finished = message.transformNewParts(newPartsFrom) {
                     it.transforms(outputTransformers, context, turn.model, turn.assistant, turn.settings)
                         .visualTransforms(outputTransformers, context, turn.model, turn.assistant, turn.settings)
                         .onGenerationFinish(outputTransformers, context, turn.model, turn.assistant, turn.settings)
                 }
+                turn.toolMessages.value = turn.toolMessages.value.filterNot { it.id == finished.id } + finished
+                return finished
+            }
         }
         return request to hooks
     }

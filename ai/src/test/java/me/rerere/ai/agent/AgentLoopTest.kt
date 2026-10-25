@@ -33,6 +33,68 @@ import org.junit.Test
 import java.io.IOException
 
 class AgentLoopTest {
+    @Test
+    fun `approval freezes prepared arguments and resumption never prepares them again`() = runTest {
+        var prepared = 0
+        var executed = 0
+        val definition = tool("media", needsApproval = true) { arguments ->
+            assertEquals("frozen", arguments.jsonObject["target"]?.jsonPrimitive?.content)
+            executed++
+            ok()
+        }.copy(prepareArguments = {
+            prepared++
+            kotlinx.serialization.json.buildJsonObject {
+                put(
+                    "target",
+                    kotlinx.serialization.json.JsonPrimitive("frozen")
+                )
+            }
+        })
+        val user = UIMessage.user("generate a video")
+        provider.stream {
+            toolCall("call", "media")
+            finish()
+        }
+        val waiting = runToEnd(request(messages = listOf(user), tools = listOf(definition))).finished().message
+        assertEquals(1, prepared)
+        assertEquals(0, executed)
+        assertEquals(ToolApprovalState.Pending, waiting.tool("call").approvalState)
+        provider.stream {
+            text("submitted")
+            finish()
+        }
+        runToEnd(
+            request(
+                messages = listOf(user, waiting.withApproval("call", ToolApprovalState.Approved)),
+                tools = listOf(definition)
+            )
+        )
+        assertEquals(1, prepared)
+        assertEquals(1, executed)
+    }
+
+    @Test
+    fun `preparation failures become errors without executing or asking approval`() = runTest {
+        var executed = false
+        val definition = tool("media", needsApproval = true) {
+            executed = true
+            ok()
+        }
+            .copy(prepareArguments = { error("reference missing") })
+        provider.stream {
+            toolCall("call", "media")
+            finish()
+        }
+        provider.stream {
+            text("please reselect")
+            finish()
+        }
+        val finished = runToEnd(request(tools = listOf(definition))).finished()
+        assertEquals(AgentFinishReason.Completed, finished.reason)
+        assertFalse(executed)
+        assertTrue(finished.message.tool("call").outputText().contains("reference missing"))
+    }
+
     private val model = Model(modelId = "test-model")
     private val provider = FakeProvider()
     private val hooks = RecordingHooks(model)

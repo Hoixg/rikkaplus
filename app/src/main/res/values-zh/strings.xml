@@ -1781,4 +1781,5 @@
   <string name="setting_model_page_memory_model_follow_fast">跟随快速模型</string>
   <string name="about_page_check_updates">检查更新</string>
   <string name="about_page_check_updates_desc">前往 RikkaPlus 的 GitHub 发布页查看版本和下载更新</string>
+  <string name="assistant_page_local_tools_media_creation_desc">在聊天中使用媒体创作供应商生成图片和视频，支持参考素材、首尾帧与后台任务</string>
 </resources>
