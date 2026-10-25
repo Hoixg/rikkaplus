@@ -68,7 +68,7 @@ jobs:
           name: RikkaPlus 1.0 · ${{ steps.build.outputs.version }}
           body_path: release-notes.md
           prerelease: false
-          make_latest: false
+          make_latest: true
           fail_on_unmatched_files: true
           files: |
             ${{ steps.build.outputs.apk }}
