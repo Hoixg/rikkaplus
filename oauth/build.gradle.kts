@@ -8,6 +8,7 @@ android {
 }
 
 dependencies {
+    implementation(project(":common"))
     api(libs.okhttp)
 
     implementation(libs.androidx.browser)

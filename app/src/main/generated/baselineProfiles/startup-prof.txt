@@ -47699,7 +47699,6 @@ Lme/rerere/rikkahub/Screen$Prompts;
 Lme/rerere/rikkahub/Screen$QuickMessages;
 Lme/rerere/rikkahub/Screen$Setting;
 Lme/rerere/rikkahub/Screen$SettingAbout;
-Lme/rerere/rikkahub/Screen$SettingDonate;
 Lme/rerere/rikkahub/Screen$SettingFiles;
 Lme/rerere/rikkahub/Screen$SettingMcp;
 Lme/rerere/rikkahub/Screen$SettingMcpDetail;
@@ -48514,7 +48513,6 @@ SPLme/rerere/rikkahub/data/datastore/Settings;->getSearchServiceSelected()I
 SPLme/rerere/rikkahub/data/datastore/Settings;->getSearchServices()Ljava/util/List;
 SPLme/rerere/rikkahub/data/datastore/Settings;->getSelectedASRProviderId()Lkotlin/uuid/Uuid;
 SPLme/rerere/rikkahub/data/datastore/Settings;->getSelectedTTSProviderId()Lkotlin/uuid/Uuid;
-SPLme/rerere/rikkahub/data/datastore/Settings;->getSponsorAlertDismissedAt()I
 SPLme/rerere/rikkahub/data/datastore/Settings;->getSuggestionPrompt()Ljava/lang/String;
 SPLme/rerere/rikkahub/data/datastore/Settings;->getThemeId()Ljava/lang/String;
 SPLme/rerere/rikkahub/data/datastore/Settings;->getTitlePrompt()Ljava/lang/String;
@@ -49290,7 +49288,6 @@ SPLme/rerere/rikkahub/data/datastore/SettingsStore;->access$getSELECTED_ASR_PROV
 SPLme/rerere/rikkahub/data/datastore/SettingsStore;->access$getSELECTED_TTS_PROVIDER$cp()Landroidx/datastore/preferences/core/Preferences$Key;
 SPLme/rerere/rikkahub/data/datastore/SettingsStore;->access$getSELECT_ASSISTANT$cp()Landroidx/datastore/preferences/core/Preferences$Key;
 SPLme/rerere/rikkahub/data/datastore/SettingsStore;->access$getSELECT_MODEL$cp()Landroidx/datastore/preferences/core/Preferences$Key;
-SPLme/rerere/rikkahub/data/datastore/SettingsStore;->access$getSPONSOR_ALERT_DISMISSED_AT$cp()Landroidx/datastore/preferences/core/Preferences$Key;
 SPLme/rerere/rikkahub/data/datastore/SettingsStore;->access$getSUGGESTION_PROMPT$cp()Landroidx/datastore/preferences/core/Preferences$Key;
 SPLme/rerere/rikkahub/data/datastore/SettingsStore;->access$getState$p(Lme/rerere/rikkahub/data/datastore/SettingsStore;)Lkotlinx/coroutines/flow/MutableStateFlow;
 SPLme/rerere/rikkahub/data/datastore/SettingsStore;->access$getTHEME_ID$cp()Landroidx/datastore/preferences/core/Preferences$Key;
@@ -49354,7 +49351,6 @@ SPLme/rerere/rikkahub/data/datastore/SettingsStore$Companion;->getSELECTED_ASR_P
 SPLme/rerere/rikkahub/data/datastore/SettingsStore$Companion;->getSELECTED_TTS_PROVIDER()Landroidx/datastore/preferences/core/Preferences$Key;
 SPLme/rerere/rikkahub/data/datastore/SettingsStore$Companion;->getSELECT_ASSISTANT()Landroidx/datastore/preferences/core/Preferences$Key;
 SPLme/rerere/rikkahub/data/datastore/SettingsStore$Companion;->getSELECT_MODEL()Landroidx/datastore/preferences/core/Preferences$Key;
-SPLme/rerere/rikkahub/data/datastore/SettingsStore$Companion;->getSPONSOR_ALERT_DISMISSED_AT()Landroidx/datastore/preferences/core/Preferences$Key;
 SPLme/rerere/rikkahub/data/datastore/SettingsStore$Companion;->getSUGGESTION_PROMPT()Landroidx/datastore/preferences/core/Preferences$Key;
 SPLme/rerere/rikkahub/data/datastore/SettingsStore$Companion;->getTHEME_ID()Landroidx/datastore/preferences/core/Preferences$Key;
 SPLme/rerere/rikkahub/data/datastore/SettingsStore$Companion;->getTITLE_PROMPT()Landroidx/datastore/preferences/core/Preferences$Key;
@@ -50387,7 +50383,6 @@ SPLme/rerere/rikkahub/data/remote/SettingsProxySelector;->select(Ljava/net/URI;)
 Lme/rerere/rikkahub/data/remote/SettingsSocks5Authenticator;
 SPLme/rerere/rikkahub/data/remote/SettingsSocks5Authenticator;-><clinit>()V
 SPLme/rerere/rikkahub/data/remote/SettingsSocks5Authenticator;-><init>(Lme/rerere/rikkahub/data/datastore/SettingsStore;)V
-Lme/rerere/rikkahub/data/remote/SponsorAPI;
 Lme/rerere/rikkahub/data/repository/ConversationRepository;
 SPLme/rerere/rikkahub/data/repository/ConversationRepository;-><clinit>()V
 SPLme/rerere/rikkahub/data/repository/ConversationRepository;-><init>(Lme/rerere/rikkahub/data/db/dao/ConversationDAO;Lme/rerere/rikkahub/data/db/dao/MessageNodeDAO;Lme/rerere/rikkahub/data/db/dao/FavoriteDAO;Lme/rerere/rikkahub/data/db/AppDatabase;Lme/rerere/rikkahub/data/files/FilesManager;Lme/rerere/rikkahub/data/db/fts/MessageFtsManager;)V

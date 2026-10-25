@@ -44,6 +44,7 @@ import androidx.core.content.FileProvider
 import coil3.compose.AsyncImage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import me.rerere.common.AppBrand
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Play
 import me.rerere.mediagen.model.ImageRole
@@ -254,7 +255,7 @@ internal fun MediaThumbnail(
 internal suspend fun saveMediaToGallery(context: Context, file: File, mimeType: String) = withContext(Dispatchers.IO) {
     check(file.isFile) { context.getString(R.string.media_creation_page_file_missing) }
     val isVideo = mimeType.startsWith("video/")
-    val name = "RikkaHub_${System.currentTimeMillis()}.${file.extension}"
+    val name = "${AppBrand.NAME}_${System.currentTimeMillis()}.${file.extension}"
     val directory = if (isVideo) Environment.DIRECTORY_MOVIES else Environment.DIRECTORY_PICTURES
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
         val resolver = context.contentResolver

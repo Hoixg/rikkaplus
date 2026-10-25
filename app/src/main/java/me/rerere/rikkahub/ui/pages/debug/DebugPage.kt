@@ -123,7 +123,6 @@ fun DebugPage(vm: DebugVM = koinViewModel()) {
 
 @Composable
 private fun MainPage(vm: DebugVM) {
-    val settings = LocalSettings.current
     val conversationCount by vm.conversationCount.collectAsStateWithLifecycle()
     Column(
         modifier = Modifier
@@ -249,29 +248,6 @@ private fun MainPage(vm: DebugVM) {
             )
             Button(onClick = {
                 launchCountInput.toIntOrNull()?.let(vm::setLaunchCount)
-            }) {
-                Text("Set")
-            }
-        }
-
-        var dismissedAtInput by remember(settings.sponsorAlertDismissedAt) {
-            mutableStateOf(settings.sponsorAlertDismissedAt.toString())
-        }
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            OutlinedTextField(
-                value = dismissedAtInput,
-                onValueChange = { dismissedAtInput = it },
-                label = { Text("sponsorAlertDismissedAt (current: ${settings.sponsorAlertDismissedAt})") },
-                modifier = Modifier.weight(1f),
-                singleLine = true,
-            )
-            Button(onClick = {
-                dismissedAtInput.toIntOrNull()?.let {
-                    vm.updateSettings { latest -> latest.copy(sponsorAlertDismissedAt = it) }
-                }
             }) {
                 Text("Set")
             }

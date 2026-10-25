@@ -22,6 +22,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import me.rerere.common.AppBrand
 import me.rerere.ui.toast.ToastType
 import kotlinx.coroutines.launch
 import me.rerere.hugeicons.HugeIcons
@@ -200,7 +201,7 @@ fun ImportExportTab(
                     {
                         val timestamp = LocalDateTime.now()
                             .format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"))
-                        createDocumentLauncher.launch("rikkahub_backup_$timestamp.zip")
+                        createDocumentLauncher.launch("${AppBrand.NAME.lowercase()}_backup_$timestamp.zip")
                     }
                 } else null,
                 headlineContent = { Text(stringResource(R.string.backup_page_local_backup_export)) },

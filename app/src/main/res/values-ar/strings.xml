@@ -7,7 +7,7 @@
   <string name="about_page_version">الإصدار</string>
   <string name="about_page_website">الموقع الإلكتروني</string>
   <string name="add">إضافة</string>
-  <string name="app_name">RikkaHub</string>
+  <string name="app_name">RikkaPlus</string>
   <string name="asr_button_content_description">التعرف على الكلام</string>
   <string name="asr_button_stop">إيقاف</string>
   <string name="assistant_detail_basic_desc">ضبط الاسم والصورة الرمزية والنموذج والمعلمات</string>
@@ -390,11 +390,6 @@
   <string name="deep_thinking">التفكير العميق</string>
   <string name="deep_thinking_seconds">فكّر لمدة %1$.1f ثانية</string>
   <string name="delete">حذف</string>
-  <string name="donate_page_afdian_desc">للمستخدمين في الصين 🇨🇳</string>
-  <string name="donate_page_donation_methods">طرق التبرع</string>
-  <string name="donate_page_kofi_desc">للمستخدمين حول العالم</string>
-  <string name="donate_page_sponsor_list">قائمة الرعاة</string>
-  <string name="donate_page_title">تبرع</string>
   <string name="edit">تعديل</string>
   <string name="editing">جارٍ التعديل</string>
   <string name="emoji_picker_search_placeholder">ابحث عن الرموز التعبيرية...</string>
@@ -627,7 +622,6 @@
   <string name="regenerate">إعادة التوليد</string>
   <string name="regenerate_confirm_message">هل أنت متأكد من إعادة توليد هذه الرسالة؟ سيتم حذف جميع الرسائل أسفل هذه الرسالة.</string>
   <string name="render_with_webview">العرض باستخدام WebView</string>
-  <string name="rikkahub_provider_description">خدمة ذكاء اصطناعي رسمية مجانية، تستخدم أموال رعاية المستخدمين لتوفير بعض النماذج المجانية للمستخدمين الجدد كخيار احتياطي، دون الحاجة إلى مفتاح API. لديها حدود صارمة على معدل الطلبات، وإذا كنت قد اشتريت مزوّدك الخاص، فيرجى استخدام مزوّدك الخاص قدر الإمكان.</string>
   <string name="safe_mode_assistants">المساعدون</string>
   <string name="safe_mode_copy">نسخ</string>
   <string name="safe_mode_crash_report">تقرير التعطل</string>
@@ -729,7 +723,7 @@
   <string name="setting_asr_configure_step_sample_rate_desc">معدل أخذ العينات لتسجيل PCM بوحدة Hz، يُوصى بـ 16000 لـ ASR</string>
   <string name="setting_asr_configure_step_segment_desc">تفريغ تلقائي للصوت المخزن مؤقتًا كل N ثانية أثناء التسجيل. تعطّل القيمة 0 التقسيم التلقائي (طلب واحد عند الإيقاف)</string>
   <string name="setting_asr_configure_step_timestamp">تفعيل الطوابع الزمنية</string>
-  <string name="setting_asr_configure_step_timestamp_desc">إرجاع طوابع زمنية على مستوى الكلمة في أحداث delta. معطّل افتراضيًا لتوفير الـ Token (لا يستهلكها rikkahub حتى الآن)</string>
+  <string name="setting_asr_configure_step_timestamp_desc">إرجاع طوابع زمنية على مستوى الكلمة في أحداث delta. معطّل افتراضيًا لتوفير الـ Token (لا يستهلكها RikkaPlus حتى الآن)</string>
   <string name="setting_asr_configure_vad_desc">حساسية VAD للخادم، عادةً من 0.3 إلى 0.8</string>
   <string name="setting_asr_configure_vad_threshold">عتبة VAD</string>
   <string name="setting_asr_configure_volcengine_api_key_desc">مفتاح API لـ Volcengine (X-Api-Key)</string>
@@ -931,8 +925,6 @@
   <string name="setting_page_display_setting_desc">إدارة إعدادات العرض</string>
   <string name="setting_page_documentation">التوثيق</string>
   <string name="setting_page_documentation_desc">عرض إرشادات استخدام التطبيق ووثائق المساعدة</string>
-  <string name="setting_page_donate">تبرع</string>
-  <string name="setting_page_donate_desc">إذا أعجبك، ادعم عمل المؤلف</string>
   <string name="setting_page_dynamic_color">الألوان الديناميكية</string>
   <string name="setting_page_dynamic_color_desc">توليد ألوان سمة التطبيق ديناميكيًا من خلفية الشاشة</string>
   <string name="setting_page_extensions">الإضافات</string>
@@ -980,11 +972,7 @@
   <string name="setting_page_search_title">خدمة البحث</string>
   <string name="setting_page_share">مشاركة</string>
   <string name="setting_page_share_desc">شارك هذا التطبيق مع أصدقائك</string>
-  <string name="setting_page_share_text">RikkaHub - مساعد ذكاء اصطناعي مفتوح المصدر لأندرويد\n\nالموقع الإلكتروني: https://rikka-ai.com/</string>
-  <string name="setting_page_sponsor_alert_confirm">تبرّع</string>
-  <string name="setting_page_sponsor_alert_desc">لقد قمت بتشغيل التطبيق أكثر من 100 مرة! إذا كنت تستمتع باستخدامه، فيرجى التفكير في دعم المطوّر.</string>
-  <string name="setting_page_sponsor_alert_dismiss">ليس الآن</string>
-  <string name="setting_page_sponsor_alert_title">دعم المطوّر</string>
+  <string name="setting_page_share_text">RikkaPlus - مساعد ذكاء اصطناعي مفتوح المصدر لأندرويد\n\nالموقع الإلكتروني: https://github.com/Hoixg/rikkaplus</string>
   <string name="setting_page_theme_setting">السمة</string>
   <string name="setting_page_theme_setting_desc">تخصيص نظام ألوان التطبيق</string>
   <string name="setting_page_tts_service">خدمات الكلام</string>

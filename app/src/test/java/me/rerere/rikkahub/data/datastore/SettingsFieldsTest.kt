@@ -165,7 +165,6 @@ private val SAMPLE = Settings(
     lorebooks = listOf(Lorebook(id = id(12), name = "lorebook")),
     quickMessages = listOf(QuickMessage(id = id(13), title = "hi")),
     backupReminderConfig = BackupReminderConfig(enabled = true),
-    sponsorAlertDismissedAt = 7,
 )
 
 private val STORED_KEYS = setOf(
@@ -216,5 +215,4 @@ private val STORED_KEYS = setOf(
     "lorebooks",
     "quick_messages",
     "backup_reminder_config",
-    "sponsor_alert_dismissed_at",
 )

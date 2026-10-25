@@ -1,5 +1,7 @@
 package me.rerere.rikkahub.ui.components.richtext
 
+import me.rerere.common.AppBrand
+
 import android.graphics.BitmapFactory
 import android.util.Base64
 import android.webkit.JavascriptInterface
@@ -283,7 +285,7 @@ private fun buildMermaidHtml(
 
                         ctx.font = '14px Arial';
                         ctx.fillStyle = '${onBackground}';
-                        ctx.fillText('rikka-ai.com', 20, canvas.height - 10);
+                        ctx.fillText('${AppBrand.NAME}', 20, canvas.height - 10);
 
                         const pngBase64 = canvas.toDataURL('image/png').split(',')[1];
                         AndroidInterface.exportImage(pngBase64);

@@ -81,16 +81,16 @@ class SettingsStoreTest {
     @Test
     fun `concurrent updates are all applied`() = runBlocking {
         val store = open().store
-        store.update { it.copy(sponsorAlertDismissedAt = 0) }
+        store.update { it.copy(translateThinkingBudget = 0) }
 
         (1..8).map {
             launch(Dispatchers.Default) {
-                repeat(50) { store.update { it.copy(sponsorAlertDismissedAt = it.sponsorAlertDismissedAt + 1) } }
+                repeat(50) { store.update { it.copy(translateThinkingBudget = it.translateThinkingBudget + 1) } }
             }
         }.joinAll()
 
-        assertEquals(400, store.settingsFlow.value.sponsorAlertDismissedAt)
-        assertEquals(400, reopened().sponsorAlertDismissedAt)
+        assertEquals(400, store.settingsFlow.value.translateThinkingBudget)
+        assertEquals(400, reopened().translateThinkingBudget)
     }
 
     @Test
@@ -101,17 +101,17 @@ class SettingsStoreTest {
         val gate = CompletableDeferred<Unit>()
         opened.disk.writeGate = gate
 
-        val first = launch(start = CoroutineStart.UNDISPATCHED) { store.update { it.copy(sponsorAlertDismissedAt = 9001) } }
+        val first = launch(start = CoroutineStart.UNDISPATCHED) { store.update { it.copy(translateThinkingBudget = 9001) } }
         while (opened.disk.writes.get() == 0) delay(1)
         val rest = (9002..9050).map { value ->
-            launch(start = CoroutineStart.UNDISPATCHED) { store.update { it.copy(sponsorAlertDismissedAt = value) } }
+            launch(start = CoroutineStart.UNDISPATCHED) { store.update { it.copy(translateThinkingBudget = value) } }
         }
         gate.complete(Unit)
         (rest + first).joinAll()
 
         assertEquals(2, opened.disk.writes.get())
-        assertEquals(9050, store.settingsFlow.value.sponsorAlertDismissedAt)
-        assertEquals(9050, reopened().sponsorAlertDismissedAt)
+        assertEquals(9050, store.settingsFlow.value.translateThinkingBudget)
+        assertEquals(9050, reopened().translateThinkingBudget)
     }
 
     @Test

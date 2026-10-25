@@ -9,6 +9,7 @@ import io.ktor.http.HttpHeaders
 import io.pebbletemplates.pebble.PebbleEngine
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
+import me.rerere.common.AppBrand
 import me.rerere.ai.provider.ProviderManager
 import me.rerere.common.http.AcceptLanguageBuilder
 import me.rerere.mediagen.provider.MediaGenerationManager
@@ -35,7 +36,6 @@ import me.rerere.rikkahub.data.remote.RikkaHubAPI
 import me.rerere.rikkahub.data.remote.SettingsProxyAuthenticator
 import me.rerere.rikkahub.data.remote.SettingsProxySelector
 import me.rerere.rikkahub.data.remote.SettingsSocks5Authenticator
-import me.rerere.rikkahub.data.remote.SponsorAPI
 import me.rerere.rikkahub.data.sync.BackupManager
 import me.rerere.rikkahub.data.sync.S3Sync
 import me.rerere.rikkahub.data.sync.webdav.WebDavSync
@@ -208,7 +208,7 @@ val dataSourceModule = module {
                 if (originalRequest.header(HttpHeaders.UserAgent) == null) {
                     val userAgent = settingsStore.settingsFlow.value.networkSetting.userAgent
                         .trim()
-                        .ifEmpty { "RikkaHub-Android/${BuildConfig.VERSION_NAME}" }
+                        .ifEmpty { AppBrand.defaultUserAgent(BuildConfig.VERSION_NAME) }
                     requestBuilder.addHeader(HttpHeaders.UserAgent, userAgent)
                 }
 
@@ -239,10 +239,6 @@ val dataSourceModule = module {
             })
             .build()
         client.also { SearchService.init(it, get()) }
-    }
-
-    single {
-        SponsorAPI.create(get())
     }
 
     single {

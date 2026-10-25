@@ -19,6 +19,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
+import me.rerere.common.AppBrand
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.time.Duration
@@ -243,7 +244,7 @@ class OAuthLoopbackCallbackServer(
         ),
         hint = localizedString(
             R.string.oauth_callback_success_hint,
-            "You can close this tab and return to RikkaHub.",
+            "You can close this tab and return to ${AppBrand.NAME}.",
         ),
     )
 
@@ -257,7 +258,7 @@ class OAuthLoopbackCallbackServer(
         ),
         hint = localizedString(
             R.string.oauth_callback_error_hint,
-            "Close this tab and try again from RikkaHub.",
+            "Close this tab and try again from ${AppBrand.NAME}.",
         ),
     )
 
@@ -274,7 +275,7 @@ class OAuthLoopbackCallbackServer(
         ),
         hint = localizedString(
             R.string.oauth_callback_invalid_hint,
-            "Return to RikkaHub and start the authorization again.",
+            "Return to ${AppBrand.NAME} and start the authorization again.",
         ),
     )
 
@@ -291,7 +292,7 @@ class OAuthLoopbackCallbackServer(
         ),
         hint = localizedString(
             R.string.oauth_callback_handled_hint,
-            "You can safely close this tab and return to RikkaHub.",
+            "You can safely close this tab and return to ${AppBrand.NAME}.",
         ),
     )
 
@@ -323,7 +324,7 @@ class OAuthLoopbackCallbackServer(
               <meta charset="utf-8">
               <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
               <meta name="color-scheme" content="light dark">
-              <title>$safeTitle · RikkaHub</title>
+              <title>$safeTitle · ${AppBrand.NAME}</title>
               <style>
                 :root {
                   color-scheme: light dark;
@@ -412,7 +413,7 @@ class OAuthLoopbackCallbackServer(
             </head>
             <body class="$tone">
               <main role="status" aria-live="polite">
-                <p class="brand">RikkaHub</p>
+                <p class="brand">${AppBrand.NAME}</p>
                 <div class="status">
                   <div class="icon" aria-hidden="true">$symbol</div>
                   <h1>$safeTitle</h1>

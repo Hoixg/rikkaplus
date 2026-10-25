@@ -10,6 +10,7 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import me.rerere.common.AppBrand
 import me.rerere.oauth.OAuthAuthorizationLauncher
 import me.rerere.oauth.OAuthHttpClient
 import me.rerere.oauth.OAuthLoopbackCallbackServer
@@ -180,7 +181,7 @@ internal class McpOAuthCoordinator(
                 val registration = oauthClient.registerClient(
                     registrationEndpoint = registrationEndpoint,
                     request = OAuthHttpClient.ClientRegistrationRequest(
-                        clientName = config.commonOptions.name.ifBlank { "RikkaHub" },
+                        clientName = config.commonOptions.name.ifBlank { AppBrand.NAME },
                         redirectUris = listOf(redirectUri),
                         scope = scope,
                     ),

@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-RikkaHub is a native Android LLM chat client that supports switching between different AI providers
+RikkaPlus is a native Android LLM chat client based on RikkaHub that supports switching between different AI providers
 for conversations.
 Built with Jetpack Compose, Kotlin, and follows Material 3 Expressive (MD3 Expressive) design language.
 

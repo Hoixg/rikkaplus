@@ -17,7 +17,7 @@
   <string name="about_page_version">Version</string>
   <string name="about_page_website">Website</string>
   <string name="add">Hinzufügen</string>
-  <string name="app_name">RikkaHub</string>
+  <string name="app_name">RikkaPlus</string>
   <string name="asr_button_content_description">Spracherkennung</string>
   <string name="asr_button_stop">Stopp</string>
   <string name="assistant_page_image_url">Bild-URL</string>
@@ -306,10 +306,6 @@
   <string name="deep_thinking">Tiefes Denken</string>
   <string name="deep_thinking_seconds">%1$.1f Sekunden nachgedacht</string>
   <string name="delete">Löschen</string>
-  <string name="donate_page_afdian_desc">Für 🇨🇳 Nutzer</string>
-  <string name="donate_page_donation_methods">Spendenmethoden</string>
-  <string name="donate_page_kofi_desc">Für internationale Nutzer</string>
-  <string name="donate_page_sponsor_list">Sponsorenliste</string>
   <string name="extension_selector_lorebooks_empty">Keine Lorebooks verfügbar</string>
   <string name="extension_selector_mode_injections_empty">Keine Modus-Injektionen verfügbar</string>
   <string name="extension_selector_quick_messages_empty">Keine Schnellnachrichten verfügbar</string>
@@ -350,7 +346,6 @@
   <string name="imggen_page_cancel">Abbrechen</string>
   <string name="imggen_page_cancel_generation_message">Möchtest du die Bildgenerierung wirklich abbrechen?</string>
   <string name="imggen_page_cancel_generation_title">Generierung abbrechen</string>
-  <string name="donate_page_title">Spenden</string>
   <string name="edit">Bearbeiten</string>
   <string name="editing">Bearbeitung</string>
   <string name="emoji_picker_search_placeholder">Emojis suchen...</string>
@@ -595,7 +590,7 @@
   <string name="setting_asr_configure_vad_desc">Empfindlichkeit des Server-VAD, üblicherweise 0.3 - 0.8</string>
   <string name="setting_asr_configure_vad_threshold">VAD-Schwelle</string>
   <string name="setting_asr_configure_step_timestamp">Zeitstempel aktivieren</string>
-  <string name="setting_asr_configure_step_timestamp_desc">Gibt Zeitstempel auf Wortebene in Delta-Events zurück. Standardmäßig deaktiviert, um Tokens zu sparen (rikkahub nutzt sie noch nicht)</string>
+  <string name="setting_asr_configure_step_timestamp_desc">Gibt Zeitstempel auf Wortebene in Delta-Events zurück. Standardmäßig deaktiviert, um Tokens zu sparen (RikkaPlus nutzt sie noch nicht)</string>
   <string name="setting_asr_configure_step_hotwords">Hotwords</string>
   <string name="setting_asr_configure_step_hotwords_desc">Kommagetrennte Liste von Hotwords, um die Erkennungsgenauigkeit für Eigennamen / Fachbegriffe zu verbessern</string>
   <string name="setting_asr_page_add_provider">ASR-Anbieter hinzufügen</string>
@@ -642,7 +637,6 @@
   <string name="regenerate">Neu generieren</string>
   <string name="regenerate_confirm_message">Bist du sicher, dass du diese Nachricht neu generieren möchtest? Alle Nachrichten unterhalb dieser Nachricht werden gelöscht.</string>
   <string name="render_with_webview">Mit WebView rendern</string>
-  <string name="rikkahub_provider_description">Offizieller kostenloser KI-Dienst, der mit Sponsorengeldern der Nutzer einige kostenlose Modelle als Fallback für neue Nutzer bereitstellt. Kein API-Schlüssel erforderlich. Es gelten strenge Ratenlimits; wenn du einen eigenen Anbieter erworben hast, nutze bitte möglichst deinen eigenen Anbieter.</string>
   <string name="safe_mode_assistants">Assistenten</string>
   <string name="menu_page_night_greeting">Es ist spät, pass auf dich auf\uD83D\uDC4B</string>
   <string name="mermaid_export">Export</string>
@@ -809,8 +803,6 @@
   <string name="setting_page_preferences_network_auto_retry_desc">Modellanfragen bei Netzwerkfehlern bis zu 3-mal wiederholen.</string>
   <string name="setting_page_documentation">Dokumentation</string>
   <string name="setting_page_documentation_desc">Anweisungen zur App-Nutzung und Hilfedokumentation anzeigen</string>
-  <string name="setting_page_donate">Spenden</string>
-  <string name="setting_page_donate_desc">Wenn es dir gefällt, unterstütze die Arbeit des Autors</string>
   <string name="setting_page_dynamic_color">Dynamische Farben</string>
   <string name="setting_page_dynamic_color_desc">Erzeuge die Designfarben der App dynamisch aus deinem Hintergrundbild</string>
   <string name="setting_page_extensions">Erweiterungen</string>
@@ -860,11 +852,7 @@
   <string name="setting_page_search_title">Suchdienst</string>
   <string name="setting_page_share">Teilen</string>
   <string name="setting_page_share_desc">Teile diese App mit Freunden</string>
-  <string name="setting_page_share_text">RikkaHub - Open Source Android AI Assistant\n\nWebsite: https://rikka-ai.com/</string>
-  <string name="setting_page_sponsor_alert_confirm">Spenden</string>
-  <string name="setting_page_sponsor_alert_desc">Du hast die App über 100 Mal gestartet! Wenn sie dir gefällt, erwäge bitte, den Entwickler zu unterstützen.</string>
-  <string name="setting_page_sponsor_alert_dismiss">Nicht jetzt</string>
-  <string name="setting_page_sponsor_alert_title">Entwickler unterstützen</string>
+  <string name="setting_page_share_text">RikkaPlus - Open Source Android AI Assistant\n\nWebsite: https://github.com/Hoixg/rikkaplus</string>
   <string name="setting_provider_page_avaliable_models">Verfügbare Modelle</string>
   <string name="setting_provider_page_balance_info">\"Kontostand abrufen \"</string>
   <string name="setting_provider_page_balance_json_key">JSON-Schlüssel des Ergebnisses</string>
