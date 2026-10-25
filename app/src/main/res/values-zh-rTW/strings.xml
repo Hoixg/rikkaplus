@@ -1461,7 +1461,6 @@
   <string name="setting_page_media">媒體</string>
   <string name="setting_page_media_desc">圖片與影片生成供應商、素材上傳</string>
   <string name="setting_media_page_providers">供應商</string>
-  <string name="setting_media_page_edit_provider">編輯供應商</string>
   <string name="setting_media_page_add_provider">新增供應商</string>
   <string name="media_kind_image">圖片</string>
   <string name="media_provider_type_aliyun">阿里雲百鍊</string>
@@ -1755,4 +1754,7 @@
   <string name="floating_chat_status_awaiting_approval">等待工具呼叫確認</string>
   <string name="floating_chat_status_done">回覆完成</string>
   <string name="floating_chat_status_idle">閒置</string>
+  <string name="setting_model_page_memory_model">記憶整理模型</string>
+  <string name="setting_model_page_memory_model_desc">用於在背景將對話整理為長期記憶的模型；未設定時會使用快速模型</string>
+  <string name="setting_model_page_memory_model_follow_fast">跟隨快速模型</string>
 </resources>

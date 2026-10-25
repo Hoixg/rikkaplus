@@ -1496,7 +1496,6 @@
   <string name="setting_page_media">媒体</string>
   <string name="setting_page_media_desc">图像与视频生成提供商、素材上传</string>
   <string name="setting_media_page_providers">提供商</string>
-  <string name="setting_media_page_edit_provider">编辑提供商</string>
   <string name="setting_media_page_add_provider">添加提供商</string>
   <string name="setting_media_page_empty">还没有媒体生成提供商，点右上角添加</string>
   <string name="setting_media_page_s3_desc">部分接口只接受公网地址的素材（如视频生成的参考图、参考视频）。在这里配置一个 S3 兼容的对象存储服务后，本地文件会先上传到它的桶里，再以临时地址交给接口；上传的文件 7 天后自动清理。此配置与备份的 S3 互相独立。</string>
@@ -1790,4 +1789,7 @@
   <string name="setting_shizuku_approval_required">执行前审批</string>
   <string name="setting_shizuku_approval_required_desc">开启后，AI 每次执行命令前都需要批准；关闭后将直接执行。</string>
   <string name="model_list_close">关闭</string>
+  <string name="setting_model_page_memory_model">记忆整理模型</string>
+  <string name="setting_model_page_memory_model_desc">用于在后台将对话整理为长期记忆的模型；未设置时使用快速模型</string>
+  <string name="setting_model_page_memory_model_follow_fast">跟随快速模型</string>
 </resources>

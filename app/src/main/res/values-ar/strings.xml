@@ -1471,7 +1471,6 @@
   <string name="setting_page_media">الوسائط</string>
   <string name="setting_page_media_desc">مزوّدو توليد الصور والفيديو، ورفع الأصول</string>
   <string name="setting_media_page_providers">المزوّدون</string>
-  <string name="setting_media_page_edit_provider">تعديل المزوّد</string>
   <string name="setting_media_page_add_provider">إضافة مزوّد</string>
   <string name="media_creation_page_param_watermark">علامة مائية</string>
   <string name="media_creation_page_param_prompt_enhancement">تحسين المطالبة</string>
@@ -1755,4 +1754,7 @@
   <string name="floating_chat_status_awaiting_approval">في انتظار تأكيد استدعاء الأداة</string>
   <string name="floating_chat_status_done">اكتمل الرد</string>
   <string name="floating_chat_status_idle">خامل</string>
+  <string name="setting_model_page_memory_model">نموذج توطيد الذاكرة</string>
+  <string name="setting_model_page_memory_model_desc">النموذج المستخدم لتنظيم المحادثات في الذاكرة طويلة المدى في الخلفية؛ يستخدم النموذج السريع عند عدم تعيينه</string>
+  <string name="setting_model_page_memory_model_follow_fast">نفس النموذج السريع</string>
 </resources>
