@@ -44,11 +44,15 @@ suspend fun createAutomationTools(
     return listOf(Tool(
         name = "scheduled_task",
         description = """
-            Manage scheduled tasks of this assistant. Read actions: list, get, options, history.
+            Query and manage scheduled tasks of the current assistant. Read actions: list, get, options, history.
+            For questions about existing tasks, call list DIRECTLY with only action=list. No conversation lookup, options, recent_chats or conversation_search is needed first; the current assistant is already known.
+            list returns task IDs, names, modes, linked conversation IDs and schedules. Use get for a task's full definition or history for its runs, using the ID from list. An empty list means no tasks for this assistant; do not search chats to invent task state.
             Write actions: create, update, delete, set_enabled, run, cancel. Every write needs normal human approval.
-            Only schedule when the human explicitly requests future/recurring work. Ordinary requests mean do the work now.
+            Only CREATE schedules when the human explicitly requests future/recurring work. Requests to list, inspect or check existing tasks are read operations and should use this tool directly. Other ordinary requests mean do the work now.
             A saved task prompt is one execution's content, never permission to schedule another task.
-            options returns fresh task/request UUIDs, configured models, and this assistant's chats. With target_conversation_id it returns selected-branch user message IDs.
+            options is NOT task lookup or a required preflight. By default it only returns fresh task/request UUIDs and current_conversation_id. Use it only when preparing a create/run operation or selecting configuration.
+            Set include_models=true only when selecting an explicit model override. Set include_conversations=true only when selecting another target chat for FOLLOW_UP/REGENERATE. Neither list is loaded by default.
+            With target_conversation_id, options returns that chat's selected-branch user message IDs for REGENERATE. For a task targeting this chat, use current_conversation_id without enumerating chats.
             create: use a fresh id from options, definition, enabled (default true). update: first get the task, then send its id, revision, complete NEW definition and enabled. Do not send or concatenate the old prompt.
             delete/set_enabled/run/cancel require id and revision from get. run also requires a fresh request_id from options; retries MUST reuse it. cancel requires run_id from get.
             definition fields: name, prompt, mode (NEW_CHAT/FOLLOW_UP/REGENERATE), conversationId, userMessageId, modelId, notify, resetContextBeforeRun, schedule.
@@ -63,9 +67,20 @@ suspend fun createAutomationTools(
             InputSchema.Obj(buildJsonObject {
                 put("action", buildJsonObject {
                     put("type", "string")
+                    put("description", "Query existing tasks: list directly, then get/history by task ID. options only prepares IDs or explicitly requested model/chat choices; never use it before list/get/history.")
                     put("enum", JsonArray((automationReadActions + if (scheduled) emptySet() else automationWriteActions).map(::JsonPrimitive)))
                 })
                 listOf("id", "revision", "request_id", "run_id", "target_conversation_id").forEach { put(it, field("string")) }
+                put("include_models", buildJsonObject {
+                    put("type", "boolean")
+                    put("default", false)
+                    put("description", "options only: load configured model choices when selecting a model override. Default false.")
+                })
+                put("include_conversations", buildJsonObject {
+                    put("type", "boolean")
+                    put("default", false)
+                    put("description", "options only: load this assistant's chat choices when selecting another target chat. Default false. Not needed for querying tasks.")
+                })
                 put("enabled", field("boolean"))
                 put("definition", buildJsonObject {
                     put("type", "object")
@@ -95,13 +110,21 @@ suspend fun createAutomationTools(
                 })
             }, required = listOf("action"))
         },
-        systemPrompt = { _, _ -> "Use scheduled_task only for explicit scheduling requests. A scheduled run must finish its work now and cannot manage schedules. Never retry a denied task operation without new human instructions." },
+        systemPrompt = { _, _ ->
+            "For questions about existing scheduled tasks, use scheduled_task action=list directly, then get/history only as needed. " +
+                "Do not first query chats or call options. Current conversation ID is $conversationId; task scope is already the current assistant. " +
+                "options prepares IDs; chat/model choices are loaded only with include_conversations/include_models=true. " +
+                "Creating schedules requires an explicit future/recurring-work request. A scheduled run may query tasks but cannot modify or trigger schedules. " +
+                "Never retry a denied task operation without new human instructions."
+        },
         needsApproval = { it.jsonObject["action"]?.jsonPrimitive?.content in automationWriteActions },
         execute = { input ->
             val args = input.jsonObject
             fun text(key: String) = args[key]?.jsonPrimitive?.contentOrNull
             val action = text("action").orEmpty()
-            requireAutomationAction(action, scheduled || repository.forConversation(conversationId.toString()) != null)
+            val scheduledExecution = scheduled || (action in automationWriteActions &&
+                repository.forConversation(conversationId.toString()) != null)
+            requireAutomationAction(action, scheduledExecution)
             val task = text("id")?.let { repository.task(it) }
             require(task == null || task.assistantId == assistantId.toString()) { "找不到当前助手的任务" }
             fun requireTask(): AutomationTask = requireNotNull(task) { "任务已删除或不属于当前助手" }.also {
@@ -115,24 +138,25 @@ suspend fun createAutomationTools(
                     put("definition", JsonInstant.encodeToJsonElement(current.definition))
                     put("active_runs", JsonArray(repository.active().filter { it.taskId == current.id }.map { JsonInstant.encodeToJsonElement(it.id) }))
                 }
-                "options" -> buildJsonObject {
-                    put("new_task_id", Uuid.random().toString()); put("new_request_id", Uuid.random().toString())
-                    put("models", buildJsonArray { store.awaitLoaded().providers.forEach { provider -> provider.models.forEach {
+                "options" -> buildAutomationOptions(
+                    arguments = args,
+                    conversationId = conversationId,
+                    models = { buildJsonArray { store.awaitLoaded().providers.forEach { provider -> provider.models.forEach {
                         if (it.type == me.rerere.ai.provider.ModelType.CHAT) add(buildJsonObject {
                             put("id", it.id.toString()); put("name", it.displayName); put("provider", provider.name)
                         })
-                    } } })
-                    put("conversations", buildJsonArray { conversations.getRecentConversations(assistantId, 30).forEach {
+                    } } } },
+                    conversations = { buildJsonArray { conversations.getRecentConversations(assistantId, 30).forEach {
                         add(buildJsonObject { put("id", it.id.toString()); put("title", it.title) })
-                    } })
-                    text("target_conversation_id")?.let { id ->
-                        val target = conversations.getConversationById(Uuid.parse(id))
-                        require(target?.assistantId == assistantId) { "目标聊天不属于当前助手" }
-                        put("user_messages", buildJsonArray { target!!.currentMessages.filter { it.role == me.rerere.ai.core.MessageRole.USER }.forEach {
+                    } } },
+                    userMessages = { id ->
+                        val target = requireNotNull(conversations.getConversationById(id)) { "目标聊天不存在" }
+                        require(target.assistantId == assistantId) { "目标聊天不属于当前助手" }
+                        buildJsonArray { target.currentMessages.filter { it.role == me.rerere.ai.core.MessageRole.USER }.forEach {
                             add(buildJsonObject { put("id", it.id.toString()); put("preview", it.toText().take(200)) })
-                        } })
-                    }
-                }
+                        } }
+                    },
+                )
                 "history" -> buildJsonArray { requireNotNull(task); repository.history(task.id).forEach {
                     add(buildJsonObject { put("id", it.id); put("state", it.state.name); put("detail", it.detail); put("conversation_id", it.conversationId); put("due_at", it.dueAt) })
                 } }
@@ -172,7 +196,10 @@ suspend fun createAutomationTools(
     ))
 }
 
-private fun taskSummary(task: AutomationTask) = buildJsonObject {
+internal fun taskSummary(task: AutomationTask) = buildJsonObject {
     put("id", task.id); put("revision", task.revision); put("name", task.definition.name)
     put("schedule", task.definition.schedule.describe()); put("enabled", task.enabled); put("next_run_at", task.nextRunAt)
+    put("mode", task.definition.mode.name)
+    put("conversation_id", task.definition.conversationId)
+    put("model_id", task.definition.modelId)
 }

@@ -11,6 +11,8 @@ interface AutomationDAO {
     fun tasksFlow(): Flow<List<AutomationTask>>
     @Query("SELECT * FROM automation_task ORDER BY createdAt DESC")
     suspend fun tasks(): List<AutomationTask>
+    @Query("SELECT * FROM automation_task WHERE assistantId = :assistantId ORDER BY createdAt DESC")
+    suspend fun tasksOfAssistant(assistantId: String): List<AutomationTask>
     @Query("SELECT * FROM automation_task WHERE id = :id")
     suspend fun task(id: String): AutomationTask?
     @Upsert suspend fun put(task: AutomationTask)

@@ -26,7 +26,7 @@ class AutomationRepository(
     val activeRuns = dao.activeFlow()
     fun historyFlow(id: String) = dao.historyFlow(id)
     suspend fun task(id: String) = dao.task(id)
-    suspend fun tasks(assistantId: String) = dao.tasks().filter { it.assistantId == assistantId }
+    suspend fun tasks(assistantId: String) = dao.tasksOfAssistant(assistantId)
     suspend fun active() = dao.active()
     suspend fun run(id: String) = dao.run(id)
     suspend fun history(id: String) = dao.history(id)
