@@ -1,10 +1,8 @@
 package me.rerere.rikkahub.ui.components.ai
 
-import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.FlowRow
@@ -13,7 +11,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -24,22 +21,17 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AssistChip
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextFieldDefaults
-import androidx.compose.material3.SheetValue
-import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -325,27 +317,7 @@ fun ModelListSheet(
 ) {
     if (!state.visible) return
 
-    val coroutineScope = rememberCoroutineScope()
-    val sheetState = rememberBottomSheetState(
-        initialValue = SheetValue.Hidden,
-        enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded)
-    )
-
-    fun dismiss() {
-        coroutineScope.launch {
-            sheetState.hide()
-            state.close()
-        }
-    }
-
-    ModalBottomSheet(
-        onDismissRequest = {
-            state.close()
-        },
-        sheetState = sheetState,
-        sheetGesturesEnabled = false,
-        dragHandle = null,
-    ) {
+    ModelSelectionSheet(onDismissRequest = state::close) { dismiss ->
         Column(
             modifier = Modifier
                 .padding(8.dp)
@@ -508,37 +480,6 @@ private fun ColumnScope.ModelList(
         }.toMap()
     }
 
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = stringResource(R.string.model_list_select_model),
-            style = MaterialTheme.typography.titleMediumEmphasized,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-        )
-        FilledTonalButton(
-            onClick = onDismiss,
-            modifier = Modifier.heightIn(min = 48.dp),
-            shapes = ButtonDefaults.shapes(),
-            contentPadding = ButtonDefaults.ButtonWithIconContentPadding,
-        ) {
-            Icon(
-                imageVector = HugeIcons.Cancel01,
-                contentDescription = null,
-                modifier = Modifier
-                    .padding(end = ButtonDefaults.IconSpacing)
-                    .size(ButtonDefaults.IconSize),
-            )
-            Text(stringResource(R.string.model_list_close))
-        }
-    }
-
     Surface(
         shape = RoundedCornerShape(50),
         modifier = Modifier
@@ -601,7 +542,7 @@ private fun ColumnScope.ModelList(
             items(
                 items = favoriteModels,
                 key = { "favorite:" + it.first.id.toString() }
-            ) { (model, provider) ->
+            ) { (model, _) ->
                 ReorderableItem(
                     state = reorderableState,
                     key = "favorite:" + model.id.toString()
@@ -612,11 +553,7 @@ private fun ColumnScope.ModelList(
                         modifier = Modifier
                             .scale(if (isDragging) 0.95f else 1f)
                             .animateItem(),
-                        providerSetting = provider,
                         select = model.id == currentModel,
-                        onDismiss = {
-                            onDismiss()
-                        },
                         tail = {
                             IconButton(
                                 onClick = {
@@ -674,23 +611,24 @@ private fun ColumnScope.ModelList(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    Text(
-                        text = providerSetting.name,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(MaterialTheme.shapes.small)
-                            .clickable(role = Role.Button, onClickLabel = "打开供应商设置") {
-                                onDismiss()
-                                navController.navigate(
-                                    Screen.SettingProviderDetail(providerId = providerSetting.id.toString())
-                                )
-                            }
-                            .padding(vertical = 12.dp),
-                    )
+                    Box(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = providerSetting.name,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier
+                                .clip(MaterialTheme.shapes.small)
+                                .clickable(role = Role.Button, onClickLabel = "打开供应商设置") {
+                                    onDismiss()
+                                    navController.navigate(
+                                        Screen.SettingProviderDetail(providerId = providerSetting.id.toString())
+                                    )
+                                }
+                                .padding(vertical = 12.dp),
+                        )
+                    }
 
                     ProviderQuotaText(
                         providerSetting = providerSetting,
@@ -718,11 +656,7 @@ private fun ColumnScope.ModelList(
                     model = model,
                     onSelect = onSelect,
                     modifier = Modifier.animateItem(),
-                    providerSetting = providerSetting,
                     select = currentModel == model.id,
-                    onDismiss = {
-                        onDismiss()
-                    },
                     tail = {
                         IconButton(
                             onClick = {
@@ -816,16 +750,12 @@ private fun ColumnScope.ModelList(
 @Composable
 private fun ModelItem(
     model: Model,
-    providerSetting: ProviderSetting,
     select: Boolean,
     onSelect: (Model) -> Unit,
-    onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
     tail: @Composable RowScope.() -> Unit = {},
     dragHandle: @Composable (RowScope.() -> Unit)? = null
 ) {
-    val navController = LocalNavController.current
-    val interactionSource = remember { MutableInteractionSource() }
     Card(
         modifier = modifier,
         colors = CardDefaults.cardColors(
@@ -843,19 +773,8 @@ private fun ModelItem(
             Row(
                 modifier = Modifier
                     .weight(1f)
-                    .combinedClickable(
-                        enabled = true,
-                        onLongClick = {
-                            onDismiss()
-                            navController.navigate(
-                                Screen.SettingProviderDetail(
-                                    providerSetting.id.toString()
-                                )
-                            )
-                        },
+                    .clickable(
                         onClick = { onSelect(model) },
-                        interactionSource = interactionSource,
-                        indication = LocalIndication.current
                     ),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
