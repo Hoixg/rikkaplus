@@ -2,25 +2,30 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // 1.0 adaptations: local tool approval, current UI APIs and extension navigation.
 
+@file:Suppress("ktlint:standard:max-line-length")
+
 package me.rerere.rikkahub.shizuku
 
 import android.content.ComponentName
 import android.content.Context
 import android.content.ServiceConnection
 import android.content.pm.PackageManager
+import android.os.Build
 import android.os.IBinder
 import android.util.Log
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import me.rerere.rikkahub.BuildConfig
 import rikka.shizuku.Shizuku
@@ -39,11 +44,6 @@ private const val SHIZUKU_PACKAGE = "moe.shizuku.privileged.api"
 private const val PERMISSION_REQUEST_CODE = 8730
 
 private const val BIND_TIMEOUT_MS = 10_000L
-
-/** Extra slack on top of the caller's requested command timeout for the AIDL round-trip
- *  itself, so a remote process that somehow ignored its own timeout can't hang [exec]
- *  forever. */
-private const val CALL_TIMEOUT_SLACK_MS = 5_000L
 
 /**
  * Parse the raw JSON string [ShizukuUserService.exec] returns over the AIDL boundary back
@@ -204,57 +204,112 @@ object ShizukuManager {
         .daemon(false)
         .processNameSuffix("shizuku")
         .debuggable(BuildConfig.DEBUG)
-        .version(BuildConfig.VERSION_CODE.toIntOrNull() ?: 1)
+        // Protocol changes must replace an old UserService even without an app version bump.
+        .version((BuildConfig.VERSION_CODE.toIntOrNull() ?: 1) * 100 + 2)
         .also { cachedArgs = it }
 
-    /**
-     * Run [command] with Shizuku's privileges (the shell UID). [timeoutMs] bounds the command
-     * itself, enforced inside [ShizukuUserService], which destroys the process and returns a
-     * partial-output envelope on timeout. This function adds [CALL_TIMEOUT_SLACK_MS] on top as
-     * a belt-and-suspenders bound on the AIDL round-trip, in case the remote process hangs
-     * beyond its own timeout (e.g. it was OOM-killed mid-write, or the binder died).
-     *
-     * Returns a structured error (see [ShizukuStatusMapper]) instead of throwing when Shizuku
-     * isn't ready, the bind fails, or the call itself hangs, callers pass this straight back
-     * as the tool result.
-     */
-    suspend fun exec(context: Context, command: String, timeoutMs: Int): JsonObject {
+    /** Compatibility entry point; command execution uses short task RPCs and cancellable polling. */
+    suspend fun exec(context: Context, command: String, timeoutMs: Int): JsonObject =
+        execute(context, ShizukuCommandRequest(command = command, timeoutMs = timeoutMs.coerceIn(1000, 300_000)))
+
+    internal suspend fun execute(context: Context, request: ShizukuCommandRequest): JsonObject = ShizukuCommandClient(
+        start = { id, spec -> call(context, id) { it.start(id, shizukuJson.encodeToString(spec)) } },
+        read = { id -> taskRead(context, id) },
+        output = { id, stream, limit -> output(context, id, stream, 0, limit, null) },
+        cancel = { id -> taskCancel(context, id) },
+    ).execute(request)
+
+    internal suspend fun taskRead(context: Context, id: String): JsonObject = call(context, id) { it.read(id) }
+    internal suspend fun taskList(context: Context): JsonObject = call(context) { it.list() }
+    internal suspend fun taskCancel(context: Context, id: String): JsonObject = call(context, id) { it.cancel(id) }
+    internal suspend fun taskForget(context: Context, id: String): JsonObject = call(context, id) { it.forget(id) }
+    internal suspend fun output(
+        context: Context,
+        id: String,
+        stream: String,
+        offset: Int,
+        limit: Int,
+        query: String?
+    ): JsonObject =
+        call(context, id) { it.output(id, stream, offset, limit, query) }
+
+    suspend fun diagnostics(context: Context): JsonObject {
+        val installed = isInstalled(context)
+        val alive = isBinderAlive()
+        val granted = isPermissionGranted()
+        val base = buildJsonObject {
+            put("installed", installed)
+            put("binder_alive", alive)
+            put("permission_granted", granted)
+            put("android_api", Build.VERSION.SDK_INT)
+            put("android_version", Build.VERSION.RELEASE)
+            put("manufacturer", Build.MANUFACTURER)
+            put("model", Build.MODEL)
+            if (alive && granted) {
+                runCatching { Shizuku.getVersion() }.getOrNull()?.let { put("server_version", it) }
+                runCatching { Shizuku.getUid() }.getOrNull()?.let { uid ->
+                    put("server_uid", uid)
+                    put(
+                        "identity",
+                        when (uid) {
+                            0 -> "root"
+                            2000 -> "shell"
+                            else -> "other"
+                        }
+                    )
+                }
+            }
+        }
+        val probe = call(context) { it.diagnostics() }
+        return JsonObject(base + probe + buildJsonObject {
+            put("success", probe["error"] == null)
+            if (probe["error"] != null) put("user_service_connected", false)
+        })
+    }
+
+    private suspend fun call(context: Context, id: String? = null, operation: (IShizukuUserService) -> String): JsonObject {
         ShizukuStatusMapper.errorFor(status(context))?.let { return it }
         val version = runCatching { Shizuku.getVersion() }.getOrNull()
             ?: return checkNotNull(ShizukuStatusMapper.errorFor(ShizukuStatus.NOT_RUNNING))
         if (version < 10) {
             return buildJsonObject {
                 put("error", "shizuku_version_too_old")
-                put("recovery", "This Shizuku server is too old to support bindUserService (needs API 10+). Update the Shizuku app.")
+                put(
+                    "recovery",
+                    "This Shizuku server is too old to support bindUserService (needs API 10+). Update the Shizuku app."
+                )
             }
         }
         val api = when (val bindResult = ensureBound(context)) {
             is BindResult.Connected -> bindResult.service
             is BindResult.Failure -> return bindFailedResponse(bindResult)
         }
-        val raw = withTimeoutOrNull(timeoutMs + CALL_TIMEOUT_SLACK_MS) {
-            runInterruptible(Dispatchers.IO) {
-                runCatching { api.exec(command, timeoutMs) }
-                    .onFailure { Log.e(TAG, "user service exec() threw", it) }
-                    .getOrNull()
+        return try {
+            // These RPCs never wait for a command. Cancellation is an explicit per-task RPC.
+            withContext(Dispatchers.IO) {
+                val result = parseExecResponse(operation(api))
+                if (id != null && result["error"]?.jsonPrimitive?.content == "shizuku_bad_response") {
+                    JsonObject(result + shizukuCallFailed(id))
+                } else {
+                    result
+                }
             }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (e: Exception) {
+            Log.e(TAG, "user service operation failed", e)
+            // A command failure must not tear down the shared service and other chats' tasks.
+            if (!api.asBinder().pingBinder()) resetBinding(expectedService = api)
+            shizukuCallFailed(id)
         }
-        if (raw == null) {
-            resetBinding()
-            return buildJsonObject {
-                put("error", "shizuku_call_failed")
-                put("recovery", "The Shizuku user service did not respond in time. It may have died; retry the call.")
-            }
-        }
-        return parseExecResponse(raw)
     }
 
     private suspend fun ensureBound(context: Context): BindResult {
-        bindLock.withLock { service?.let { return BindResult.Connected(it) } }
+        bindLock.withLock { service?.takeIf { it.asBinder().pingBinder() }?.let { return BindResult.Connected(it) } }
         val deferred: CompletableDeferred<BindResult>
         val needBind: Boolean
         bindLock.withLock {
-            service?.let { return BindResult.Connected(it) }
+            service?.takeIf { it.asBinder().pingBinder() }?.let { return BindResult.Connected(it) }
             if (bindWaiter == null) {
                 bindWaiter = CompletableDeferred()
                 needBind = true
@@ -280,54 +335,82 @@ object ShizukuManager {
     private fun startBind(context: Context, deferred: CompletableDeferred<BindResult>) {
         val conn = object : ServiceConnection {
             override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
+                val callback = this
                 val api = if (binder != null && binder.pingBinder()) {
                     IShizukuUserService.Stub.asInterface(binder)
-                } else null
+                } else {
+                    null
+                }
+                var accepted = false
                 runCatching {
                     runBlocking {
                         bindLock.withLock {
+                            if (connection !== callback) return@withLock
                             service = api
-                            bindWaiter = null
+                            if (bindWaiter === deferred) bindWaiter = null
+                            accepted = true
                         }
                     }
                 }
                 if (!deferred.isCompleted) {
                     deferred.complete(
-                        if (api != null) BindResult.Connected(api) else BindResult.Failure.BindingDied
+                        if (accepted && api != null) BindResult.Connected(api) else BindResult.Failure.BindingDied
                     )
                 }
             }
 
             override fun onServiceDisconnected(name: ComponentName?) {
+                val callback = this
                 Log.w(TAG, "shizuku user service disconnected")
-                runCatching { runBlocking { resetBinding() } }
+                runCatching { runBlocking { resetBinding(callback) } }
             }
 
             override fun onBindingDied(name: ComponentName?) {
+                val callback = this
                 Log.w(TAG, "shizuku user service binding died")
-                runCatching { runBlocking { resetBinding() } }
+                runCatching { runBlocking { resetBinding(callback) } }
                 if (!deferred.isCompleted) deferred.complete(BindResult.Failure.BindingDied)
             }
         }
+        val previous = runBlocking {
+            bindLock.withLock {
+                val old = connection
+                connection = conn
+                old
+            }
+        }
+        previous?.let { runCatching { Shizuku.unbindUserService(argsFor(context), it, false) } }
         val result = runCatching { Shizuku.bindUserService(argsFor(context), conn) }
-        if (result.isSuccess) {
-            connection = conn
-        } else {
+        if (result.isFailure) {
             val t = result.exceptionOrNull()!!
             Log.e(TAG, "bindUserService threw", t)
-            runCatching { runBlocking { bindLock.withLock { bindWaiter = null } } }
+            runCatching {
+                runBlocking {
+                    bindLock.withLock {
+                        if (connection === conn) connection = null
+                        if (bindWaiter === deferred) bindWaiter = null
+                    }
+                }
+            }
             if (!deferred.isCompleted) deferred.complete(BindResult.Failure.BindThrew(t))
         }
     }
 
-    private suspend fun resetBinding() = bindLock.withLock {
-        val conn = connection
-        val args = cachedArgs
-        service = null
-        connection = null
-        bindWaiter = null
+    private suspend fun resetBinding(expected: ServiceConnection? = null, expectedService: IShizukuUserService? = null) {
+        val previous = bindLock.withLock {
+            if (expected != null && connection !== expected) return
+            if (expectedService != null && service !== expectedService) return
+            val old = connection to cachedArgs
+            service = null
+            connection = null
+            bindWaiter?.complete(BindResult.Failure.BindingDied)
+            bindWaiter = null
+            old
+        }
+        val (conn, args) = previous
         if (conn != null && args != null) {
-            runCatching { Shizuku.unbindUserService(args, conn, true) }
+            // Remove only this callback. A reconnect must not destroy another caller's tasks.
+            runCatching { Shizuku.unbindUserService(args, conn, false) }
         }
     }
 }

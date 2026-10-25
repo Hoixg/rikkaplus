@@ -68,7 +68,16 @@ class ChatToolFactory(
             addAll(localTools.getTools(assistant.localTools))
             addAll(createMcpManagementTools(settingsStore))
             automationRepository?.let { repository ->
-                addAll(createAutomationTools(repository, conversationRepository, settingsStore, assistant.id, conversationId, cancelAutomation))
+                addAll(
+                    createAutomationTools(
+                        repository,
+                        conversationRepository,
+                        settingsStore,
+                        assistant.id,
+                        conversationId,
+                        cancelAutomation
+                    )
+                )
             }
             if (assistant.enableRecentChatsReference) {
                 addAll(createConversationTools(conversationRepository, assistant.id))
@@ -111,8 +120,11 @@ class ChatToolFactory(
     }
 
     private fun withOutputTruncation(tool: Tool): Tool {
-        // Termux 自带输出预算和聊天范围内的增量游标，避免再写入共享的工作区 tool_outputs。
-        if (tool.name in TOOLS_WITHOUT_OUTPUT_TRUNCATION || tool.name.startsWith("termux_")) return tool
+        // Termux/Shizuku 自带输出预算和读取接口，避免再写入共享的工作区 tool_outputs。
+        if (tool.name in TOOLS_WITHOUT_OUTPUT_TRUNCATION ||
+            tool.name.startsWith("termux_") || tool.name.startsWith("shizuku_")) {
+            return tool
+        }
         val execute = tool.execute
         return tool.copy(execute = { truncateOutput(execute(it)) })
     }

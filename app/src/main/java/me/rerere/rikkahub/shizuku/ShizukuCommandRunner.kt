@@ -1,80 +1,51 @@
 // Adapted from ExTV/rikkahub-agent, commit a88f5854b4d2e2706ea2ae8304a7d66a3f9f2bbc.
 // SPDX-License-Identifier: AGPL-3.0-only
-// 1.0 adaptations: local tool approval, current UI APIs and extension navigation.
+
+@file:Suppress("ktlint:standard:max-line-length")
 
 package me.rerere.rikkahub.shizuku
 
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.int
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.long
 import kotlinx.serialization.json.put
-import me.rerere.rikkahub.data.ai.tools.local.BoundedOutputStream
-import java.io.IOException
-import java.util.concurrent.TimeUnit
+import java.util.UUID
 
-/**
- * Pure command-execution core for the Shizuku user service: runs [command] through a shell,
- * captures bounded stdout/stderr, and enforces [timeoutMs] by destroying the process.
- *
- * Deliberately free of Android and Shizuku dependencies: [ProcessBuilder] runs the same way
- * whether this code executes inside the app's own process or inside the separate shell-UID
- * process Shizuku spawns for [ShizukuUserService], so it also runs (and is unit-tested) as a
- * plain JVM process launcher on the host, no device or emulator required. Reuses
- * [BoundedOutputStream] so stdout/stderr truncation behaves identically to the other shell
- * tools (SSH, Termux).
- */
+/** Compatibility for the original exec RPC, using the same lifecycle as tracked tasks. */
 internal object ShizukuCommandRunner {
-
-    fun run(command: String, timeoutMs: Int, maxStdoutBytes: Int, maxStderrBytes: Int): JsonObject {
-        val process = try {
-            ProcessBuilder("sh", "-c", command).start()
-        } catch (e: IOException) {
-            return buildJsonObject {
-                put("error", "exec_failed")
-                put("reason", e.message ?: e::class.java.simpleName)
-            }
+    fun run(
+        command: String,
+        timeoutMs: Int,
+        maxStdoutBytes: Int,
+        maxStderrBytes: Int,
+        launch: (
+            ShizukuCommandRequest
+        ) -> ShizukuManagedProcess = { ShizukuManagedProcess(it.processBuilder().start()) },
+    ): JsonObject = ShizukuTaskManager(launch = launch).use { tasks ->
+        val id = "sz_" + UUID.randomUUID().toString().replace("-", "")
+        tasks.start(id, ShizukuCommandRequest(command = command, timeoutMs = timeoutMs.coerceIn(1000, 300_000)))
+        var state = tasks.read(id, 20_000)
+        while (state["finished"]?.jsonPrimitive?.boolean == false) state = tasks.read(id, 20_000)
+        fun preview(stream: String, limit: Int): String {
+            val page = tasks.output(id, stream, 0, limit.coerceIn(4, 65_536), null)
+            val omitted = page["total_bytes"]!!.jsonPrimitive.long - page["next_offset"]!!.jsonPrimitive.int
+            return page["output"]!!.jsonPrimitive.content +
+                if (omitted > 0) "\n…[truncated; $omitted bytes more]" else ""
         }
-
-        // Give stdin an immediate EOF: a command that reads it (`cat` with no file, a prompt)
-        // would otherwise block until timeoutMs and capture nothing.
-        runCatching { process.outputStream.close() }
-
-        val stdoutSink = BoundedOutputStream(maxStdoutBytes)
-        val stderrSink = BoundedOutputStream(maxStderrBytes)
-        // Drain both streams concurrently on daemon threads. A command that fills its stdout
-        // pipe buffer (a common size is 64KB) will block forever if nothing reads it, so
-        // waitFor() alone, without a concurrent reader, can deadlock on chatty output long
-        // before timeoutMs ever fires.
-        val stdoutThread = Thread({ runCatching { process.inputStream.copyTo(stdoutSink) } }, "shizuku-stdout")
-            .apply { isDaemon = true; start() }
-        val stderrThread = Thread({ runCatching { process.errorStream.copyTo(stderrSink) } }, "shizuku-stderr")
-            .apply { isDaemon = true; start() }
-
-        val finished = process.waitFor(timeoutMs.toLong(), TimeUnit.MILLISECONDS)
-        if (!finished) {
-            process.destroyForcibly()
-            stdoutThread.join(1_000)
-            stderrThread.join(1_000)
-            return buildJsonObject {
+        val stdout = preview("stdout", maxStdoutBytes)
+        val stderr = preview("stderr", maxStderrBytes)
+        JsonObject(state + buildJsonObject {
+            if (state["execution_status"]?.jsonPrimitive?.content == "timed_out") {
                 put("error", "command_timeout")
-                put(
-                    "recovery",
-                    "Command did not complete within ${timeoutMs / 1000}s. Bump timeout_ms if the " +
-                        "command genuinely needs longer. Partial output captured before the " +
-                        "timeout is included."
-                )
-                put("partial_stdout", stdoutSink.snapshot())
-                put("partial_stderr", stderrSink.snapshot())
+                put("partial_stdout", stdout)
+                put("partial_stderr", stderr)
+            } else {
+                put("stdout", stdout)
+                put("stderr", stderr)
             }
-        }
-
-        stdoutThread.join(2_000)
-        stderrThread.join(2_000)
-        val exitCode = process.exitValue()
-        return buildJsonObject {
-            put("success", exitCode == 0)
-            put("exit_code", exitCode)
-            put("stdout", stdoutSink.snapshot())
-            put("stderr", stderrSink.snapshot())
-        }
+        })
     }
 }

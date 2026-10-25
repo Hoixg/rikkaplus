@@ -69,6 +69,7 @@ class LocalTools(
         }
         if (LocalToolOption.Shizuku in options) {
             tools.add(shizukuExecTool(context) { settingsStore.settingsFlow.value.shizukuApprovalRequired })
+            tools.addAll(shizukuTaskTools(context) { settingsStore.settingsFlow.value.shizukuApprovalRequired })
         }
         return tools
     }

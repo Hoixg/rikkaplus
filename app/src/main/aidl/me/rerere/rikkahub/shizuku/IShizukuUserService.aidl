@@ -15,6 +15,15 @@ interface IShizukuUserService {
     // See ShizukuCommandRunner.
     String exec(String command, int timeoutMs) = 1;
 
+    // Short, nonblocking RPCs. Commands run on owned worker threads, never Binder threads.
+    String start(String taskId, String requestJson) = 2;
+    String read(String taskId) = 3;
+    String list() = 4;
+    String cancel(String taskId) = 5;
+    String forget(String taskId) = 6;
+    String output(String taskId, String stream, int offset, int limit, String query) = 7;
+    String diagnostics() = 8;
+
     // Reserved destroy method id required by Shizuku's server contract — it calls this to
     // tear the service down.
     void destroy() = 16777114;
