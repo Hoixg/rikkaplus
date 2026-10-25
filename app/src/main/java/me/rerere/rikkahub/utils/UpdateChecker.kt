@@ -14,7 +14,6 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
 import me.rerere.common.AppBrand
 import me.rerere.common.http.await
 import me.rerere.rikkahub.AppScope
@@ -22,14 +21,10 @@ import me.rerere.rikkahub.BuildConfig
 import okhttp3.OkHttpClient
 import okhttp3.Request
 
-private const val API_URL = "https://updates.rikka-ai.com/"
-
 class UpdateChecker(
     private val client: OkHttpClient,
     appScope: AppScope,
 ) {
-    private val json = Json { ignoreUnknownKeys = true }
-
     val updateState: StateFlow<UiState<UpdateInfo>> = checkUpdate().stateIn(
         scope = appScope,
         started = SharingStarted.Lazily,
@@ -38,29 +33,18 @@ class UpdateChecker(
 
     private fun checkUpdate(): Flow<UiState<UpdateInfo>> = flow {
         emit(UiState.Loading)
-        emit(
-            UiState.Success(
-                data = try {
-                    val response = client.newCall(
-                        Request.Builder()
-                            .url(API_URL)
-                            .get()
-                            .addHeader(
-                                "User-Agent",
-                                "${AppBrand.NAME} ${BuildConfig.VERSION_NAME} #${BuildConfig.VERSION_CODE}"
-                            )
-                            .build()
-                    ).await()
-                    if (response.isSuccessful) {
-                        json.decodeFromString<UpdateInfo>(response.body.string())
-                    } else {
-                        throw Exception("Failed to fetch update info")
-                    }
-                } catch (e: Exception) {
-                    throw Exception("Failed to fetch update info", e)
-                }
-            )
-        )
+        val info = client.newCall(
+            Request.Builder()
+                .url(AppBrand.UPDATE_API_URL)
+                .get()
+                .header("Accept", "application/vnd.github+json")
+                .header("User-Agent", AppBrand.defaultUserAgent(BuildConfig.VERSION_NAME))
+                .build()
+        ).await().use { response ->
+            check(response.isSuccessful) { "Failed to fetch update info (HTTP ${response.code})" }
+            parseGitHubReleaseUpdates(response.body.string())
+        }
+        emit(if (info != null) UiState.Success(info) else UiState.Idle)
     }.catch {
         emit(UiState.Error(it))
     }.flowOn(Dispatchers.IO)

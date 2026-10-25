@@ -1745,4 +1745,6 @@
   <string name="setting_model_page_memory_model">نموذج توطيد الذاكرة</string>
   <string name="setting_model_page_memory_model_desc">النموذج المستخدم لتنظيم المحادثات في الذاكرة طويلة المدى في الخلفية؛ يستخدم النموذج السريع عند عدم تعيينه</string>
   <string name="setting_model_page_memory_model_follow_fast">نفس النموذج السريع</string>
+  <string name="about_page_check_updates">التحقق من التحديثات</string>
+  <string name="about_page_check_updates_desc">عرض الإصدارات والتنزيلات في صفحة RikkaPlus على GitHub</string>
 </resources>

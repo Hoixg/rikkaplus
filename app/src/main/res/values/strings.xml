@@ -1779,4 +1779,6 @@
   <string name="setting_model_page_memory_model">Memory Consolidation Model</string>
   <string name="setting_model_page_memory_model_desc">Model used to organize conversations into long-term memory in the background; uses the fast model when not set</string>
   <string name="setting_model_page_memory_model_follow_fast">Same as fast model</string>
+  <string name="about_page_check_updates">Check for updates</string>
+  <string name="about_page_check_updates_desc">View versions and downloads on the RikkaPlus GitHub releases page</string>
 </resources>

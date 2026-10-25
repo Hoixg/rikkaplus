@@ -1745,4 +1745,6 @@
   <string name="setting_model_page_memory_model">Модель консолидации памяти</string>
   <string name="setting_model_page_memory_model_desc">Модель, которая организует диалоги в долговременную память в фоновом режиме; если не задана, используется быстрая модель</string>
   <string name="setting_model_page_memory_model_follow_fast">Как у быстрой модели</string>
+  <string name="about_page_check_updates">Проверить обновления</string>
+  <string name="about_page_check_updates_desc">Версии и загрузки на странице релизов RikkaPlus в GitHub</string>
 </resources>

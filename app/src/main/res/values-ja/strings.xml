@@ -1745,4 +1745,6 @@
   <string name="setting_model_page_memory_model">記憶整理モデル</string>
   <string name="setting_model_page_memory_model_desc">バックグラウンドで会話を長期記憶に整理するために使用されるモデル。未設定の場合は高速モデルを使用します</string>
   <string name="setting_model_page_memory_model_follow_fast">高速モデルと同じ</string>
+  <string name="about_page_check_updates">更新を確認</string>
+  <string name="about_page_check_updates_desc">RikkaPlus の GitHub リリースページでバージョンとダウンロードを確認</string>
 </resources>

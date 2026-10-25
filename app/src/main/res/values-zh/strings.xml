@@ -1779,4 +1779,6 @@
   <string name="setting_model_page_memory_model">记忆整理模型</string>
   <string name="setting_model_page_memory_model_desc">用于在后台将对话整理为长期记忆的模型；未设置时使用快速模型</string>
   <string name="setting_model_page_memory_model_follow_fast">跟随快速模型</string>
+  <string name="about_page_check_updates">检查更新</string>
+  <string name="about_page_check_updates_desc">前往 RikkaPlus 的 GitHub 发布页查看版本和下载更新</string>
 </resources>

@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.toOffset
 import me.rerere.common.AppBrand
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Code
+import me.rerere.hugeicons.stroke.Download01
 import me.rerere.hugeicons.stroke.Earth
 import me.rerere.hugeicons.stroke.File02
 import me.rerere.hugeicons.stroke.Github
@@ -179,6 +180,16 @@ fun SettingAboutPage() {
                     val containerColor = MaterialTheme.colorScheme.primaryContainer
                     val contentColor = MaterialTheme.colorScheme.onPrimaryContainer
                     CardGroup {
+                        if (!BuildConfig.IS_PLAY_STORE) {
+                            item(
+                                onClick = { context.openUrl(AppBrand.RELEASES_URL) },
+                                leadingContent = {
+                                    CardGroupIcon(HugeIcons.Download01, containerColor = containerColor, contentColor = contentColor)
+                                },
+                                headlineContent = { Text(stringResource(R.string.about_page_check_updates)) },
+                                supportingContent = { Text(stringResource(R.string.about_page_check_updates_desc)) },
+                            )
+                        }
                         item(
                             modifier = Modifier.combinedClickable(
                                 onClick = {},
