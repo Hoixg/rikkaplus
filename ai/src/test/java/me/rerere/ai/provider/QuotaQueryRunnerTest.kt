@@ -13,6 +13,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.util.Locale
 
 class QuotaQueryRunnerTest {
     private var captured: Request? = null
@@ -80,6 +81,27 @@ class QuotaQueryRunnerTest {
 
         assertEquals(ProviderQuota.Balance("unlimited"), quota)
         assertEquals("key", captured!!.header("x-api-key"))
+    }
+
+    @Test
+    fun `balance query accepts numbers on a system with comma decimal separators`() = runTest {
+        val original = Locale.getDefault(Locale.Category.FORMAT)
+        try {
+            Locale.setDefault(Locale.Category.FORMAT, Locale.GERMANY)
+            val setting = ProviderSetting.OpenAI(
+                quotaQuery = QuotaQuery(
+                    enabled = true,
+                    url = "https://x.example.com/credits",
+                    resultPath = "data.total"
+                ),
+            )
+
+            val quota = client("""{"data":{"total":16777217.12}}""").runQuotaQuery(setting) { "key" }
+
+            assertEquals(ProviderQuota.Balance("16777217,12"), quota)
+        } finally {
+            Locale.setDefault(Locale.Category.FORMAT, original)
+        }
     }
 
     @Test

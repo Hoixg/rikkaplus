@@ -49,6 +49,7 @@ rg -n 'ktor-server-auth|ktor-server-auth-jwt|jmdns|auth0' gradle/libs.versions.t
 
 ## 其他必须保留的定制
 
+- 应用图标使用用户提供的原图，保留 `tools/branding/`、各密度启动图标及 `docs/icon.png`；维护方法见 `docs/branding.md`。
 - 对外品牌名统一为 `RikkaPlus`，包括各语言应用名、关于与分享、OAuth 回调页、导出名称和请求头；项目入口以 `Hoixg/rikkaplus` 为准。保留上游来源署名、真实第三方服务名称及用于兼容既有数据的内部标识。设置页已删除 QQ 群与 Discord 社区入口，同步时不恢复。
 - 更新入口位于“设置 → 关于”，指向本仓库发布页。自动检查只接受 `1.0-v<versionName>` 正式发布中的唯一 GitHub Release 通用 APK，不接入上游更新接口、历史 custom 标签或每日构建；Debug 包不提示安装 Release 包，Play 渠道继续隐藏更新入口与提醒。
 - `1.0-v<versionName>` 正式发布使用 `make_latest: true`，成为仓库首页和 `/releases/latest` 的最新版本；`1.0-nightly` 继续使用 `prerelease: true` 与 `make_latest: false`，不覆盖正式版标记。
