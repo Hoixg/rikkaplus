@@ -272,11 +272,16 @@ class ConversationSession(
 
     fun getJob(): Job? = _generationJob.value
 
+    @Synchronized
+    internal fun getActiveJobs(): List<Job> = activeJobs.toList()
+
     /** User messages and unresolved approvals have priority over background automation. */
     @Synchronized
     internal fun tryStartAutomation(job: Job): Boolean {
         if (!isInitialized || getJob() != null || messageQueue.state.value.messages.isNotEmpty() ||
-            state.value.currentMessages.any { message -> message.getTools().any { it.isPending } }) return false
+            state.value.currentMessages.any { message -> message.getTools().any { it.isPending } }) {
+            return false
+        }
         setJob(job)
         return true
     }
@@ -323,12 +328,17 @@ class ConversationSession(
 
 /** Serialize approval saves without cancelling earlier decisions; stopping cancels the whole chain. */
 internal suspend fun afterPreviousGeneration(previous: Job?, block: suspend () -> Unit) {
+    afterPreviousGenerations(listOfNotNull(previous), block)
+}
+
+/** Also wait for interrupted jobs whose replacement was cancelled before its body started. */
+internal suspend fun afterPreviousGenerations(previous: List<Job>, block: suspend () -> Unit) {
     try {
-        previous?.join()
+        previous.forEach { it.join() }
         block()
     } catch (e: CancellationException) {
-        previous?.cancel()
-        withContext(NonCancellable) { previous?.join() }
+        previous.forEach { it.cancel() }
+        withContext(NonCancellable) { previous.forEach { it.join() } }
         throw e
     }
 }

@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -677,6 +678,138 @@ class ConversationSessionTest {
             session.setJob(scope.launch(start = CoroutineStart.LAZY) {})
             assertNull(session.getJob())
             assertFalse(session.isGenerating)
+        } finally {
+            session.cleanup()
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun `interjection waits for the interrupted reply to persist before appending input`() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val id = Uuid.random()
+        val store = FakeConversationStore(Conversation.ofId(id))
+        val session = ConversationSession(id, Conversation.ofId(id), scope, store, {})
+        try {
+            session.initialize(load = { store.persisted })
+            val releaseSave = CompletableDeferred<Unit>()
+            val old = scope.launch(start = CoroutineStart.LAZY) {
+                session.update { it.updateCurrentMessages(listOf(partialReply())) }
+                try {
+                    awaitCancellation()
+                } finally {
+                    withContext(NonCancellable) {
+                        releaseSave.await()
+                        session.finishGeneration()
+                    }
+                }
+            }
+            session.setJob(old)
+            val successor = scope.launch(start = CoroutineStart.LAZY) {
+                afterPreviousGeneration(old) {
+                    session.update {
+                        it.updateCurrentMessages(it.currentMessages + UIMessage(
+                            role = MessageRole.USER,
+                            parts = listOf(UIMessagePart.Text("interjection")),
+                        ))
+                    }
+                    session.flush()
+                }
+            }
+            session.setJob(successor)
+
+            assertTrue(old.isCancelled)
+            assertFalse(successor.isCompleted)
+            assertTrue(store.persisted!!.currentMessages.isEmpty())
+            releaseSave.complete(Unit)
+            successor.join()
+
+            val saved = store.persisted!!.currentMessages
+            assertEquals(listOf(MessageRole.ASSISTANT, MessageRole.USER), saved.map { it.role })
+            assertEquals(listOf(UIMessagePart.Text("interjection")), saved.last().parts)
+        } finally {
+            session.cleanup()
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun `replacing a waiting interjection retains pending messages until cleanup finishes`() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val id = Uuid.random()
+        val session = ConversationSession(id, Conversation.ofId(id), scope, FakeConversationStore(), {})
+        try {
+            session.messageQueue.enqueue(listOf(UIMessagePart.Text("first")))
+            session.messageQueue.enqueue(listOf(UIMessagePart.Text("second")))
+            val pending = session.messageQueue.state.value.messages
+            val releaseSave = CompletableDeferred<Unit>()
+            val old = scope.launch(start = CoroutineStart.LAZY) {
+                try {
+                    awaitCancellation()
+                } finally {
+                    withContext(NonCancellable) { releaseSave.await() }
+                }
+            }
+            session.setJob(old)
+            val first = scope.launch(start = CoroutineStart.LAZY) {
+                afterPreviousGeneration(old) { session.messageQueue.take(pending[0].id) }
+            }
+            session.setJob(first)
+            var sent: QueuedMessage? = null
+            val predecessors = session.getActiveJobs()
+            val second = scope.launch(start = CoroutineStart.LAZY) {
+                afterPreviousGenerations(predecessors) { sent = session.messageQueue.take(pending[1].id) }
+            }
+            session.setJob(second)
+
+            assertEquals(pending, session.messageQueue.state.value.messages)
+            assertNull(sent)
+            releaseSave.complete(Unit)
+            second.join()
+
+            assertEquals(pending[1], sent)
+            assertEquals(listOf(pending[0]), session.messageQueue.state.value.messages)
+        } finally {
+            session.cleanup()
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun `interjection waits for cleanup even when a replaced waiter never entered its body`() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val id = Uuid.random()
+        val session = ConversationSession(id, Conversation.ofId(id), scope, FakeConversationStore(), {})
+        try {
+            val releaseSave = CompletableDeferred<Unit>()
+            val old = scope.launch(start = CoroutineStart.LAZY) {
+                try {
+                    awaitCancellation()
+                } finally {
+                    withContext(NonCancellable) { releaseSave.await() }
+                }
+            }
+            session.setJob(old)
+            val waiter = scope.launch(StandardTestDispatcher(testScheduler), start = CoroutineStart.LAZY) {
+                error("Replaced before starting")
+            }
+            session.setJob(waiter)
+            val predecessors = session.getActiveJobs()
+            var sent = false
+            val successor = scope.launch(start = CoroutineStart.LAZY) {
+                afterPreviousGenerations(predecessors) { sent = true }
+            }
+            session.setJob(successor)
+            predecessors.forEach { it.cancel() }
+            runCurrent()
+
+            assertTrue(waiter.isCompleted)
+            assertFalse(sent)
+            assertFalse(successor.isCompleted)
+            releaseSave.complete(Unit)
+            successor.join()
+            assertTrue(sent)
+            assertTrue(old.isCompleted)
         } finally {
             session.cleanup()
             scope.cancel()

@@ -21,6 +21,7 @@ data class QueuedMessage(
 data class MessageQueueState(
     val messages: List<QueuedMessage> = emptyList(),
     val paused: Boolean = false,
+    val reordering: Boolean = false,
 )
 
 internal fun unreferencedQueuedAttachmentUrls(
@@ -57,12 +58,41 @@ class MessageQueue {
     }
 
     @Synchronized
-    fun takeNext(): QueuedMessage? {
+    fun takeNext(expectedId: Uuid? = null): QueuedMessage? {
         val current = state.value
-        if (current.paused) return null
+        if (current.paused || current.reordering) return null
         val next = current.messages.firstOrNull()?.takeUnless { it.isEditing } ?: return null
+        if (expectedId != null && next.id != expectedId) return null
         mutableState.value = current.copy(messages = current.messages.drop(1))
         return next
+    }
+
+    /** An explicit interjection may bypass the queue order and its paused state. */
+    @Synchronized
+    fun take(id: Uuid): QueuedMessage? {
+        val current = state.value
+        val message = current.messages.find { it.id == id && !it.isEditing } ?: return null
+        mutableState.value = current.copy(messages = current.messages.filterNot { it.id == id })
+        return message
+    }
+
+    @Synchronized
+    fun setReordering(reordering: Boolean) {
+        mutableState.value = state.value.copy(reordering = reordering && state.value.messages.size > 1)
+    }
+
+    /** Move to another pending item's position; both identities are resolved against the latest order. */
+    @Synchronized
+    fun move(id: Uuid, targetId: Uuid): Boolean {
+        val current = state.value
+        val index = current.messages.indexOfFirst { it.id == id }
+        val target = current.messages.indexOfFirst { it.id == targetId }
+        if (index < 0 || target < 0 || index == target) return false
+        if ((minOf(index, target)..maxOf(index, target)).any { current.messages[it].isEditing }) return false
+        val reordered = current.messages.toMutableList()
+        reordered.add(target, reordered.removeAt(index))
+        mutableState.value = current.copy(messages = reordered)
+        return true
     }
 
     @Synchronized
@@ -89,10 +119,14 @@ class MessageQueue {
         val previous = state.value.messages.find { it.id == id } ?: return null
         mutableState.value = state.value.copy(
             messages = state.value.messages.map {
-                if (it.id == id) it.copy(
-                    parts = parts?.toList() ?: it.parts,
-                    isEditing = false
-                ) else it
+                if (it.id == id) {
+                    it.copy(
+                        parts = parts?.toList() ?: it.parts,
+                        isEditing = false
+                    )
+                } else {
+                    it
+                }
             },
         )
         // 取消编辑只释放占位，不能清理原附件。

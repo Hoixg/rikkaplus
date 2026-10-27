@@ -57,7 +57,7 @@ fun ReorderableListItemScope.longPressReorder(
 }
 
 @Composable
-private fun Modifier.draggingScale(isDragging: Boolean): Modifier {
+internal fun Modifier.draggingScale(isDragging: Boolean): Modifier {
     val scale by animateFloatAsState(if (isDragging) DraggingScale else 1f, label = "reorder_scale")
     return graphicsLayer {
         scaleX = scale

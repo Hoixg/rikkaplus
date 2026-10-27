@@ -12,6 +12,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.completeWith
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -411,9 +413,35 @@ class ChatService(
     fun getMessageQueueFlow(conversationId: Uuid): StateFlow<MessageQueueState> =
         sessionManager.getMessageQueueFlow(conversationId)
 
+    fun sendQueuedMessageNow(conversationId: Uuid, messageId: Uuid) {
+        val session = sessionManager.get(conversationId) ?: return
+        synchronized(session) {
+            val selected = session.messageQueue.state.value.messages.find { it.id == messageId && !it.isEditing }
+                ?: return
+            // Keep the message queued until the interrupted turn has finished saving.
+            // Repeated clicks can replace the waiting job without losing pending input.
+            sendQueuedMessage(session, selected.answer) { session.messageQueue.take(messageId) }
+        }
+    }
+
     fun removeQueuedMessage(conversationId: Uuid, messageId: Uuid) {
         sessionManager.get(conversationId)?.messageQueue?.remove(messageId)?.let(::cleanupQueuedAttachments)
         dispatchNextQueuedMessage(conversationId)
+    }
+
+    fun setMessageQueueReordering(conversationId: Uuid, reordering: Boolean) {
+        val session = sessionManager.get(conversationId) ?: return
+        synchronized(session) {
+            session.messageQueue.setReordering(reordering)
+            if (!reordering) dispatchNextQueuedMessage(conversationId)
+        }
+    }
+
+    fun moveQueuedMessage(conversationId: Uuid, messageId: Uuid, targetId: Uuid) {
+        val session = sessionManager.get(conversationId) ?: return
+        synchronized(session) {
+            if (session.messageQueue.move(messageId, targetId)) dispatchNextQueuedMessage(conversationId)
+        }
     }
 
     fun beginEditQueuedMessage(conversationId: Uuid, messageId: Uuid): QueuedMessage? =
@@ -496,68 +524,89 @@ class ChatService(
         synchronized(session) {
             // A pending tool approval is still part of the current turn.
             if (session.getJob() != null || session.state.value.isAwaitingToolApproval) return null
-            val next = session.messageQueue.takeNext() ?: return null
-            session.submittingMessage = next
-            return sendQueuedMessage(session, next)
+            val queue = session.messageQueue.state.value
+            if (queue.paused || queue.reordering) return null
+            val next = queue.messages.firstOrNull()?.takeUnless { it.isEditing } ?: return null
+            return sendQueuedMessage(session, answer = next.answer) { session.messageQueue.takeNext(next.id) }
         }
     }
 
-    private fun sendQueuedMessage(session: ConversationSession, queued: QueuedMessage): Job {
+    private fun sendQueuedMessage(
+        session: ConversationSession,
+        answer: Boolean = true,
+        takeMessage: () -> QueuedMessage?,
+    ): Job {
         val conversationId = session.id
-        // 新消息开始初始化前就清掉旧回复，初始化失败或任务启动前取消也不能留下旧预览。
-        session.replyMessageId.value = null
+        val previousJobs = session.getActiveJobs()
+        var dispatched: QueuedMessage? = null
         val job = launchGenerationJob(
             conversationId = conversationId,
-            keepAliveInBackground = queued.answer,
+            keepAliveInBackground = answer,
         ) {
             try {
-                ensureInitialized(session)
-                finishInterruptedPendingTools(session)
+                afterPreviousGenerations(previousJobs) {
+                    val generationContext = currentCoroutineContext()
+                    val queued = synchronized(session) {
+                        generationContext.ensureActive()
+                        takeMessage()?.also {
+                            dispatched = it
+                            session.submittingMessage = it
+                        }
+                    } ?: return@afterPreviousGenerations
+                    // Clear the interrupted reply only after its final writes have finished.
+                    session.replyMessageId.value = null
+                    // Once claimed, persist this input even if another interjection immediately replaces it.
+                    val previousIds = withContext(NonCancellable) {
+                        ensureInitialized(session)
+                        finishInterruptedPendingTools(session)
 
-                val assistant = settingsStore.awaitLoaded().getStoredAssistantOf(session.state.value)
-                val processedContent = queued.parts.replaceUserRegexes(assistant)
+                        val assistant = settingsStore.awaitLoaded().getStoredAssistantOf(session.state.value)
+                        val processedContent = queued.parts.replaceUserRegexes(assistant)
 
-                // 添加消息到列表
-                val previousIds = session.state.value.currentMessages.mapTo(HashSet()) { it.id }
-                session.update {
-                    it.copy(
-                        messageNodes = it.messageNodes + UIMessage(
-                            role = MessageRole.USER,
-                            parts = processedContent,
-                        ).toMessageNode(),
-                    )
-                }
-                session.flush()
-                session.submittingMessage = null
-
-                // 开始补全
-                val result = if (queued.answer) runTurn(session) else null
-
-                queued.reply?.completeWith(runCatching {
-                    check(result != TurnResult.Failed) { context.getString(R.string.chat_page_voice_generation_failed) }
-                    check((result as? TurnResult.Finished)?.reason !is AgentFinishReason.AwaitingApproval) {
-                        context.getString(R.string.chat_page_voice_tool_approval)
+                        val previousIds = session.state.value.currentMessages.mapTo(HashSet()) { it.id }
+                        session.update {
+                            it.copy(
+                                messageNodes = it.messageNodes + UIMessage(
+                                    role = MessageRole.USER,
+                                    parts = processedContent,
+                                ).toMessageNode(),
+                            )
+                        }
+                        session.flush()
+                        session.submittingMessage = null
+                        previousIds
                     }
-                    session.state.value.currentMessages
-                        .filter { it.id !in previousIds && it.role == MessageRole.ASSISTANT }
-                        .joinToString("\n") { it.toText() }
-                })
-                // Voice owns playback, including when its observer has already left the page.
-                // The ordinary autoplay collector must not read a late voice reply again.
-                if (queued.reply == null) _generationDoneFlow.emit(conversationId)
+
+                    currentCoroutineContext().ensureActive()
+                    val result = if (queued.answer) runTurn(session) else null
+
+                    queued.reply?.completeWith(runCatching {
+                        check(result != TurnResult.Failed) { context.getString(R.string.chat_page_voice_generation_failed) }
+                        check((result as? TurnResult.Finished)?.reason !is AgentFinishReason.AwaitingApproval) {
+                            context.getString(R.string.chat_page_voice_tool_approval)
+                        }
+                        session.state.value.currentMessages
+                            .filter { it.id !in previousIds && it.role == MessageRole.ASSISTANT }
+                            .joinToString("\n") { it.toText() }
+                    })
+                    // Voice owns playback, including when its observer has already left the page.
+                    // The ordinary autoplay collector must not read a late voice reply again.
+                    if (queued.reply == null) _generationDoneFlow.emit(conversationId)
+                }
             } catch (e: Exception) {
-                queued.reply?.completeExceptionally(e)
+                dispatched?.reply?.completeExceptionally(e)
                 e.printStackTrace()
                 reportFailure(session, e, R.string.error_title_send_message)
             }
         }
         job.invokeOnCompletion { cause ->
-            if (cause != null) queued.reply?.completeExceptionally(cause)
+            if (cause != null) dispatched?.reply?.completeExceptionally(cause)
             synchronized(session) {
-                if (session.submittingMessage?.id == queued.id) session.submittingMessage = null
+                if (dispatched != null && session.submittingMessage?.id == dispatched.id) session.submittingMessage = null
             }
         }
         session.setJob(job)
+        previousJobs.forEach { it.cancel() }
         return job
     }
 

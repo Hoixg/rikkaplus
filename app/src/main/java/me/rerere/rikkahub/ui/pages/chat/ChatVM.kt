@@ -137,7 +137,13 @@ class ChatVM(
 
     val messageQueue = chatService.getMessageQueueFlow(_conversationId)
 
+    fun sendQueuedMessage(id: Uuid) = chatService.sendQueuedMessageNow(_conversationId, id)
+
     fun removeQueuedMessage(id: Uuid) = chatService.removeQueuedMessage(_conversationId, id)
+
+    fun moveQueuedMessage(id: Uuid, targetId: Uuid) = chatService.moveQueuedMessage(_conversationId, id, targetId)
+
+    fun setMessageQueueReordering(reordering: Boolean) = chatService.setMessageQueueReordering(_conversationId, reordering)
 
     fun beginEditQueuedMessage(id: Uuid) = chatService.beginEditQueuedMessage(_conversationId, id)
 

@@ -1283,9 +1283,9 @@
   <string name="chat_page_queue_video">[视频]</string>
   <string name="chat_page_queue_editing">编辑中</string>
   <string name="chat_page_queue_remove">撤销</string>
-  <string name="chat_page_queue_edit_title">编辑待发送消息</string>
-  <string name="chat_page_queue_paused_count">队列已暂停 · %1$d</string>
-  <string name="chat_page_queue_pending_count">待发送 · %1$d</string>
+  <string name="chat_page_queue_edit_title">编辑插话消息</string>
+  <string name="chat_page_queue_paused_count">插话已暂停 · %1$d</string>
+  <string name="chat_page_queue_pending_count">插话 · %1$d</string>
   <string name="chat_page_voice_select_model">请先选择聊天模型</string>
   <string name="chat_page_voice_finish_dictation">请先完成当前语音输入</string>
   <string name="chat_page_voice_resume_queue">消息队列已暂停，请先继续队列</string>
@@ -1782,4 +1782,5 @@
   <string name="about_page_check_updates">检查更新</string>
   <string name="about_page_check_updates_desc">前往 RikkaPlus 的 GitHub 发布页查看版本和下载更新</string>
   <string name="assistant_page_local_tools_media_creation_desc">在聊天中使用媒体创作供应商生成图片和视频，支持参考素材、首尾帧与后台任务</string>
+  <string name="chat_page_queue_more_and_reorder">更多选项；长按拖动调整顺序</string>
 </resources>

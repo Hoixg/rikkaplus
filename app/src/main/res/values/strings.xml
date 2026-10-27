@@ -1782,4 +1782,5 @@
   <string name="about_page_check_updates">Check for updates</string>
   <string name="about_page_check_updates_desc">View versions and downloads on the RikkaPlus GitHub releases page</string>
   <string name="assistant_page_local_tools_media_creation_desc">Generate images and videos in chat using Media Creation providers, with reference assets and background tasks</string>
+  <string name="chat_page_queue_more_and_reorder">More options; hold and drag to reorder</string>
 </resources>
