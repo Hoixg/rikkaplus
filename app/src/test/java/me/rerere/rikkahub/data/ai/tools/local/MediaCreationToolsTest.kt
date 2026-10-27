@@ -218,7 +218,7 @@ class MediaCreationToolsTest {
             createMediaCreationTools({ providers }, { emptyList() }, {
                 submitted++
                 emptyList()
-            }, { _, _ -> emptyList() }, { emptyList() })
+            }, { emptyList() }, { emptyList() })
         assertEquals(
             setOf(MEDIA_GENERATE_TOOL, MEDIA_TASK_READ_TOOL, MEDIA_TASK_CANCEL_TOOL),
             tools.map { it.name }.toSet()

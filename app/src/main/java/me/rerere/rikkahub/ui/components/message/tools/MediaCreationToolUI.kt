@@ -63,7 +63,7 @@ object MediaCreationToolUI {
 
         @Composable
         override fun title(context: ToolUIContext): String = when (toolName) {
-            MEDIA_TASK_READ_TOOL -> "查看创作进度"
+            MEDIA_TASK_READ_TOOL -> "读取创作结果"
             MEDIA_TASK_CANCEL_TOOL -> "停止媒体生成等待"
             else -> if (context.arguments.getStringContent("kind") == "video") "生成视频" else "生成或编辑图片"
         }

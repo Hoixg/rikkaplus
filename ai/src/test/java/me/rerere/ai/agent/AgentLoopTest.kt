@@ -8,6 +8,8 @@ import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.jsonObject
@@ -98,6 +100,52 @@ class AgentLoopTest {
     private val model = Model(modelId = "test-model")
     private val provider = FakeProvider()
     private val hooks = RecordingHooks(model)
+
+    @Test
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    fun `approved media tool waits for its final result before requesting the model`() = runTest {
+        val started = CompletableDeferred<Unit>()
+        val result = CompletableDeferred<List<UIMessagePart>>()
+        var executed = 0
+        val media = tool("media_generate", needsApproval = true) {
+            executed++
+            started.complete(Unit)
+            result.await()
+        }
+        val approved = assistant(UIMessagePart.Tool(
+            "media-call",
+            "media_generate",
+            "{}",
+            approvalState = ToolApprovalState.Approved,
+        ))
+        provider.stream {
+            text("media ready")
+            finish()
+        }
+        val events = mutableListOf<AgentEvent>()
+        val job = launch {
+            events +=
+                runToEnd(
+                    request(messages = listOf(UIMessage.user("generate an image"), approved), tools = listOf(media))
+                )
+        }
+        started.await()
+
+        advanceTimeBy(90_000)
+        runCurrent()
+        assertFalse(job.isCompleted)
+        assertTrue(provider.requests.isEmpty())
+        assertEquals(1, executed)
+
+        val output = listOf(UIMessagePart.Text("succeeded"), UIMessagePart.Image("file:///media/final.png"))
+        result.complete(output)
+        job.join()
+
+        assertEquals(1, provider.requests.size)
+        assertEquals(output, provider.requests.single().messages.last().tool("media-call").output)
+        assertEquals(AgentFinishReason.Completed, events.finished().reason)
+        assertEquals(1, executed)
+    }
 
     private fun request(
         messages: List<UIMessage> = listOf(UIMessage.user("hi")),

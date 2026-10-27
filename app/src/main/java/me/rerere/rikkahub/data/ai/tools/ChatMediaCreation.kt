@@ -6,11 +6,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -21,6 +19,7 @@ import me.rerere.common.http.await
 import me.rerere.mediagen.provider.capabilities
 import me.rerere.rikkahub.data.ai.tools.local.ChatMediaReference
 import me.rerere.rikkahub.data.ai.tools.local.PreparedMediaRequest
+import me.rerere.rikkahub.data.ai.tools.local.awaitMediaCreationResult
 import me.rerere.rikkahub.data.ai.tools.local.collectChatMediaReferences
 import me.rerere.rikkahub.data.ai.tools.local.createMediaCreationTools
 import me.rerere.rikkahub.data.ai.tools.local.validatePreparedMediaRequest
@@ -56,7 +55,7 @@ class ChatMediaCreation(
         getProviders = { settingsStore.settingsFlow.value.mediaGenerationProviders },
         getMessages = getMessages,
         submit = { submit(conversationId, it, getMessages) },
-        read = { id, wait -> read(conversationId, id, wait) },
+        read = { id -> read(conversationId, id) },
         cancel = { id ->
             record(conversationId, id)
             service.cancel(id)
@@ -68,11 +67,21 @@ class ChatMediaCreation(
         conversationId: Uuid,
         request: PreparedMediaRequest,
         getMessages: () -> List<UIMessage>,
-    ): List<UIMessagePart> = submitMutex.withLock {
+    ): List<UIMessagePart> {
+        val submitted = submitOnce(conversationId, request, getMessages)
+        // Release the submission lock and staging files before waiting. Other chats can create media concurrently.
+        return result(awaitMediaCreationResult(submitted, repository::observeRecord))
+    }
+
+    private suspend fun submitOnce(
+        conversationId: Uuid,
+        request: PreparedMediaRequest,
+        getMessages: () -> List<UIMessage>,
+    ): MediaCreationRecord = submitMutex.withLock {
         // If a chat was interrupted after submission, recover the record instead of billing a second request.
         repository.getRecord(request.recordId)?.let {
             require(it.sessionId == conversationId) { "任务不属于当前聊天" }
-            return@withLock result(it)
+            return@withLock it
         }
         val (provider, model) = validatePreparedMediaRequest(
             request,
@@ -109,7 +118,7 @@ class ChatMediaCreation(
                     recordId = request.recordId,
                 ))
             }
-            result(repository.getRecord(created.id) ?: created)
+            repository.getRecord(created.id) ?: created
         } finally {
             withContext(NonCancellable + Dispatchers.IO) {
                 temp.deleteRecursively()
@@ -122,14 +131,9 @@ class ChatMediaCreation(
             require(it.sessionId == conversationId) { "只能操作当前聊天创建的媒体任务" }
         }
 
-    private suspend fun read(conversationId: Uuid, id: Uuid, wait: Int): List<UIMessagePart> {
+    private suspend fun read(conversationId: Uuid, id: Uuid): List<UIMessagePart> {
         val initial = record(conversationId, id)
-        if (wait > 0 && initial.status.isActive) {
-            withTimeoutOrNull(
-                wait.toLong()
-            ) { repository.observeRecord(id).first { it == null || !it.status.isActive } }
-        }
-        return result(record(conversationId, id))
+        return result(awaitMediaCreationResult(initial, repository::observeRecord))
     }
 
     private fun result(record: MediaCreationRecord): List<UIMessagePart> {

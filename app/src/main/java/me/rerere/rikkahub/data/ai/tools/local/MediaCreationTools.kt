@@ -11,7 +11,6 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.encodeToJsonElement
-import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
@@ -263,24 +262,27 @@ internal fun createMediaCreationTools(
     getProviders: () -> List<MediaGenerationProviderSetting>,
     getMessages: () -> List<UIMessage>,
     submit: suspend (PreparedMediaRequest) -> List<UIMessagePart>,
-    read: suspend (Uuid, Int) -> List<UIMessagePart>,
+    read: suspend (Uuid) -> List<UIMessagePart>,
     cancel: suspend (Uuid) -> List<UIMessagePart>,
 ): List<Tool> {
-    fun taskId(value: JsonElement) = Uuid.parse(value.jsonObject.getValue("record_id").jsonPrimitive.content)
-    fun taskSchema(wait: Boolean) = InputSchema.Obj(buildJsonObject {
+    fun taskId(value: JsonElement): Uuid {
+        val arguments = value.jsonObject
+        require(arguments.keys == setOf("record_id")) { "媒体任务工具只接受 record_id 参数" }
+        return Uuid.parse(arguments.getValue("record_id").jsonPrimitive.content)
+    }
+    fun taskSchema() = InputSchema.Obj(buildJsonObject {
         put("record_id", buildJsonObject { put("type", "string"); put("description", "Record ID returned by this chat's media_generate, including its prepared request ID.") })
-        if (wait) put("wait_ms", buildJsonObject { put("type", "integer"); put("minimum", 0); put("maximum", 20000) })
     }, listOf("record_id"))
     return listOf(
         Tool(
             name = MEDIA_GENERATE_TOOL,
-            description = "Generate/edit images or generate videos through the configured Media Creation providers. Supports reference images/videos and first/last frames according to the selected model. Requires approval. Returns a durable background record; submission is not a completed result. Do not duplicate or automatically retry requests.",
+            description = "Generate/edit images or generate videos through the configured Media Creation providers. Supports reference images/videos and first/last frames according to the selected model. Requires approval. Submits once, then waits locally until generation and output downloads finish, or the task fails or is cancelled. Returns the final record and available outputs in this same call. Do not poll, duplicate or automatically retry requests.",
             parameters = ::mediaGenerateSchema,
             systemPrompt = { model, messages -> buildString {
                 appendLine("[Media Creation: images and videos]")
                 appendLine("Use media_generate only when the user asks to produce/edit actual media. Analysis, discussion and prompt writing alone do not request generation. Build a complete prompt directly when clear. Select kind and model_id from this catalog; do not use legacy chat image models. Ask only about essential ambiguous requirements or references.")
                 appendLine("Only pass supported parameters, including all required ones. For edits and image-to-video, select the intended chat reference IDs explicitly; never replace missing references with text-only generation. First/last frames cannot be mixed with reference images/videos when frames_exclude_references is true. Reference inputs for video may need the user's configured upload storage.")
-                appendLine("Generation runs in the background and the UI updates automatically. Report submitted/running separately from succeeded. Use media_task_read when the user requests progress or before reusing an earlier result, with wait_ms up to 20000 if needed; do not keep polling merely to fill the turn. Failed, denied, cancelled or unknown outcomes must not trigger automatic resubmission. Stop waiting with media_task_cancel only when requested; it does not guarantee server cancellation or refunds.")
+                appendLine("media_generate waits inside the app until generation and output downloads finish, or the task fails or is cancelled. Progress is shown by the live UI card without extra model requests. The same tool call returns the final record and outputs; after success use that result directly, without calling media_task_read to confirm it. Never implement polling loops, timed status checks or repeated reads to wait for a task. Use media_task_read only to retrieve an earlier task's outputs or resume waiting for an existing task; an active task waits locally until its final result, with no wait_ms parameter. Failed, denied, cancelled or unknown outcomes must not trigger automatic resubmission. Stop waiting with media_task_cancel only when requested; it does not guarantee server cancellation or refunds.")
                 appendLine("The model catalog describes adapter capabilities, not every model's accepted parameter values. Unspecified optional parameters use service defaults. Never promise unsupported controls, inspect media you cannot view, or claim completion without successful outputs.")
                 appendLine("This chat model accepts: ${model.inputModalities.joinToString { it.name.lowercase() }}.")
                 appendLine("Configured media models:")
@@ -302,18 +304,14 @@ internal fun createMediaCreationTools(
         ),
         Tool(
             name = MEDIA_TASK_READ_TOOL,
-            description = "Read this chat's media record and actual outputs. Optionally wait 0–20000 ms without cancelling or resubmitting it. Reads the same durable records shown in Media Creation.",
-            parameters = { taskSchema(true) },
-            execute = { value ->
-                val wait = value.jsonObject["wait_ms"]?.let { requireNotNull(it.jsonPrimitive.intOrNull) } ?: 0
-                require(wait in 0..20000) { "wait_ms must be between 0 and 20000" }
-                read(taskId(value), wait)
-            },
+            description = "Retrieve the final record and actual outputs of an existing task in this chat. If it is active, wait locally until generation and downloads finish, or it fails or is cancelled. Completed tasks return immediately. Use for earlier results or interrupted waits, not for polling or confirming a just-completed media_generate. Never cancels or resubmits the task.",
+            parameters = { taskSchema() },
+            execute = { read(taskId(it)) },
         ),
         Tool(
             name = MEDIA_TASK_CANCEL_TOOL,
             description = "Stop this chat's local media generation/waiting and retain its history. A remote provider task may continue and may still incur charges. Never claims a server-side cancellation or refund.",
-            parameters = { taskSchema(false) },
+            parameters = { taskSchema() },
             needsApproval = { true },
             execute = { cancel(taskId(it)) },
         ),
