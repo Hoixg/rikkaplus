@@ -26,8 +26,8 @@ android {
         applicationId = "io.github.hoixg.rikkaplus"
         minSdk = 26
         targetSdk = 37
-        versionCode = 195
-        versionName = "3.1.1"
+        versionCode = 196
+        versionName = "3.1.2"
 
         val appPackageName = requireNotNull(applicationId)
         resValue("string", "shortcut_target_package", appPackageName)
