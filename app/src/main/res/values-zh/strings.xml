@@ -1783,4 +1783,11 @@
   <string name="about_page_check_updates_desc">前往 RikkaPlus 的 GitHub 发布页查看版本和下载更新</string>
   <string name="assistant_page_local_tools_media_creation_desc">在聊天中使用媒体创作供应商生成图片和视频，支持参考素材、首尾帧与后台任务</string>
   <string name="chat_page_queue_more_and_reorder">更多选项；长按拖动调整顺序</string>
+  <string name="workspace_shared_environment_title">共享 Linux 环境</string>
+  <string name="workspace_shared_environment_desc">共享模式的本地工作区共用此 Linux 环境和系统工具，项目文件仍各自独立。独立工作区与 SSH 工作区使用各自的环境。</string>
+  <string name="workspace_shared_environment_install_desc">下载并安装共享 Linux 环境。重新安装会替换所有共享模式本地工作区的环境，并关闭这些工作区的终端；项目文件、独立工作区和 SSH 工作区不受影响。</string>
+  <string name="workspace_independent_environment_title">独立环境</string>
+  <string name="workspace_independent_environment_choice_desc">关闭时复用共享 Linux 环境；开启后需为此工作区单独安装环境。创建后保持所选模式。</string>
+  <string name="workspace_independent_environment_desc">此工作区拥有单独的 Linux 环境和系统工具，安装或重装不影响其他工作区。</string>
+  <string name="workspace_independent_environment_install_desc">下载并安装此工作区的 Linux 环境。重新安装只关闭它自己的本地终端并替换其环境，项目文件和其他工作区不受影响。</string>
 </resources>

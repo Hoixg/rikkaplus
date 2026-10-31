@@ -9,6 +9,7 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -17,6 +18,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import me.rerere.rikkahub.AppScope
 import me.rerere.rikkahub.data.db.entity.WorkspaceEntity
 import me.rerere.rikkahub.data.repository.WorkspaceRepository
@@ -40,6 +42,23 @@ class WorkspaceTerminalSessionManager internal constructor(
     private val workspaceStates = MutableStateFlow<Map<String, WorkspaceTerminalTabsState>>(emptyMap())
     private val nextTabId = AtomicLong(1)
     private val creationJobs = mutableMapOf<String, Job>()
+    private val localRoots = mutableMapOf<String, Boolean>()
+
+    /** 本地环境重装只停止本地终端，不触碰 SSH 会话。 */
+    internal suspend fun closeLocalWorkspaces(workspace: WorkspaceEntity) = withContext(Dispatchers.Main.immediate) {
+        val roots = localRoots.filter { (root, independent) ->
+            if (workspace.independentEnvironment) root == workspace.root else !independent
+        }.keys.toList()
+        val stopping = roots.flatMap { currentState(it).tabs }.map { it.session }
+            .filter { it.emulator != null }
+        roots.forEach { closeWorkspace(it) }
+        // 等待 PTY 子进程真正退出后才允许替换共享环境。
+        val stopped = withTimeoutOrNull(5_000) {
+            while (stopping.any { it.isRunning }) delay(25)
+            true
+        }
+        check(stopped == true) { "本地终端尚未完全退出，请稍后重试" }
+    }
 
     internal fun observeWorkspace(root: String): Flow<WorkspaceTerminalTabsState> =
         workspaceStates
@@ -95,6 +114,7 @@ class WorkspaceTerminalSessionManager internal constructor(
         // Wait for rootfs preparation to leave its IO section before callers delete or replace the
         // same files. CancellationException is deliberately rethrown by createTab().
         creationJobs[root]?.cancelAndJoin()
+        localRoots.remove(root)
 
         val state = workspaceStates.getAndUpdate { states -> states - root }[root]
             ?: return@withContext
@@ -105,6 +125,10 @@ class WorkspaceTerminalSessionManager internal constructor(
     }
 
     private fun launchCreateTab(workspace: WorkspaceEntity, onlyIfEmpty: Boolean) {
+        if (workspace.capabilities().rootfs) {
+            if (workspaceRepository.isEnvironmentInstalling(workspace)) return
+            localRoots[workspace.root] = workspace.independentEnvironment
+        }
         val root = workspace.root
         if (root in creationJobs) return
 

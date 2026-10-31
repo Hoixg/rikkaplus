@@ -1783,4 +1783,11 @@
   <string name="about_page_check_updates_desc">View versions and downloads on the RikkaPlus GitHub releases page</string>
   <string name="assistant_page_local_tools_media_creation_desc">Generate images and videos in chat using Media Creation providers, with reference assets and background tasks</string>
   <string name="chat_page_queue_more_and_reorder">More options; hold and drag to reorder</string>
+  <string name="workspace_shared_environment_title">Shared Linux Environment</string>
+  <string name="workspace_shared_environment_desc">Local workspaces in shared mode reuse this Linux environment and system tools. Project files stay separate. Independent and SSH workspaces use their own environments.</string>
+  <string name="workspace_shared_environment_install_desc">Install the shared Linux environment. Reinstalling replaces it for every shared-mode local workspace and closes their terminals. Project files, independent workspaces and SSH workspaces are unaffected.</string>
+  <string name="workspace_independent_environment_title">Independent Environment</string>
+  <string name="workspace_independent_environment_choice_desc">Off: reuse the shared Linux environment. On: install a separate environment for this workspace. This choice is saved at creation.</string>
+  <string name="workspace_independent_environment_desc">This workspace has its own Linux environment and system tools. Installing or reinstalling it does not affect other workspaces.</string>
+  <string name="workspace_independent_environment_install_desc">Install the Linux environment for this workspace. Reinstalling closes only its local terminals and replaces its environment. Project files and other workspaces are unaffected.</string>
 </resources>

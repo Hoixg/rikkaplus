@@ -1,13 +1,20 @@
 package me.rerere.rikkahub.data.repository
 
-import android.util.Log
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.update
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.runInterruptible
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.db.dao.WorkspaceDAO
@@ -46,36 +53,75 @@ class WorkspaceRepository(
     private val settingsStore: SettingsStore,
     private val sshPool: SshConnectionPool,
 ) {
-    fun listFlow(): Flow<List<WorkspaceEntity>> = dao.listFlow()
+    private val environmentInitialization = Mutex()
+    private val environmentInstallations = ConcurrentHashMap<String, Mutex>()
+    private var environmentInitialized = false
+    private val environmentStatus = MutableStateFlow<Map<String, WorkspaceShellStatus>>(emptyMap())
+    private val mutableInstallProgress = MutableStateFlow<Map<String, RootfsInstallProgress>>(emptyMap())
+    val isEnvironmentInstalling get() = environmentStatus.value.values.any { it == WorkspaceShellStatus.INSTALLING }
+
+    private fun WorkspaceEntity.environmentKey() = if (independentEnvironment) root else "@shared"
+
+    fun isEnvironmentInstalling(workspace: WorkspaceEntity): Boolean = workspace.capabilities().rootfs &&
+        environmentStatus.value[workspace.environmentKey()] == WorkspaceShellStatus.INSTALLING
+
+    fun installProgress(id: String): Flow<RootfsInstallProgress?> = flow {
+        val workspace = getById(id) ?: return@flow
+        emitAll(mutableInstallProgress.map { if (workspace.capabilities().rootfs) it[workspace.environmentKey()] else null })
+    }
+
+    private suspend fun ensureEnvironment() = environmentInitialization.withLock {
+        if (environmentInitialized) return@withLock
+        val workspaces = dao.getAll().filter { it.capabilities().rootfs }
+        withContext(Dispatchers.IO) {
+            manager.recoverEnvironment()
+            workspaces.forEach {
+                manager.registerWorkspace(it.root, it.independentEnvironment)
+                if (it.independentEnvironment) manager.recoverEnvironment(it.root)
+            }
+        }
+        environmentStatus.value = workspaces.associate { it.environmentKey() to installedEnvironmentStatus(it) } +
+            ("@shared" to if (WorkspaceManager.isUsableRootfs(manager.sharedLinuxDir)) WorkspaceShellStatus.READY else WorkspaceShellStatus.DISABLED)
+        environmentInitialized = true
+    }
+
+    private fun installedEnvironmentStatus(workspace: WorkspaceEntity) = if (manager.hasRootfs(workspace.root)) {
+        WorkspaceShellStatus.READY
+    } else {
+        WorkspaceShellStatus.DISABLED
+    }
+
+    private fun WorkspaceEntity.withEnvironmentStatus() =
+        if (capabilities().rootfs) copy(shellStatus = (environmentStatus.value[environmentKey()] ?: installedEnvironmentStatus(this)).name) else this
+
+    fun listFlow(): Flow<List<WorkspaceEntity>> = flow {
+        ensureEnvironment()
+        emitAll(combine(dao.listFlow(), environmentStatus) { workspaces, _ ->
+            workspaces.map { it.withEnvironmentStatus() }
+        })
+    }
 
     suspend fun checkIntegrity() = withContext(Dispatchers.IO) {
-        val workspaces = dao.getAll()
-        for (workspace in workspaces) {
-            // 文件不在本机的工作区 (如远程) 没有本地目录和 Rootfs
-            if (!workspace.capabilities().localFiles) continue
-            val dir = manager.workspaceDir(workspace.root)
-            if (!dir.exists()) {
-                // 目录缺失时不删除记录(例如恢复备份后工作区文件未随数据库一起恢复),
-                // 仅标记为 BROKEN 以保留记录与助手绑定, 避免误删用户工作区
-                Log.w(TAG, "Workspace directory missing, marking as broken: id=${workspace.id}, root=${workspace.root}")
-                if (workspace.shellStatus != WorkspaceShellStatus.BROKEN.name) {
-                    updateShellState(workspace.id, WorkspaceShellStatus.BROKEN.name)
-                }
-                continue
-            }
-            val statusName = workspace.shellStatus
-            if ((statusName == WorkspaceShellStatus.READY.name || statusName == WorkspaceShellStatus.INSTALLING.name) &&
-                !manager.hasRootfs(workspace.root)
-            ) {
-                Log.w(TAG, "Rootfs missing, resetting shell status: id=${workspace.id}")
-                updateShellState(workspace.id, WorkspaceShellStatus.DISABLED.name)
+        ensureEnvironment()
+        dao.getAll().filter { it.capabilities().rootfs }.forEach { workspace ->
+            environmentStatus.update { latest ->
+                if (latest[workspace.environmentKey()] == WorkspaceShellStatus.INSTALLING) latest
+                else latest + (workspace.environmentKey() to installedEnvironmentStatus(workspace))
             }
         }
     }
 
-    suspend fun getById(id: String): WorkspaceEntity? = dao.getById(id)
+    suspend fun getById(id: String): WorkspaceEntity? {
+        val workspace = dao.getById(id) ?: return null
+        if (workspace.capabilities().rootfs) {
+            ensureEnvironment()
+            manager.registerWorkspace(workspace.root, workspace.independentEnvironment)
+        }
+        return workspace.withEnvironmentStatus()
+    }
 
-    suspend fun create(name: String): WorkspaceEntity {
+    suspend fun create(name: String, independentEnvironment: Boolean = false): WorkspaceEntity {
+        ensureEnvironment()
         val id = Uuid.random().toString()
         val now = System.currentTimeMillis()
         val finalName = name.trim().ifBlank { "Workspace" }
@@ -89,10 +135,13 @@ class WorkspaceRepository(
             createdAt = now,
             updatedAt = now,
             lastAccessAt = null,
+            independentEnvironment = independentEnvironment,
         )
-        manager.ensureWorkspace(workspace.root)
-        dao.upsert(workspace)
-        return workspace
+        manager.ensureWorkspace(workspace.root, independentEnvironment)
+        environmentStatus.update { it + (workspace.environmentKey() to (it[workspace.environmentKey()] ?: installedEnvironmentStatus(workspace))) }
+        val ready = workspace.withEnvironmentStatus()
+        dao.upsert(ready)
+        return ready
     }
 
     /** 用一条临时连接测试 SSH 配置; [id] 不为空时, 表单里留空的凭据沿用该工作区已保存的值 */
@@ -175,32 +224,34 @@ class WorkspaceRepository(
     suspend fun installRootfs(
         id: String,
         url: String,
+        replaceExisting: Boolean = false,
+        beforeInstall: suspend () -> Unit = {},
         onProgress: (RootfsInstallProgress) -> Unit = {},
     ): Boolean {
         val workspace = dao.getById(id) ?: return false
         require(workspace.capabilities().rootfs) { "Rootfs is not available for ${workspace.type} workspaces" }
-        updateShellState(workspace, WorkspaceShellStatus.INSTALLING.name)
+        ensureEnvironment()
+        val key = workspace.environmentKey()
+        val installation = environmentInstallations.computeIfAbsent(key) { Mutex() }
+        check(installation.tryLock()) { "此 Linux 环境正在安装，请稍后重试" }
         try {
+            if (!replaceExisting && installedEnvironmentStatus(workspace) == WorkspaceShellStatus.READY) return true
+            environmentStatus.update { it + (key to WorkspaceShellStatus.INSTALLING) }
+            beforeInstall()
             // runInterruptible 让协程取消转成线程中断, 打断 install 内阻塞的下载/解压循环
             runInterruptible(Dispatchers.IO) {
-                rootfsInstaller.install(workspace.root, url, onProgress)
+                rootfsInstaller.install(workspace.root, url, replaceExisting) { progress ->
+                    mutableInstallProgress.update { it + (key to progress) }
+                    onProgress(progress)
+                }
             }
-            updateShellState(workspace, WorkspaceShellStatus.READY.name)
             return true
-        } catch (e: CancellationException) {
-            withContext(NonCancellable) {
-                restoreShellState(workspace)
-            }
-            throw e
         } catch (e: InterruptedException) {
-            withContext(NonCancellable) {
-                restoreShellState(workspace)
-            }
             throw CancellationException("Rootfs install cancelled").also { it.initCause(e) }
-        } catch (e: Throwable) {
-            Log.e(TAG, "installRootfs failed: workspace=${workspace.id}, root=${workspace.root}, url=$url", e)
-            updateShellState(workspace, WorkspaceShellStatus.BROKEN.name)
-            throw e
+        } finally {
+            environmentStatus.update { it + (key to installedEnvironmentStatus(workspace)) }
+            mutableInstallProgress.update { it - key }
+            installation.unlock()
         }
     }
 
@@ -346,6 +397,10 @@ class WorkspaceRepository(
         stdin: ByteArray? = null,
     ): WorkspaceCommandResult {
         val workspace = dao.getById(id) ?: error("Workspace not found: $id")
+        if (workspace.capabilities().rootfs) {
+            ensureEnvironment()
+            check(!isEnvironmentInstalling(workspace)) { "此 Linux 环境正在安装，暂时无法执行本地命令" }
+        }
         // runInterruptible 让协程取消转化为线程中断，从而打断阻塞的 Process.waitFor 并杀掉进程
         return runInterruptible(Dispatchers.IO) {
             backendOf(workspace).executeCommand(command, cwd, timeoutMillis, stdin)
@@ -389,6 +444,7 @@ class WorkspaceRepository(
             val settings = workspace.sshSettings() ?: error("SSH workspace config is missing: ${workspace.id}")
             SshWorkspaceBackend(sshPool, workspace.id, settings.toConnectionConfig())
         } else {
+            manager.registerWorkspace(workspace.root, workspace.independentEnvironment)
             manager.backend(workspace.root, workspace.shellCompatibilityMode)
         }
 
@@ -473,28 +529,7 @@ class WorkspaceRepository(
             block(backendOf(workspace))
         }
 
-    private suspend fun restoreShellState(workspace: WorkspaceEntity) {
-        updateShellState(workspace.id, workspace.shellStatus)
-    }
-
-    private suspend fun updateShellState(
-        workspace: WorkspaceEntity,
-        shellStatus: String,
-    ) = updateShellState(workspace.id, shellStatus)
-
-    private suspend fun updateShellState(
-        workspaceId: String,
-        shellStatus: String,
-    ) {
-        dao.updateShellStatus(
-            id = workspaceId,
-            shellStatus = shellStatus,
-            updatedAt = System.currentTimeMillis(),
-        )
-    }
-
     companion object {
-        private const val TAG = "WorkspaceRepository"
         private const val MAX_PREVIEW_BYTES = 512L * 1024
     }
 }

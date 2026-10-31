@@ -1,5 +1,6 @@
 package me.rerere.workspace
 
+import org.tukaani.xz.XZInputStream
 import java.io.BufferedInputStream
 import java.io.EOFException
 import java.io.File
@@ -10,7 +11,6 @@ import java.net.URL
 import java.nio.file.Files
 import java.util.Locale
 import java.util.zip.GZIPInputStream
-import org.tukaani.xz.XZInputStream
 
 class RootfsInstaller(
     private val manager: WorkspaceManager,
@@ -19,12 +19,18 @@ class RootfsInstaller(
     fun install(
         root: String,
         url: String,
+        replaceExisting: Boolean = false,
         onProgress: (RootfsInstallProgress) -> Unit = {},
-    ) {
+    ) = manager.changeEnvironment(root) {
         require(url.isNotBlank()) { "Rootfs download url is required" }
+        manager.recoverEnvironment(root)
         manager.ensureWorkspace(root)
+        if (!replaceExisting && manager.hasRootfs(root)) {
+            onProgress(RootfsInstallProgress(stage = RootfsInstallStage.INSTALLED))
+            return@changeEnvironment
+        }
         val format = ArchiveFormat.fromUrl(url)
-        val tempDir = manager.tempDir(root)
+        val tempDir = manager.installationTempDir(root).apply { mkdirs() }
         val archive = File(tempDir, "rootfs.${format.extension}")
         val stagingDir = File(tempDir, "rootfs-staging")
         val linuxDir = manager.linuxDir(root)
@@ -34,11 +40,19 @@ class RootfsInstaller(
             stagingDir.mkdirs()
             download(url, archive, onProgress)
             extractTar(archive, stagingDir, format, onProgress)
-            linuxDir.deleteRecursively()
-            require(stagingDir.renameTo(linuxDir)) {
-                "Failed to move rootfs into workspace"
+            require(WorkspaceManager.isUsableRootfs(stagingDir)) { "Rootfs does not contain /bin/sh" }
+            patcher.patch(stagingDir)
+            val previous = manager.previousLinuxDir(root)
+            check(!previous.exists() || previous.deleteRecursively()) { "Cannot retire previous Linux environment" }
+            val hadPrevious = linuxDir.exists()
+            if (hadPrevious) check(linuxDir.renameTo(previous)) { "Cannot retire current Linux environment" }
+            try {
+                check(stagingDir.renameTo(linuxDir)) { "Cannot activate shared Linux environment" }
+            } catch (error: Throwable) {
+                if (hadPrevious) check(previous.renameTo(linuxDir)) { "Cannot recover previous Linux environment" }
+                throw error
             }
-            patcher.patch(linuxDir)
+            previous.deleteRecursively()
             onProgress(RootfsInstallProgress(stage = RootfsInstallStage.INSTALLED))
         } finally {
             archive.delete()

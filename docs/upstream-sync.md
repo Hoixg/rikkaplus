@@ -59,4 +59,5 @@ rg -n 'ktor-server-auth|ktor-server-auth-jwt|jmdns|auth0' gradle/libs.versions.t
 - 每次构建只产出一份含 ARM64 和 x86_64 的 GitHub 通用 APK：默认 Release，只有明确要求时构建 Debug；不附带构建其他类型、分架构 APK 或 Play AAB。`buildAll` 同样只构建 Release 通用包。保留单 APK、架构及发布附件数量校验；每日构建清理 `1.0-nightly` 遗留的其他 APK，不修改历史正式版本附件。
 - OAuth 的 Ktor 回调接收器依赖 Kotlin 反射库，不得全局排除 `kotlin-reflect` 或用忽略缺失类的规则掩盖依赖问题。
 - 多 Key 手动选择及模型绑定、订阅账号登录、MCP 扩展入口和审批、Shizuku 授权与命令工具、Termux 会话与后台任务（跨聊天共享）、工作区文件备份、聊天页和工作区交互定制。
+- 本地工作区默认共用 `filesDir/environment/linux`，创建时可打开独立环境开关，使用该工作区自己的 `linux`。项目和临时目录各自独立；共享模式复用已安装环境，删除共享工作区不删除环境。安装状态、进度和重装终端关闭范围按所选环境分组，独立工作区与 SSH 不受共享环境重装影响。不加入旧环境迁移。
 - 已移除的内置中转商预设及仓库定位介绍，不随上游恢复。

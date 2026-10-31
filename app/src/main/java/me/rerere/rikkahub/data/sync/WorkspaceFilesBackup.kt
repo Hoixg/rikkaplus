@@ -38,6 +38,7 @@ internal object WorkspaceFilesBackup {
         val root: String,
         val createdAt: Long,
         val updatedAt: Long,
+        val independentEnvironment: Boolean = false,
     ) {
         fun toEntity() = WorkspaceEntity(
             id = id,
@@ -45,13 +46,14 @@ internal object WorkspaceFilesBackup {
             root = root,
             createdAt = createdAt,
             updatedAt = updatedAt,
+            independentEnvironment = independentEnvironment,
         )
     }
 
     fun records(workspaces: List<WorkspaceEntity>) = Manifest(workspaces = workspaces.filter {
         it.capabilities().localFiles
     }.map {
-        Record(it.id, it.name, it.root, it.createdAt, it.updatedAt)
+        Record(it.id, it.name, it.root, it.createdAt, it.updatedAt, it.independentEnvironment)
     })
 
     suspend fun write(zip: ZipOutputStream, filesDir: File, manifest: Manifest, json: Json) {

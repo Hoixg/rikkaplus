@@ -48,6 +48,7 @@ import me.rerere.rikkahub.ui.components.ai.ExtensionEmptyState
 import me.rerere.rikkahub.ui.components.nav.BackButton
 import me.rerere.rikkahub.ui.components.ui.CardGroup
 import me.rerere.rikkahub.ui.components.ui.CardGroupIcon
+import me.rerere.rikkahub.ui.components.ui.switchItem
 import me.rerere.rikkahub.ui.components.ui.ItemAction
 import me.rerere.rikkahub.ui.components.ui.ItemActionMenu
 import me.rerere.rikkahub.ui.context.LocalNavController
@@ -143,10 +144,11 @@ fun WorkspacePage(vm: WorkspaceVM = koinViewModel()) {
         EditWorkspaceDialog(
             title = stringResource(R.string.workspace_page_create),
             initialName = "",
+            showEnvironmentChoice = true,
             existingNames = workspaces.map { it.name.trim() }.toSet(),
             onDismiss = { showAddDialog = false },
-            onConfirm = { name ->
-                vm.create(name)
+            onConfirm = { name, independent ->
+                vm.create(name, independent)
                 showAddDialog = false
             },
         )
@@ -158,7 +160,7 @@ fun WorkspacePage(vm: WorkspaceVM = koinViewModel()) {
             initialName = workspace.name,
             existingNames = workspaces.filter { it.id != workspace.id }.map { it.name.trim() }.toSet(),
             onDismiss = { editTarget = null },
-            onConfirm = { name ->
+            onConfirm = { name, _ ->
                 vm.rename(workspace, name)
                 editTarget = null
             },
@@ -213,7 +215,8 @@ private fun WorkspaceItem(
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    text = workspace.statusLabel(),
+                    text = if (workspace.isSsh()) workspace.statusLabel() else
+                        stringResource(if (workspace.independentEnvironment) R.string.workspace_independent_environment_title else R.string.workspace_shared_environment_title) + " · " + workspace.statusLabel(),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
@@ -243,11 +246,13 @@ private fun WorkspaceItem(
 private fun EditWorkspaceDialog(
     title: String,
     initialName: String,
+    showEnvironmentChoice: Boolean = false,
     existingNames: Set<String>,
     onDismiss: () -> Unit,
-    onConfirm: (String) -> Unit,
+    onConfirm: (String, Boolean) -> Unit,
 ) {
     var name by rememberSaveable(initialName) { mutableStateOf(initialName) }
+    var independent by rememberSaveable { mutableStateOf(false) }
     val trimmedName = name.trim()
     val isDuplicate = trimmedName.isNotEmpty() && trimmedName in existingNames
 
@@ -255,6 +260,7 @@ private fun EditWorkspaceDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             OutlinedTextField(
                 value = name,
                 onValueChange = { name = it },
@@ -266,10 +272,21 @@ private fun EditWorkspaceDialog(
                     { Text(stringResource(R.string.workspace_page_name_duplicate)) }
                 } else null,
             )
+            if (showEnvironmentChoice) {
+                CardGroup {
+                    switchItem(
+                        checked = independent,
+                        onCheckedChange = { independent = it },
+                        headlineContent = { Text(stringResource(R.string.workspace_independent_environment_title)) },
+                        supportingContent = { Text(stringResource(R.string.workspace_independent_environment_choice_desc)) },
+                    )
+                }
+            }
+            }
         },
         confirmButton = {
             TextButton(
-                onClick = { onConfirm(trimmedName) },
+                onClick = { onConfirm(trimmedName, independent) },
                 enabled = name.isNotBlank() && !isDuplicate,
             ) {
                 Text(stringResource(R.string.common_save))

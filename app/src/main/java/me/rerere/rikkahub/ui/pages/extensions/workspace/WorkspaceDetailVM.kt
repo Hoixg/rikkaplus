@@ -18,8 +18,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import me.rerere.rikkahub.data.db.entity.WorkspaceEntity
 import me.rerere.rikkahub.data.repository.WorkspaceRepository
-import me.rerere.workspace.RootfsInstallProgress
-import me.rerere.workspace.RootfsInstallStage
 import me.rerere.workspace.WorkspaceCommandResult
 import me.rerere.workspace.WorkspaceFileEntry
 import me.rerere.workspace.WorkspaceLayout
@@ -112,8 +110,7 @@ class WorkspaceDetailVM(
     private val _terminalState = MutableStateFlow(WorkspaceTerminalState())
     val terminalState = _terminalState.asStateFlow()
 
-    private val _installProgress = MutableStateFlow<RootfsInstallProgress?>(null)
-    val installProgress = _installProgress.asStateFlow()
+    val installProgress = repository.installProgress(id)
 
     private val _installError = MutableStateFlow<String?>(null)
     val installError = _installError.asStateFlow()
@@ -128,6 +125,11 @@ class WorkspaceDetailVM(
     init {
         loadWorkspace()
         refresh()
+        viewModelScope.launch {
+            repository.listFlow().collect { workspaces ->
+                _state.update { it.copy(workspace = workspaces.firstOrNull { workspace -> workspace.id == id }) }
+            }
+        }
     }
 
     fun selectArea(area: WorkspaceStorageArea) {
@@ -328,20 +330,19 @@ class WorkspaceDetailVM(
         viewModelScope.launch {
             _installError.value = null
             val workspace = state.value.workspace ?: return@launch
-            _installProgress.value = RootfsInstallProgress(stage = RootfsInstallStage.DOWNLOADING)
             try {
-                terminalSessionManager.closeWorkspace(workspace.root)
-                repository.installRootfs(workspace.id, url) { progress ->
-                    _installProgress.value = progress
-                }
+                repository.installRootfs(
+                    workspace.id,
+                    url,
+                    replaceExisting = workspace.shellStatus == me.rerere.workspace.WorkspaceShellStatus.READY.name,
+                    beforeInstall = { terminalSessionManager.closeLocalWorkspaces(workspace) },
+                )
                 loadWorkspace()
                 refresh()
             } catch (e: CancellationException) {
                 throw e
             } catch (error: Throwable) {
                 _installError.value = error.message ?: "Rootfs 安装失败"
-            } finally {
-                _installProgress.value = null
             }
         }
     }

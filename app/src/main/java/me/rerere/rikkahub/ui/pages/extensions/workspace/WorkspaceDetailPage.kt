@@ -159,7 +159,7 @@ fun WorkspaceDetailPage(id: String, openFiles: Boolean = false) {
     val navController = LocalNavController.current
     val vm: WorkspaceDetailVM = koinViewModel(parameters = { parametersOf(id) })
     val state by vm.state.collectAsStateWithLifecycle()
-    val installProgress by vm.installProgress.collectAsStateWithLifecycle()
+    val installProgress by vm.installProgress.collectAsStateWithLifecycle(initialValue = null)
     val installError by vm.installError.collectAsStateWithLifecycle()
     val settingsError by vm.settingsError.collectAsStateWithLifecycle()
     val pagerState = rememberPagerState(
@@ -563,11 +563,11 @@ private fun WorkspaceBasicPage(
         if (hasRootfs) {
             item {
                 CardGroup(
-                    title = { Text(stringResource(R.string.workspace_detail_enable_shell)) },
+                    title = { Text(stringResource(if (workspace?.independentEnvironment == true) R.string.workspace_independent_environment_title else R.string.workspace_shared_environment_title)) },
                 ) {
                     formItem(
                         headlineContent = { Text(stringResource(R.string.workspace_detail_area_rootfs)) },
-                        supportingContent = { Text(stringResource(R.string.workspace_detail_enable_shell_desc)) },
+                        supportingContent = { Text(stringResource(if (workspace?.independentEnvironment == true) R.string.workspace_independent_environment_desc else R.string.workspace_shared_environment_desc)) },
                         leadingContent = { CardGroupIcon(HugeIcons.Bash) },
                     ) {
                         Button(
@@ -773,7 +773,7 @@ private fun InstallRootfsDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
-                    text = stringResource(R.string.workspace_detail_install_rootfs_desc, workspace.name),
+                    text = stringResource(if (workspace.independentEnvironment) R.string.workspace_independent_environment_install_desc else R.string.workspace_shared_environment_install_desc),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

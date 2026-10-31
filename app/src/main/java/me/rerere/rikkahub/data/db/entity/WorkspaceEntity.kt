@@ -45,6 +45,8 @@ data class WorkspaceEntity(
     // SSH 工作区的连接配置 (SshWorkspaceSettings 的 JSON, 凭据为 Keystore 密文), 本地工作区为 null
     @ColumnInfo("ssh_config")
     val sshConfig: String? = null,
+    @ColumnInfo("independent_environment", defaultValue = "0")
+    val independentEnvironment: Boolean = false,
 ) {
     fun isSsh(): Boolean = type == WorkspaceType.SSH.name
 

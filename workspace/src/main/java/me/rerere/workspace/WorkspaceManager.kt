@@ -6,14 +6,69 @@ import java.io.OutputStream
 import java.nio.charset.Charset
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.locks.ReentrantReadWriteLock
 
 class WorkspaceManager(
     private val baseDir: File,
     private val config: WorkspaceConfig = WorkspaceConfig(),
     private val shellRunner: WorkspaceShellRunner = HostShellRunner(),
     private val bindMounts: List<WorkspaceBindMount> = emptyList(),
+    val environmentDir: File = File(baseDir, ".environment"),
 ) {
     private val fileSystem = WorkspaceFileSystem(config)
+    private val independentRoots = ConcurrentHashMap.newKeySet<String>()
+    private val environmentLocks = ConcurrentHashMap<String, ReentrantReadWriteLock>()
+    val sharedLinuxDir: File get() = File(environmentDir, LINUX_DIR)
+    internal val environmentTempDir: File get() = File(environmentDir, TEMP_DIR)
+    internal val previousLinuxDir: File get() = File(environmentDir, "previous-linux")
+
+    fun registerWorkspace(root: String, independentEnvironment: Boolean) {
+        requireValidRoot(root)
+        if (independentEnvironment) independentRoots.add(root) else independentRoots.remove(root)
+    }
+
+    private fun environmentHome(root: String?): File =
+        if (root != null && root in independentRoots) workspaceDir(root) else environmentDir
+
+    internal fun installationTempDir(root: String): File =
+        if (root in independentRoots) File(workspaceDir(root), "environment-tmp") else environmentTempDir
+
+    internal fun previousLinuxDir(root: String): File = File(environmentHome(root), "previous-linux")
+
+    internal fun <T> readEnvironment(root: String? = null, block: () -> T): T {
+        val lock = environmentLocks.computeIfAbsent(
+            environmentHome(root).absolutePath
+        ) { ReentrantReadWriteLock(true) }.readLock()
+        lock.lockInterruptibly()
+        return try {
+            block()
+        } finally {
+            lock.unlock()
+        }
+    }
+
+    internal fun <T> changeEnvironment(root: String? = null, block: () -> T): T {
+        val lock = environmentLocks.computeIfAbsent(
+            environmentHome(root).absolutePath
+        ) { ReentrantReadWriteLock(true) }.writeLock()
+        lock.lockInterruptibly()
+        return try {
+            block()
+        } finally {
+            lock.unlock()
+        }
+    }
+
+    /** 重装中途退出时，恢复尚未被新环境替换的上一份环境。 */
+    fun recoverEnvironment(root: String? = null) = changeEnvironment(root) {
+        val home = environmentHome(root).apply { mkdirs() }
+        val current = File(home, LINUX_DIR)
+        val previous = File(home, "previous-linux")
+        if (!current.exists() && previous.exists()) {
+            check(previous.renameTo(current)) { "Cannot recover Linux environment" }
+        }
+    }
 
     // 按 target 长度降序, 保证 /a/b 优先于 /a 匹配
     private val sortedBindMounts = bindMounts.sortedByDescending { it.target.trimEnd('/').length }
@@ -31,10 +86,10 @@ class WorkspaceManager(
     fun backend(root: String, shellCompatibilityMode: Boolean = false): WorkspaceBackend =
         LocalWorkspaceBackend(this, root, shellCompatibilityMode)
 
-    fun ensureWorkspace(root: String): File {
+    fun ensureWorkspace(root: String, independentEnvironment: Boolean? = null): File {
+        independentEnvironment?.let { registerWorkspace(root, it) }
         val dir = workspaceDir(root)
         filesDir(root).mkdirs()
-        linuxDir(root).mkdirs()
         tempDir(root).mkdirs()
         return dir
     }
@@ -46,7 +101,10 @@ class WorkspaceManager(
 
     fun filesDir(root: String): File = File(workspaceDir(root), FILES_DIR)
 
-    fun linuxDir(root: String): File = File(workspaceDir(root), LINUX_DIR)
+    fun linuxDir(root: String): File {
+        requireValidRoot(root)
+        return File(environmentHome(root), LINUX_DIR)
+    }
 
     fun tempDir(root: String): File = File(workspaceDir(root), TEMP_DIR)
 
@@ -54,14 +112,13 @@ class WorkspaceManager(
 
     fun rootfsShell(root: String): String = rootfsShell(linuxDir(root))
 
-    fun deleteWorkspace(root: String): Boolean = workspaceDir(root).deleteRecursively()
+    fun deleteWorkspace(root: String): Boolean = changeEnvironment(root) { workspaceDir(root).deleteRecursively() }
 
     fun listFiles(
         root: String,
         path: String = "",
         area: WorkspaceStorageArea = WorkspaceStorageArea.FILES,
-    ): List<WorkspaceFileEntry> =
-        fileSystem.list(areaDir(root, area), path)
+    ): List<WorkspaceFileEntry> = readEnvironment(root) { fileSystem.list(areaDir(root, area), path) }
 
     fun readText(
         root: String,
@@ -81,7 +138,7 @@ class WorkspaceManager(
         root: String,
         path: String,
         area: WorkspaceStorageArea = WorkspaceStorageArea.FILES,
-    ): WorkspaceFileEntry = fileSystem.createDirectory(areaDir(root, area), path)
+    ): WorkspaceFileEntry = readEnvironment(root) { fileSystem.createDirectory(areaDir(root, area), path) }
 
     fun importFile(
         root: String,
@@ -89,10 +146,10 @@ class WorkspaceManager(
         area: WorkspaceStorageArea = WorkspaceStorageArea.FILES,
         fileName: String,
         inputStream: InputStream,
-    ): WorkspaceFileEntry {
+    ): WorkspaceFileEntry = readEnvironment(root) {
         val areaRoot = areaDir(root, area)
         val targetPath = if (destinationPath.isBlank()) fileName else "$destinationPath/$fileName"
-        return fileSystem.importBytes(areaRoot, targetPath, inputStream)
+        fileSystem.importBytes(areaRoot, targetPath, inputStream)
     }
 
     fun fileSize(
@@ -122,7 +179,7 @@ class WorkspaceManager(
         path: String,
         area: WorkspaceStorageArea = WorkspaceStorageArea.FILES,
         outputStream: OutputStream,
-    ) {
+    ): Unit = readEnvironment(root) {
         val file = fileSystem.resolve(areaDir(root, area), path)
         require(file.exists()) { "File does not exist: $path" }
         require(file.isFile) { "Path is not a file: $path" }
@@ -154,6 +211,9 @@ class WorkspaceManager(
                 relativePath = trimmed.removePrefix(ROOTFS_WORKSPACE_DIR).trimStart('/'),
             )
         }
+        if (trimmed == "/tmp" || trimmed.startsWith("/tmp/")) {
+            return RootfsLocation(tempDir(root), trimmed.removePrefix("/tmp").trimStart('/'))
+        }
 
         // 内核伪文件系统: 显式拒绝, 而不是回落到一个必然读不到的物理路径
         KERNEL_FS_MOUNTS.firstOrNull { trimmed == it || trimmed.startsWith("$it/") }?.let {
@@ -166,7 +226,7 @@ class WorkspaceManager(
     fun rootfsFileSize(root: String, path: String): Long =
         resolveRootfsFile(root, path).also { it.requireReadableFile(path) }.length()
 
-    fun exportRootfsFile(root: String, path: String, outputStream: OutputStream) {
+    fun exportRootfsFile(root: String, path: String, outputStream: OutputStream): Unit = readEnvironment(root) {
         val file = resolveRootfsFile(root, path)
         file.requireReadableFile(path)
         outputStream.use { out -> file.inputStream().use { it.copyTo(out) } }
@@ -188,8 +248,7 @@ class WorkspaceManager(
         path: String,
         recursive: Boolean = false,
         area: WorkspaceStorageArea = WorkspaceStorageArea.FILES,
-    ): Boolean =
-        fileSystem.delete(areaDir(root, area), path, recursive)
+    ): Boolean = readEnvironment(root) { fileSystem.delete(areaDir(root, area), path, recursive) }
 
     fun moveFile(root: String, source: String, target: String, overwrite: Boolean = false): WorkspaceFileEntry =
         fileSystem.move(filesDir(root), source, target, overwrite)
@@ -214,13 +273,13 @@ class WorkspaceManager(
         timeoutMillis: Long = DEFAULT_COMMAND_TIMEOUT_MS,
         stdin: ByteArray? = null,
         shellCompatibilityMode: Boolean = false,
-    ): WorkspaceCommandResult {
+    ): WorkspaceCommandResult = readEnvironment(root) {
         require(command.isNotBlank()) { "Command is required" }
         val workingDir = fileSystem.resolve(filesDir(root), cwd)
         require(workingDir.exists()) { "Working directory does not exist: $cwd" }
         require(workingDir.isDirectory) { "Working path is not a directory: $cwd" }
 
-        return shellRunner.execute(
+        shellRunner.execute(
             WorkspaceShellContext(
                 root = root,
                 command = command,
@@ -238,13 +297,15 @@ class WorkspaceManager(
     }
 
     /** 交互式终端启动前的准备: 补齐目录, 并按当前网络刷新 Rootfs 的 DNS 等配置 */
-    fun prepareTerminal(root: String, nameservers: List<String>) {
+    fun prepareTerminal(root: String, nameservers: List<String>) = readEnvironment(root) {
         ensureWorkspace(root)
         bindMounts.forEach { it.source.mkdirs() }
         RootfsPatcher().patch(linuxDir(root), RootfsPatchOptions(nameservers = nameservers))
     }
 
-    fun terminalLaunch(root: String, shellCompatibilityMode: Boolean): WorkspaceTerminalLaunch? =
+    fun terminalLaunch(root: String, shellCompatibilityMode: Boolean): WorkspaceTerminalLaunch? = readEnvironment(
+        root
+    ) {
         shellRunner.terminalLaunch(
             WorkspaceTerminalContext(
                 filesDir = filesDir(root),
@@ -254,9 +315,10 @@ class WorkspaceManager(
                 shellCompatibilityMode = shellCompatibilityMode,
             )
         )
+    }
 
     private fun requireValidRoot(root: String) {
-        require(root.matches(ROOT_NAME_REGEX)) {
+        require(root.matches(ROOT_NAME_REGEX) && root != "." && root != ".." && root != ".environment") {
             "Invalid workspace root name: $root"
         }
     }
@@ -266,17 +328,24 @@ class WorkspaceManager(
         WorkspaceStorageArea.LINUX -> linuxDir(root)
     }
 
-    fun cleanupAllTempDirs() {
-        val roots = baseDir.listFiles()?.filter { it.isDirectory } ?: return
+    fun cleanupAllTempDirs() = changeEnvironment {
+        val roots = baseDir.listFiles()?.filter { it.isDirectory } ?: emptyList()
         for (dir in roots) {
             val root = dir.name
-            if (!root.matches(ROOT_NAME_REGEX)) continue
+            if (!root.matches(ROOT_NAME_REGEX) || root == ".environment") continue
             // PRoot temp files
-            tempDir(root).let { if (it.exists()) it.deleteRecursively() }
-            // Rootfs /tmp and /var/tmp
-            File(linuxDir(root), "tmp").let { if (it.exists()) it.deleteRecursively() }
-            File(linuxDir(root), "var/tmp").let { if (it.exists()) it.deleteRecursively() }
+            changeEnvironment(root) {
+                tempDir(root).let { if (it.exists()) it.deleteRecursively() }
+                if (root in independentRoots) {
+                    installationTempDir(root).let { if (it.exists()) it.deleteRecursively() }
+                    File(linuxDir(root), "tmp").let { if (it.exists()) it.deleteRecursively() }
+                    File(linuxDir(root), "var/tmp").let { if (it.exists()) it.deleteRecursively() }
+                }
+            }
         }
+        environmentTempDir.let { if (it.exists()) it.deleteRecursively() }
+        File(sharedLinuxDir, "tmp").let { if (it.exists()) it.deleteRecursively() }
+        File(sharedLinuxDir, "var/tmp").let { if (it.exists()) it.deleteRecursively() }
     }
 
     companion object {

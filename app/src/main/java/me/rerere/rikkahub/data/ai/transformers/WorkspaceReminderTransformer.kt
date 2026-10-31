@@ -215,6 +215,15 @@ private fun buildWorkspacePrompt(
         "  - `workspace_write_file` / `workspace_edit_file`: create files, or make precise edits to existing files."
     )
     appendLine("  - `workspace_shell`: run shell commands (the files area is mounted at /workspace).")
+    if (workspace.independentEnvironment) {
+        appendLine(
+            "  - This workspace has an independent Linux environment. System package changes affect only this workspace."
+        )
+    } else {
+        appendLine(
+            "  - This workspace shares its Linux environment and system tools with other shared-mode workspaces. System package changes affect all of them; keep project-specific dependencies under /workspace (for example a virtual environment)."
+        )
+    }
     appendLine(
         "- Prefer `workspace_shell` for tasks that standard Unix tools handle well, and prefer `workspace_edit_file` for targeted edits over rewriting whole files."
     )

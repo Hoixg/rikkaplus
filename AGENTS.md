@@ -96,7 +96,7 @@ must keep task management read-only, and model overrides must not change the ass
 - **ui**: Reusable Compose UI components that do not depend on app logic
 - **search**: Search functionality SDK for multiple providers (Exa, Tavily, Zhipu, Bing, Brave, SearXNG, and others)
 - **speech**: Speech module for TTS and ASR implementations
-- **workspace**: Sandboxed per-workspace file system and shell execution environment exposed to the AI as tools.
+- **workspace**: Per-workspace project files with a shared local Linux environment by default and an independent environment option at creation; SSH workspaces use their remote environment.
 - **terminal**: Terminal emulator core taken from termux-app's `terminal-emulator` (package `com.termux.terminal`, kept
   binary compatible with the `terminal-view` aar). `TerminalSession` runs over a `TerminalTransport`: local PRoot
   terminals use `LocalPtyTransport`, SSH workspaces use the app's `SshTerminalTransport`. Origin and local changes are

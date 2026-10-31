@@ -36,11 +36,19 @@ class WorkspaceFilesBackupTest {
         assertEquals(listOf(record), backup.workspaces)
     }
 
+    @Test fun independentEnvironmentChoiceIsSavedWithProjectMetadata() {
+        val independent = record.toEntity().copy(independentEnvironment = true)
+        val metadata = WorkspaceFilesBackup.records(listOf(independent))
+        val restored = json.decodeFromString<WorkspaceFilesBackup.Manifest>(json.encodeToString(metadata))
+        assertTrue(restored.workspaces.single().toEntity().independentEnvironment)
+    }
+
     @Test fun archiveContainsOnlyFilesAreaAndKeepsNestedAndEmptyFolders() = runBlocking {
         write("app/workspaces/workspace-root/files/project/main.py", "print('你好')")
         write("app/workspaces/workspace-root/files/.env", "configuration")
         write("app/workspaces/workspace-root/files/.l2s.internal", "proot metadata")
         write("app/workspaces/workspace-root/linux/bin/sh", "runtime")
+        write("app/environment/linux/bin/sh", "shared runtime")
         write("app/workspaces/workspace-root/tmp/cache", "cache")
         write("app/workspaces/unlisted/files/private.txt", "not a registered workspace")
         File(temporary.root, "app/workspaces/workspace-root/files/empty").mkdirs()
