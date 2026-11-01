@@ -275,6 +275,16 @@ private fun AssistantLocalToolContent(
                 description = R.string.assistant_page_local_tools_termux_desc,
             )
             toolItem(
+                option = LocalToolOption.PhoneControl,
+                icon = HugeIcons.SmartPhone01,
+                title = R.string.phone_control_title,
+                description = R.string.phone_control_short_desc,
+            )
+            if (LocalToolOption.PhoneControl in assistant.localTools) item(
+                onClick = { navigator.navigate(Screen.SettingPhoneControl) { launchSingleTop = true } },
+                headlineContent = { Text(stringResource(R.string.phone_control_settings)) },
+            )
+            toolItem(
                 option = LocalToolOption.Shizuku,
                 icon = HugeIcons.ComputerTerminal01,
                 title = R.string.assistant_page_local_tools_shizuku_title,

@@ -2,8 +2,10 @@ package me.rerere.rikkahub.data.ai.tools.local
 
 import android.content.Context
 import me.rerere.ai.core.Tool
+import me.rerere.rikkahub.accessibility.AndroidPhoneControlBackend
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.event.AppEventBus
+import me.rerere.rikkahub.data.files.FilesManager
 import me.rerere.tts.provider.TTSManager
 
 class LocalTools(
@@ -11,7 +13,14 @@ class LocalTools(
     private val eventBus: AppEventBus,
     private val ttsManager: TTSManager,
     private val settingsStore: SettingsStore,
+    private val filesManager: FilesManager,
 ) {
+    private val phoneBackend by lazy {
+        AndroidPhoneControlBackend(
+            context,
+            filesManager
+        ) { settingsStore.settingsFlow.value.phoneControlConfig.enabled }
+    }
     private val termuxOutputCache = TermuxOutputCache()
     val javascriptTool by lazy { buildJavascriptTool() }
 
@@ -31,7 +40,7 @@ class LocalTools(
 
     val chartDisplayTool by lazy { buildChartDisplayTool() }
 
-    fun getTools(options: List<LocalToolOption>): List<Tool> {
+    fun getTools(options: List<LocalToolOption>, conversationId: String): List<Tool> {
         val tools = mutableListOf<Tool>()
         if (options.contains(LocalToolOption.JavascriptEngine)) {
             tools.add(javascriptTool)
@@ -70,6 +79,14 @@ class LocalTools(
         if (LocalToolOption.Shizuku in options) {
             tools.add(shizukuExecTool(context) { settingsStore.settingsFlow.value.shizukuApprovalRequired })
             tools.addAll(shizukuTaskTools(context) { settingsStore.settingsFlow.value.shizukuApprovalRequired })
+        }
+        if (LocalToolOption.PhoneControl in options) {
+            tools.addAll(
+                createPhoneControlTools(
+                    conversationId,
+                    phoneBackend
+                ) { settingsStore.settingsFlow.value.phoneControlConfig }
+            )
         }
         return tools
     }

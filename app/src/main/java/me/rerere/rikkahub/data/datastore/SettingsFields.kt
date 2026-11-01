@@ -130,6 +130,7 @@ internal val SETTINGS_FIELDS: List<SettingsField<*, *>> = with(SettingsStore) {
         json(MCP_SERVERS, Settings::mcpServers) { copy(mcpServers = it) },
         plain(ALLOW_AI_MANAGE_MCP, Settings::allowAiManageMcp) { copy(allowAiManageMcp = it) },
         json(MCP_MANAGEMENT_APPROVAL, Settings::mcpManagementApproval) { copy(mcpManagementApproval = it) },
+        json(PHONE_CONTROL_CONFIG, Settings::phoneControlConfig) { copy(phoneControlConfig = it) },
         json(TERMUX_CONFIG, Settings::termuxConfig) { copy(termuxConfig = it) },
         plain(SHIZUKU_APPROVAL_REQUIRED, Settings::shizukuApprovalRequired) { copy(shizukuApprovalRequired = it) },
 

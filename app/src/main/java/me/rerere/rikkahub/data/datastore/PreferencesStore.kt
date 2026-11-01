@@ -144,6 +144,7 @@ class SettingsStore internal constructor(
         val MCP_SERVERS = stringPreferencesKey("mcp_servers")
         val ALLOW_AI_MANAGE_MCP = booleanPreferencesKey("allow_ai_manage_mcp")
         val MCP_MANAGEMENT_APPROVAL = stringPreferencesKey("mcp_management_approval")
+        val PHONE_CONTROL_CONFIG = stringPreferencesKey("phone_control_config")
         val TERMUX_CONFIG = stringPreferencesKey("termux_config")
         val SHIZUKU_APPROVAL_REQUIRED = booleanPreferencesKey("shizuku_approval_required")
 

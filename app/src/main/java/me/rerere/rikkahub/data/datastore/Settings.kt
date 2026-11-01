@@ -7,6 +7,7 @@ import me.rerere.ai.core.ReasoningLevel
 import me.rerere.ai.provider.ProviderSetting
 import me.rerere.asr.ASRProviderSetting
 import me.rerere.mediagen.provider.MediaGenerationProviderSetting
+import me.rerere.rikkahub.accessibility.PhoneControlConfig
 import me.rerere.rikkahub.data.ai.mcp.McpManagementApproval
 import me.rerere.rikkahub.data.ai.mcp.McpServerConfig
 import me.rerere.rikkahub.data.ai.prompts.DEFAULT_OCR_PROMPT
@@ -67,6 +68,7 @@ data class Settings(
     val mcpServers: List<McpServerConfig> = emptyList(),
     val allowAiManageMcp: Boolean = false,
     val mcpManagementApproval: McpManagementApproval = McpManagementApproval(),
+    val phoneControlConfig: PhoneControlConfig = PhoneControlConfig(),
     val termuxConfig: TermuxConfig = TermuxConfig(),
     val shizukuApprovalRequired: Boolean = true,
     val webDavConfig: WebDavConfig = WebDavConfig(),

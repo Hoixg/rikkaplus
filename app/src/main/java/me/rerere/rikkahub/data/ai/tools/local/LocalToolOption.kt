@@ -48,4 +48,8 @@ sealed class LocalToolOption {
     @Serializable
     @SerialName("shizuku")
     data object Shizuku : LocalToolOption()
+
+    @Serializable
+    @SerialName("phone_control")
+    data object PhoneControl : LocalToolOption()
 }

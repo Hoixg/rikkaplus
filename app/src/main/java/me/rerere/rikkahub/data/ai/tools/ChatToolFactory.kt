@@ -30,8 +30,8 @@ private const val TAG = "ChatToolFactory"
 private const val MAX_TOOL_OUTPUT_CHARS = 32 * 1024
 private const val TOOL_OUTPUT_PREVIEW_CHARS = 4 * 1024
 
-// 搜索结果的体积由用户设置的结果数决定，且结果列表 UI 与引用跳转都依赖完整的 JSON 结构，不参与截断
-private val TOOLS_WITHOUT_OUTPUT_TRUNCATION = setOf("search_web")
+// 搜索结果与有界界面树需要完整结构；界面树还关联快照和截图，不能替换成仅本地工作区能读取的文本文件。
+private val TOOLS_WITHOUT_OUTPUT_TRUNCATION = setOf("search_web", "phone_screen", "phone_action", "phone_apps")
 
 internal fun shouldUseExternalWebSearch(assistant: Assistant, model: Model): Boolean {
     return assistant.enableWebSearch && BuiltInTools.Search !in model.tools
@@ -70,7 +70,7 @@ class ChatToolFactory(
             if (shouldUseExternalWebSearch(assistant, model)) {
                 addAll(createSearchTools(settings))
             }
-            addAll(localTools.getTools(assistant.localTools))
+            addAll(localTools.getTools(assistant.localTools, conversationId.toString()))
             if (LocalToolOption.MediaCreation in assistant.localTools && ModelAbility.TOOL in model.abilities) {
                 addAll(chatMediaCreation.tools(conversationId, getMessages))
             }

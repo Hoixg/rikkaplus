@@ -1800,4 +1800,22 @@
   <string name="setting_mcp_management_operation_create">Add MCP Connections</string>
   <string name="setting_mcp_management_operation_edit">Edit MCP Connections</string>
   <string name="setting_mcp_management_operation_delete">Delete MCP Connections</string>
+  <string name="phone_control_title">Phone Control</string>
+  <string name="phone_control_short_desc">Read screens, take screenshots, tap, type, and swipe using Android Accessibility</string>
+  <string name="phone_control_service_label">RikkaPlus Phone Control</string>
+  <string name="phone_control_service_desc">When you enable AI phone control, RikkaPlus can read the visible screen and perform the actions requested in chat. Screen content and screenshots are sent to your selected AI model. You can turn AI access off in Extensions &gt; Phone Control, or disable this service in Android accessibility settings.</string>
+  <string name="phone_control_connected">Connected · tap to manage Android accessibility permission</string>
+  <string name="phone_control_waiting">Enabled in Android settings, waiting for the service to connect</string>
+  <string name="phone_control_not_enabled">Not enabled · tap to open Android accessibility settings</string>
+  <string name="phone_control_ai_enabled">Allow AI Phone Control</string>
+  <string name="phone_control_ai_enabled_desc">Allow enabled assistants to read the visible screen and operate apps. Screen content and screenshots are shared with your selected AI model.</string>
+  <string name="phone_control_approval_title">Approve Screen Actions</string>
+  <string name="phone_control_approval_desc">Ask before opening apps, tapping, typing, swiping, or navigating. Screen reading, screenshots, and app listing do not require individual approval.</string>
+  <string name="phone_control_setup">Enable RikkaPlus in Android accessibility settings, turn on AI phone control here, then enable Phone Control in your assistant\'s Local Tools. Turning off AI access stops subsequent operations.</string>
+  <string name="phone_control_capabilities">No Shizuku or Root required. Supports visible UI nodes, gestures, text input, navigation, and launchable apps. Screenshots need Android 11+. Unlock the phone before use; some apps do not expose usable accessibility nodes, and protected windows cannot be captured.</string>
+  <string name="phone_control_status_tool">Check Phone Control</string>
+  <string name="phone_control_screen_tool">Read Phone Screen</string>
+  <string name="phone_control_action_tool">Operate Phone</string>
+  <string name="phone_control_apps_tool">Phone Applications</string>
+  <string name="phone_control_settings">Phone Control Settings</string>
 </resources>

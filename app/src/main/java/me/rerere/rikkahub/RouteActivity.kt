@@ -572,6 +572,9 @@ class RouteActivity : ComponentActivity() {
                             entry<Screen.SettingShizuku> {
                                 me.rerere.rikkahub.ui.pages.setting.shizuku.SettingShizukuPage()
                             }
+                            entry<Screen.SettingPhoneControl> {
+                                me.rerere.rikkahub.ui.pages.setting.SettingPhoneControlPage()
+                            }
 
                             entry<Screen.WorkspaceDetail> { key ->
                                 WorkspaceDetailPage(key.id, openFiles = key.openFiles)
@@ -820,6 +823,9 @@ sealed interface Screen : NavKey {
 
     @Serializable
     data object SettingShizuku : Screen
+
+    @Serializable
+    data object SettingPhoneControl : Screen
 
     @Serializable
     data class WorkspaceDetail(val id: String, val openFiles: Boolean = false) : Screen

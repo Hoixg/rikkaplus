@@ -8,6 +8,7 @@ import me.rerere.ai.core.ReasoningLevel
 import me.rerere.ai.provider.ProviderSetting
 import me.rerere.asr.ASRProviderSetting
 import me.rerere.mediagen.provider.MediaGenerationProviderSetting
+import me.rerere.rikkahub.accessibility.PhoneControlConfig
 import me.rerere.rikkahub.data.ai.mcp.McpManagementApproval
 import me.rerere.rikkahub.data.ai.mcp.McpServerConfig
 import me.rerere.rikkahub.data.model.Assistant
@@ -78,6 +79,7 @@ class SettingsFieldsTest {
         assertEquals(null, settings.selectedASRProviderId)
         assertEquals(false, settings.allowAiManageMcp)
         assertEquals(McpManagementApproval(), settings.mcpManagementApproval)
+        assertEquals(PhoneControlConfig(), settings.phoneControlConfig)
         assertEquals(true, settings.shizukuApprovalRequired)
         assertEquals(null, settings.memoryModelId)
         assertEquals(true, settings.dynamicColor)
@@ -153,6 +155,7 @@ private val SAMPLE = Settings(
     mcpServers = listOf(McpServerConfig.SseTransportServer(id = id(8), url = "https://example.com/sse")),
     allowAiManageMcp = true,
     mcpManagementApproval = McpManagementApproval(skipApproval = true, exemptOperations = setOf("list", "create")),
+    phoneControlConfig = PhoneControlConfig(enabled = true, approvalRequired = false),
     termuxConfig = TermuxConfig(approvalRequired = false, commandTimeoutMs = 120_000),
     shizukuApprovalRequired = false,
     webDavConfig = WebDavConfig(url = "https://dav.example.com"),
@@ -204,6 +207,7 @@ private val STORED_KEYS = setOf(
     "mcp_servers",
     "allow_ai_manage_mcp",
     "mcp_management_approval",
+    "phone_control_config",
     "termux_config",
     "shizuku_approval_required",
     "webdav_config",
