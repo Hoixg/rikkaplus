@@ -1790,4 +1790,14 @@
   <string name="workspace_independent_environment_choice_desc">关闭时复用共享 Linux 环境；开启后需为此工作区单独安装环境。创建后保持所选模式。</string>
   <string name="workspace_independent_environment_desc">此工作区拥有单独的 Linux 环境和系统工具，安装或重装不影响其他工作区。</string>
   <string name="workspace_independent_environment_install_desc">下载并安装此工作区的 Linux 环境。重新安装只关闭它自己的本地终端并替换其环境，项目文件和其他工作区不受影响。</string>
+  <string name="setting_mcp_management_settings_title">MCP 设置</string>
+  <string name="setting_mcp_management_enabled_title">允许 AI 管理 MCP</string>
+  <string name="setting_mcp_management_enabled_desc">允许 AI 查看、新增、编辑和删除 MCP 配置。默认每步都需审批，可在下方设置免审批。</string>
+  <string name="setting_mcp_management_skip_approval_title">免审批</string>
+  <string name="setting_mcp_management_skip_approval_desc">仅下方选中的管理操作可免审批，未选中的操作仍需审批。关闭后保留已选项目。</string>
+  <string name="setting_mcp_management_exempt_operations_title">免审批操作</string>
+  <string name="setting_mcp_management_operation_list">查看 MCP 配置</string>
+  <string name="setting_mcp_management_operation_create">新增 MCP 服务</string>
+  <string name="setting_mcp_management_operation_edit">编辑 MCP 服务</string>
+  <string name="setting_mcp_management_operation_delete">删除 MCP 服务</string>
 </resources>

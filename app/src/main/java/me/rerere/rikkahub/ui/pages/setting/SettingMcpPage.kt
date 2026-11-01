@@ -63,6 +63,7 @@ import me.rerere.hugeicons.stroke.Delete01
 import me.rerere.hugeicons.stroke.FileImport
 import me.rerere.hugeicons.stroke.McpServer
 import me.rerere.hugeicons.stroke.MessageBlocked
+import me.rerere.hugeicons.stroke.Settings03
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.Screen
 import me.rerere.rikkahub.data.ai.mcp.McpManager
@@ -70,12 +71,10 @@ import me.rerere.rikkahub.data.ai.mcp.McpServerConfig
 import me.rerere.rikkahub.data.ai.mcp.McpStatus
 import me.rerere.rikkahub.data.ai.mcp.parseMcpServersFromJson
 import me.rerere.rikkahub.ui.components.nav.BackButton
-import me.rerere.rikkahub.ui.components.ui.CardGroup
 import me.rerere.rikkahub.ui.components.ui.ItemAction
 import me.rerere.rikkahub.ui.components.ui.ItemActionMenu
 import me.rerere.rikkahub.ui.components.ui.Tag
 import me.rerere.rikkahub.ui.components.ui.TagType
-import me.rerere.rikkahub.ui.components.ui.switchItem
 import me.rerere.rikkahub.ui.context.LocalNavController
 import me.rerere.rikkahub.ui.theme.CustomColors
 import me.rerere.rikkahub.ui.theme.extendColors
@@ -90,6 +89,7 @@ fun SettingMcpPage(vm: SettingVM = koinViewModel()) {
     val mcpConfigs = settings.mcpServers
     val navController = LocalNavController.current
     var showImportDialog by remember { mutableStateOf(false) }
+    var showMcpSettings by remember { mutableStateOf(false) }
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     Scaffold(
         topBar = {
@@ -101,6 +101,9 @@ fun SettingMcpPage(vm: SettingVM = koinViewModel()) {
                     BackButton()
                 },
                 actions = {
+                    IconButton(onClick = { showMcpSettings = true }) {
+                        Icon(HugeIcons.Settings03, stringResource(R.string.setting_mcp_management_settings_title))
+                    }
                     IconButton(
                         onClick = {
                             showImportDialog = true
@@ -155,18 +158,6 @@ fun SettingMcpPage(vm: SettingVM = koinViewModel()) {
                     bottom = innerPadding.calculateBottomPadding() + 16.dp,
                 )
             ) {
-                item("aiMcpManagement") {
-                    CardGroup {
-                        switchItem(
-                            checked = settings.allowAiManageMcp,
-                            onCheckedChange = { enabled ->
-                                vm.updateSettings { it.copy(allowAiManageMcp = enabled) }
-                            },
-                            headlineContent = { Text("允许 AI 管理 MCP") },
-                            supportingContent = { Text("允许 AI 查看、新增和编辑 MCP 配置；删除服务前需要你批准。") },
-                        )
-                    }
-                }
                 if (mcpConfigs.isEmpty()) {
                     item {
                         Column(
@@ -200,6 +191,13 @@ fun SettingMcpPage(vm: SettingVM = koinViewModel()) {
                 }
             }
         }
+    }
+    if (showMcpSettings) {
+        McpManagementSettingsSheet(
+            settings = settings,
+            onUpdate = vm::updateSettings,
+            onDismiss = { showMcpSettings = false },
+        )
     }
     if (showImportDialog) {
         McpImportModal(

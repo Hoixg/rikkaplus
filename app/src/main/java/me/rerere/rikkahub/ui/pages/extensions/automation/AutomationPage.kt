@@ -2,10 +2,13 @@
 
 package me.rerere.rikkahub.ui.pages.extensions.automation
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -31,7 +34,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -100,22 +105,57 @@ fun AutomationPage() {
                 val run = runs.firstOrNull { it.taskId == task.id }
                 val assistant = settings.assistants.firstOrNull { it.id.toString() == task.assistantId }
                 CardGroup {
-                    item(onClick = { nav.navigate(Screen.AutomationEditor(task.id)) },
-                        headlineContent = { Text(task.definition.name, maxLines = 2, overflow = TextOverflow.Ellipsis) },
-                        supportingContent = { Text(task.definition.schedule.describe()) },
-                        trailingContent = { Switch(checked = task.enabled, enabled = task.id !in busy,
-                            onCheckedChange = { enabled -> action(task.id) { repository.setEnabled(task.id, enabled, task.revision) } }) })
                     formItem {
-                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            val model = run?.executionModelName?.takeIf { it.isNotBlank() } ?: taskModelLabel(task.definition, settings)
-                            Text("${assistant?.name?.ifBlank { "默认助手" } ?: "助手已删除"} · $model", maxLines = 1,
-                                overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text(run?.state?.label ?: task.nextRunAt?.let { "下次执行：${formatTaskTime(it)}" } ?: "未启用排程",
-                                color = if (run == null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary,
-                                style = MaterialTheme.typography.labelMedium)
-                            if (task.definition.prompt.isNotBlank()) Text(task.definition.prompt, maxLines = 1,
-                                overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .heightIn(min = 48.dp)
+                                        .clip(MaterialTheme.shapes.medium)
+                                        .clickable { nav.navigate(Screen.AutomationEditor(task.id)) }
+                                        .padding(vertical = 4.dp),
+                                    contentAlignment = Alignment.CenterStart,
+                                ) {
+                                    Text(
+                                        text = task.definition.name,
+                                        style = MaterialTheme.typography.titleMediumEmphasized,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                                Switch(
+                                    checked = task.enabled,
+                                    enabled = task.id !in busy,
+                                    onCheckedChange = { enabled ->
+                                        action(task.id) { repository.setEnabled(task.id, enabled, task.revision) }
+                                    },
+                                )
+                            }
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(
+                                    text = task.definition.schedule.describe(),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                val model = run?.executionModelName?.takeIf { it.isNotBlank() } ?: taskModelLabel(task.definition, settings)
+                                Text(
+                                    text = "${assistant?.name?.ifBlank { "默认助手" } ?: "助手已删除"} · $model",
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Text(
+                                    text = run?.state?.label ?: task.nextRunAt?.let { "下次执行：${formatTaskTime(it)}" } ?: "未启用排程",
+                                    color = if (run == null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary,
+                                    style = MaterialTheme.typography.labelMedium,
+                                )
+                            }
                             FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                 FilledTonalButton(onClick = { nav.navigate(Screen.AutomationEditor(task.id)) }) { Text("编辑") }
                                 TextButton(enabled = task.id !in busy, onClick = { action(task.id) {

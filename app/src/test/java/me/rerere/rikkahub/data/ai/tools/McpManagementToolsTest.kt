@@ -16,6 +16,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObjectBuilder
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
@@ -38,6 +39,8 @@ import me.rerere.ai.ui.ToolApprovalState
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.rikkahub.data.ai.mcp.McpCommonOptions
+import me.rerere.rikkahub.data.ai.mcp.McpManagementApproval
+import me.rerere.rikkahub.data.ai.mcp.McpManagementOperation
 import me.rerere.rikkahub.data.ai.mcp.McpOAuthState
 import me.rerere.rikkahub.data.ai.mcp.McpServerConfig
 import me.rerere.rikkahub.data.ai.mcp.McpTool
@@ -189,14 +192,143 @@ class McpManagementToolsTest {
         assertEquals("NewName", store.settingsFlow.value.mcpServers.single().commonOptions.name)
     }
 
+    @Test
+    fun `all four management operations wait for approval and denial leaves settings intact`() = runBlocking {
+        enable()
+        managementCalls().forEach { call ->
+            val pending = callThroughAgent(call.name, call.arguments)
+            assertEquals(AgentFinishReason.AwaitingApproval(setOf("management-call")), pending.reason)
+            assertEquals(ToolApprovalState.Pending, pending.message.getTools().single().approvalState)
+            val denied = callThroughAgent(call.name, call.arguments, ToolApprovalState.Denied("keep"))
+            assertEquals(AgentFinishReason.Completed, denied.reason)
+            val output = denied.message.getTools().single().output.single() as UIMessagePart.Text
+            assertTrue(output.text.contains("Tool execution denied by user"))
+            assertEquals(listOf(base), store.settingsFlow.value.mcpServers)
+        }
+    }
+
+    @Test
+    fun `all management operations resume through normal approval`() = runBlocking {
+        enable()
+        managementCalls().forEach { call ->
+            store.update { it.copy(mcpServers = listOf(base)) }
+            val finished = callThroughAgent(call.name, call.arguments, ToolApprovalState.Approved)
+            assertEquals(AgentFinishReason.Completed, finished.reason)
+            val output = finished.message.getTools().single().output.single() as UIMessagePart.Text
+            assertFalse(output.text.contains("Exception"))
+            val saved = store.settingsFlow.value.mcpServers
+            when (call.operation) {
+                McpManagementOperation.LIST -> assertEquals(listOf(base), saved)
+                McpManagementOperation.CREATE -> assertEquals(2, saved.size)
+                McpManagementOperation.EDIT -> assertEquals("https://edited.example/mcp", (saved.single() as McpServerConfig.StreamableHTTPServer).url)
+                McpManagementOperation.DELETE -> assertTrue(saved.isEmpty())
+            }
+        }
+    }
+
+    @Test
+    fun `exemptions apply only to the selected operation and existing tools read the latest policy`() = runBlocking {
+        enable()
+        val tools = createMcpManagementTools(store)
+        McpManagementOperation.entries.forEach { exempt ->
+            store.update {
+                it.copy(mcpManagementApproval = McpManagementApproval(skipApproval = true, exemptOperations = setOf(exempt.key)))
+            }
+            managementCalls().forEach { call ->
+                assertEquals(call.operation != exempt, tools.single { it.name == call.name }.needsApproval(call.arguments))
+            }
+        }
+        store.update { it.copy(mcpManagementApproval = it.mcpManagementApproval.copy(skipApproval = false)) }
+        managementCalls().forEach { call ->
+            assertTrue(tools.single { it.name == call.name }.needsApproval(call.arguments))
+        }
+        val persisted = disk.data.first().toSettings().mcpManagementApproval
+        assertFalse(persisted.skipApproval)
+        assertEquals(setOf(McpManagementOperation.DELETE.key), persisted.exemptOperations)
+    }
+
+    @Test
+    fun `exempt reads and creates run immediately while edits and deletion still wait`() = runBlocking {
+        enable()
+        store.update {
+            it.copy(mcpManagementApproval = McpManagementApproval(skipApproval = true, exemptOperations = setOf("list", "create")))
+        }
+        managementCalls().forEach { call ->
+            val finished = callThroughAgent(call.name, call.arguments)
+            if (call.operation in setOf(McpManagementOperation.LIST, McpManagementOperation.CREATE)) {
+                assertEquals(AgentFinishReason.Completed, finished.reason)
+                assertTrue(finished.message.getTools().single().isExecuted)
+            } else {
+                assertEquals(AgentFinishReason.AwaitingApproval(setOf("management-call")), finished.reason)
+            }
+        }
+        val saved = store.settingsFlow.value.mcpServers
+        assertEquals(2, saved.size)
+        assertEquals(base, saved.single { it.id == base.id })
+    }
+
+    @Test
+    fun `enabling exemptions without valid selections never bypasses approval`() = runBlocking {
+        enable()
+        val tools = createMcpManagementTools(store)
+        listOf(emptySet(), setOf("all", "unknown")).forEach { selections ->
+            store.update { it.copy(mcpManagementApproval = McpManagementApproval(skipApproval = true, exemptOperations = selections)) }
+            managementCalls().forEach { call ->
+                assertTrue(tools.single { it.name == call.name }.needsApproval(call.arguments))
+            }
+        }
+    }
+
+    @Test
+    fun `create exemption cannot bypass edit approval using an invalid server id`() = runBlocking {
+        enable()
+        store.update {
+            it.copy(mcpManagementApproval = McpManagementApproval(skipApproval = true, exemptOperations = setOf("create")))
+        }
+        val tool = createMcpManagementTools(store).single { it.name == McpManagementToolNames.WRITE }
+        listOf("", "invalid", base.id.toString()).forEach { id ->
+            assertTrue(tool.needsApproval(buildJsonObject { put("server_id", id) }))
+        }
+        assertTrue(tool.needsApproval(buildJsonObject { put("server_id", buildJsonObject {}) }))
+        assertFalse(tool.needsApproval(buildJsonObject { put("server_id", JsonNull) }))
+        assertFalse(tool.needsApproval(buildJsonObject {}))
+    }
+
+    private data class ManagementCall(val operation: McpManagementOperation, val name: String, val arguments: JsonObject)
+
+    private fun managementCalls() = listOf(
+        ManagementCall(McpManagementOperation.LIST, McpManagementToolNames.LIST, buildJsonObject {}),
+        ManagementCall(McpManagementOperation.CREATE, McpManagementToolNames.WRITE, buildJsonObject {
+            put("name", "Added")
+            put("url", "https://added.example/mcp")
+        }),
+        ManagementCall(McpManagementOperation.EDIT, McpManagementToolNames.WRITE, buildJsonObject {
+            put("server_id", base.id.toString())
+            put("url", "https://edited.example/mcp")
+        }),
+        ManagementCall(McpManagementOperation.DELETE, McpManagementToolNames.DELETE, buildJsonObject {
+            put("server_id", base.id.toString())
+            put("name", "Test")
+        }),
+    )
+
     private suspend fun deleteThroughAgent(state: ToolApprovalState): AgentEvent.Finished {
+        return callThroughAgent(McpManagementToolNames.DELETE, buildJsonObject {
+            put("server_id", base.id.toString())
+            put("name", "Test")
+        }, state, "delete-call")
+    }
+
+    private suspend fun callThroughAgent(
+        name: String,
+        arguments: JsonObject,
+        state: ToolApprovalState = ToolApprovalState.Auto,
+        callId: String = "management-call",
+    ): AgentEvent.Finished {
         val part = UIMessagePart.Tool(
-            toolCallId = "delete-call",
-            toolName = McpManagementToolNames.DELETE,
-            input = buildJsonObject {
-                put("server_id", base.id.toString())
-                put("name", "Test")
-            }.toString(),
+            toolCallId = callId,
+            toolName = name,
+            input = arguments.toString(),
             approvalState = state,
         )
         val provider = object : Provider<ProviderSetting> {

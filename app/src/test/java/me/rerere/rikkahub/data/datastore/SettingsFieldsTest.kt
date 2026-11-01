@@ -8,13 +8,14 @@ import me.rerere.ai.core.ReasoningLevel
 import me.rerere.ai.provider.ProviderSetting
 import me.rerere.asr.ASRProviderSetting
 import me.rerere.mediagen.provider.MediaGenerationProviderSetting
+import me.rerere.rikkahub.data.ai.mcp.McpManagementApproval
 import me.rerere.rikkahub.data.ai.mcp.McpServerConfig
 import me.rerere.rikkahub.data.model.Assistant
-import me.rerere.rikkahub.data.model.TermuxConfig
 import me.rerere.rikkahub.data.model.Lorebook
 import me.rerere.rikkahub.data.model.PromptInjection
 import me.rerere.rikkahub.data.model.QuickMessage
 import me.rerere.rikkahub.data.model.Tag
+import me.rerere.rikkahub.data.model.TermuxConfig
 import me.rerere.rikkahub.data.sync.s3.S3Config
 import me.rerere.rikkahub.ui.theme.CustomTheme
 import me.rerere.search.SearchCommonOptions
@@ -76,6 +77,7 @@ class SettingsFieldsTest {
         assertEquals(DEFAULT_SYSTEM_TTS_ID, settings.selectedTTSProviderId)
         assertEquals(null, settings.selectedASRProviderId)
         assertEquals(false, settings.allowAiManageMcp)
+        assertEquals(McpManagementApproval(), settings.mcpManagementApproval)
         assertEquals(true, settings.shizukuApprovalRequired)
         assertEquals(null, settings.memoryModelId)
         assertEquals(true, settings.dynamicColor)
@@ -150,6 +152,7 @@ private val SAMPLE = Settings(
     searchServiceSelected = 1,
     mcpServers = listOf(McpServerConfig.SseTransportServer(id = id(8), url = "https://example.com/sse")),
     allowAiManageMcp = true,
+    mcpManagementApproval = McpManagementApproval(skipApproval = true, exemptOperations = setOf("list", "create")),
     termuxConfig = TermuxConfig(approvalRequired = false, commandTimeoutMs = 120_000),
     shizukuApprovalRequired = false,
     webDavConfig = WebDavConfig(url = "https://dav.example.com"),
@@ -200,6 +203,7 @@ private val STORED_KEYS = setOf(
     "search_selected",
     "mcp_servers",
     "allow_ai_manage_mcp",
+    "mcp_management_approval",
     "termux_config",
     "shizuku_approval_required",
     "webdav_config",

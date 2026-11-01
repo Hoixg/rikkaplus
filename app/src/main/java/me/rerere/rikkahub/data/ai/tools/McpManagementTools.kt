@@ -11,8 +11,10 @@ import kotlinx.serialization.json.put
 import me.rerere.ai.core.InputSchema
 import me.rerere.ai.core.Tool
 import me.rerere.ai.ui.UIMessagePart
+import me.rerere.rikkahub.data.ai.mcp.McpManagementOperation
 import me.rerere.rikkahub.data.ai.mcp.McpServerConfig
 import me.rerere.rikkahub.data.ai.mcp.configureMcpServer
+import me.rerere.rikkahub.data.ai.mcp.mcpWriteOperation
 import me.rerere.rikkahub.data.ai.mcp.serverUrl
 import me.rerere.rikkahub.data.ai.mcp.transportType
 import me.rerere.rikkahub.data.datastore.Settings
@@ -32,6 +34,11 @@ fun createMcpManagementTools(store: SettingsStore): List<Tool> {
         Tool(
             name = McpManagementToolNames.LIST,
             description = "List saved MCP connections and their IDs. Header values and OAuth secrets are not returned.",
+            needsApproval = {
+                store.settingsFlow.value.mcpManagementApproval.needsApproval(
+                    McpManagementOperation.LIST
+                )
+            },
             parameters = { InputSchema.Obj(properties = JsonObject(emptyMap())) },
             execute = {
                 val settings = store.settingsFlow.value.also(::requireMcpManagementAllowed)
@@ -49,6 +56,7 @@ fun createMcpManagementTools(store: SettingsStore): List<Tool> {
                 and digits. Supports the app's existing SSE and Streamable HTTP transports. Tool permissions and
                 OAuth state are preserved. This tool cannot remove a server; use delete_mcp_server for deletion.
             """.trimIndent(),
+            needsApproval = { store.settingsFlow.value.mcpManagementApproval.needsApproval(mcpWriteOperation(it)) },
             parameters = {
                 InputSchema.Obj(properties = buildJsonObject {
                     put("server_id", buildJsonObject {
@@ -102,9 +110,13 @@ fun createMcpManagementTools(store: SettingsStore): List<Tool> {
         ),
         Tool(
             name = McpManagementToolNames.DELETE,
-            description = "Delete one MCP connection after user approval. " +
+            description = "Delete one MCP connection. " +
                 "Use the ID and current name from list_mcp_servers.",
-            needsApproval = { true },
+            needsApproval = {
+                store.settingsFlow.value.mcpManagementApproval.needsApproval(
+                    McpManagementOperation.DELETE
+                )
+            },
             parameters = {
                 InputSchema.Obj(
                     properties = buildJsonObject {

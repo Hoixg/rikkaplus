@@ -1790,4 +1790,14 @@
   <string name="workspace_independent_environment_choice_desc">Off: reuse the shared Linux environment. On: install a separate environment for this workspace. This choice is saved at creation.</string>
   <string name="workspace_independent_environment_desc">This workspace has its own Linux environment and system tools. Installing or reinstalling it does not affect other workspaces.</string>
   <string name="workspace_independent_environment_install_desc">Install the Linux environment for this workspace. Reinstalling closes only its local terminals and replaces its environment. Project files and other workspaces are unaffected.</string>
+  <string name="setting_mcp_management_settings_title">MCP Settings</string>
+  <string name="setting_mcp_management_enabled_title">Allow AI to Manage MCP</string>
+  <string name="setting_mcp_management_enabled_desc">Allow AI to view, add, edit, and delete MCP configurations. Each operation requires approval unless exempted below.</string>
+  <string name="setting_mcp_management_skip_approval_title">Skip Approval</string>
+  <string name="setting_mcp_management_skip_approval_desc">Only selected management operations can skip approval. Unselected operations still require approval. Turning this off keeps your selections.</string>
+  <string name="setting_mcp_management_exempt_operations_title">Operations That Can Skip Approval</string>
+  <string name="setting_mcp_management_operation_list">View MCP Configurations</string>
+  <string name="setting_mcp_management_operation_create">Add MCP Connections</string>
+  <string name="setting_mcp_management_operation_edit">Edit MCP Connections</string>
+  <string name="setting_mcp_management_operation_delete">Delete MCP Connections</string>
 </resources>
