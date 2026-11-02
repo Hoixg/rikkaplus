@@ -7,6 +7,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.core.net.toUri
@@ -18,6 +19,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
@@ -69,6 +71,7 @@ class ChatVM(
 
     // 聊天输入状态 - 保存在 ViewModel 中避免 TransactionTooLargeException
     val inputState = ChatInputState()
+    private val draftAttachmentOwner = Uuid.random()
 
     val voiceSession = VoiceSessionController(viewModelScope, context::getString) {
         chatService.enqueueVoiceMessage(_conversationId, it)
@@ -92,6 +95,12 @@ class ChatVM(
         // 添加对话引用
         chatService.addConversationReference(_conversationId)
 
+        viewModelScope.launch {
+            snapshotFlow { inputState.messageContent }.collect {
+                chatService.retainDraftAttachments(draftAttachmentOwner, it)
+            }
+        }
+
         // 初始化对话
         viewModelScope.launch {
             chatService.initializeConversation(_conversationId)
@@ -103,6 +112,7 @@ class ChatVM(
 
     override fun onCleared() {
         voiceSession.stop()
+        chatService.releaseDraftAttachments(draftAttachmentOwner)
         super.onCleared()
         // 移除对话引用
         chatService.removeConversationReference(_conversationId)
@@ -140,6 +150,13 @@ class ChatVM(
     fun sendQueuedMessage(id: Uuid) = chatService.sendQueuedMessageNow(_conversationId, id)
 
     fun removeQueuedMessage(id: Uuid) = chatService.removeQueuedMessage(_conversationId, id)
+
+    fun cancelQueuedMessage(id: Uuid): Boolean = chatService.cancelQueuedMessage(_conversationId, id) { parts ->
+        inputState.restoreQueuedMessage(parts).also { restored ->
+            // Register before the queue releases the message, so concurrent cleanup never sees a gap.
+            if (restored) chatService.retainDraftAttachments(draftAttachmentOwner, inputState.messageContent)
+        }
+    }
 
     fun moveQueuedMessage(id: Uuid, targetId: Uuid) = chatService.moveQueuedMessage(_conversationId, id, targetId)
 

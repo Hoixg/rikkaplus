@@ -19,6 +19,7 @@ class ChatInputState {
         private set
     private var editingParts: List<UIMessagePart>? = null
     private var editingAttachmentUrls: Set<String> = emptySet()
+    private var restoredAttachmentUrls: Set<String> = emptySet()
 
     fun clearInput() {
         textContent.setTextAndPlaceCursorAtEnd("")
@@ -27,6 +28,7 @@ class ChatInputState {
         editingReasoning = null
         editingParts = null
         editingAttachmentUrls = emptySet()
+        restoredAttachmentUrls = emptySet()
     }
 
     fun isEditing() = editingMessage != null
@@ -39,7 +41,18 @@ class ChatInputState {
         textContent.setTextAndPlaceCursorAtEnd(textContent.text.toString() + content)
     }
 
+    /** Restore a withdrawn queue item, replacing the draft while leaving history edits alone. */
+    fun restoreQueuedMessage(contents: List<UIMessagePart>): Boolean {
+        if (isEditing()) return false
+        val restoredText = contents.filterIsInstance<UIMessagePart.Text>().joinToString("\n") { it.text }
+        val attachments = contents.filterNot { it is UIMessagePart.Text }
+        setContents(if (restoredText.isEmpty()) attachments else listOf(UIMessagePart.Text(restoredText)) + attachments)
+        restoredAttachmentUrls = contents.mapNotNull { it.attachmentUrlOrNull() }.toSet()
+        return true
+    }
+
     fun setContents(contents: List<UIMessagePart>) {
+        restoredAttachmentUrls = emptySet()
         val lastTextIndex = contents.indexOfLast { it is UIMessagePart.Text }
         val text = if (lastTextIndex >= 0) {
             (contents[lastTextIndex] as UIMessagePart.Text).text
@@ -49,7 +62,8 @@ class ChatInputState {
         textContent.setTextAndPlaceCursorAtEnd(text)
         val reasoning = contents.editableReasoningOrNull()
         editingReasoning = reasoning?.let { TextFieldState(it.reasoning) }
-        messageContent = contents.filter { it !is UIMessagePart.Text && (reasoning == null || it !is UIMessagePart.Reasoning) }
+        messageContent =
+            contents.filter { it !is UIMessagePart.Text && (reasoning == null || it !is UIMessagePart.Reasoning) }
         editingParts = contents
         editingAttachmentUrls = contents.mapNotNull { it.attachmentUrlOrNull() }.toSet()
     }
@@ -147,7 +161,7 @@ class ChatInputState {
     fun shouldDeleteFileOnRemove(part: UIMessagePart): Boolean {
         val url = part.attachmentUrlOrNull() ?: return false
         if (!url.startsWith("file:")) return false
-        return !isEditing() || url !in editingAttachmentUrls
+        return url !in restoredAttachmentUrls && (!isEditing() || url !in editingAttachmentUrls)
     }
 
     /**

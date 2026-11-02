@@ -48,6 +48,43 @@ class SharedWorkspaceRepositoryTest {
     private data class Fixture(val manager: WorkspaceManager, val dao: MemoryWorkspaceDao, val repository: WorkspaceRepository)
 
     @Test
+    fun `old environment cleanup retains the shared system current private environments and SSH records`() = runTest {
+        val f = fixture(backgroundScope, installed = true)
+        val shared = f.repository.create("shared")
+        val isolated = f.repository.create("private", independentEnvironment = true)
+        val ssh = remote()
+        f.dao.upsert(ssh)
+        listOf(shared, isolated, ssh).forEach { workspace ->
+            File(f.manager.workspaceDir(workspace.root), "linux/installed-tool").apply {
+                parentFile.mkdirs()
+                writeText(workspace.name)
+            }
+        }
+        f.manager.writeText(shared.root, "project.txt", "keep")
+        val preview = f.repository.unusedEnvironments()
+        assertTrue(preview.sharedReady)
+        assertEquals(listOf(shared.name), preview.entries.map { it.workspaceName })
+        f.repository.deleteUnusedEnvironment(preview.entries.single().environment)
+        assertFalse(File(f.manager.workspaceDir(shared.root), "linux").exists())
+        assertTrue(File(f.manager.workspaceDir(isolated.root), "linux/installed-tool").exists())
+        assertTrue(File(f.manager.workspaceDir(ssh.root), "linux/installed-tool").exists())
+        assertEquals("installed", File(f.manager.sharedLinuxDir, "bin/sh").readText())
+        assertEquals("keep", f.manager.readText(shared.root, "project.txt"))
+        assertEquals(ssh, f.dao.getById(ssh.id))
+    }
+
+    @Test
+    fun `cleanup rechecks persisted environment ownership instead of trusting the preview`() = runTest {
+        val f = fixture(backgroundScope, installed = true)
+        val shared = f.repository.create("shared")
+        val old = File(f.manager.workspaceDir(shared.root), "linux/important").apply { parentFile.mkdirs(); writeText("keep") }
+        val preview = f.repository.unusedEnvironments().entries.single().environment
+        f.dao.upsert(shared.copy(independentEnvironment = true))
+        assertTrue(runCatching { f.repository.deleteUnusedEnvironment(preview) }.isFailure)
+        assertEquals("keep", old.readText())
+    }
+
+    @Test
     fun `new local workspaces immediately see the installed shared environment`() = runTest {
         val f = fixture(backgroundScope, installed = true)
         val first = f.repository.create("first")

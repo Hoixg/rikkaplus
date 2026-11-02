@@ -54,6 +54,8 @@ internal fun MessageQueuePanel(
     state: MessageQueueState,
     onSend: (Uuid) -> Unit,
     onRemove: (Uuid) -> Unit,
+    onCancel: (Uuid) -> Unit,
+    canRestoreDraft: Boolean,
     onMove: (Uuid, Uuid) -> Unit,
     onReorderingChange: (Boolean) -> Unit,
     onBeginEdit: (Uuid) -> QueuedMessage?,
@@ -171,6 +173,11 @@ internal fun MessageQueuePanel(
                                         enabled = !message.isEditing && draggingId == null,
                                         onClick = { onRemove(message.id) },
                                     ) { Text(stringResource(R.string.delete)) }
+                                    TextButton(
+                                        enabled = !message.isEditing && draggingId == null && canRestoreDraft,
+                                        onClick = { onCancel(message.id) },
+                                        modifier = Modifier.testTag("chat_queue_cancel_${message.id}"),
+                                    ) { Text(stringResource(R.string.cancel)) }
                                 } else {
                                     FilledTonalButton(
                                         enabled = !message.isEditing && draggingId == null,

@@ -16,11 +16,31 @@ class QueuedAttachmentCleanupTest {
     private val video = UIMessagePart.Video("file:///upload/video.mp4")
 
     @Test
+    fun `an attachment returned to the input draft survives cleanup of another queued reference`() {
+        val queue = MessageQueue()
+        queue.enqueue(listOf(image))
+        queue.enqueue(listOf(image, video))
+        val cancelled = queue.state.value.messages.first().id
+        var draftUrls = emptySet<String>()
+        assertTrue(queue.cancel(cancelled) {
+            draftUrls = setOf(image.url)
+            true
+        })
+        val removed = queue.remove(queue.state.value.messages.single().id)!!
+        assertEquals(
+            setOf(video.url),
+            unreferencedQueuedAttachmentUrls(removed, emptyList(), queue.state.value.messages, draftUrls),
+        )
+    }
+
+    @Test
     fun `revoking a message cleans only local attachments and deduplicates URLs`() {
         val queue = MessageQueue()
         queue.enqueue(
             listOf(
-                image, image, video,
+                image,
+                image,
+                video,
                 UIMessagePart.Audio("file:///upload/audio.mp3"),
                 UIMessagePart.Document("file:///upload/document.pdf", "document.pdf"),
                 UIMessagePart.Image("https://example.com/image.png"),

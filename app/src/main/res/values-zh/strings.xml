@@ -1820,4 +1820,15 @@
   <string name="phone_control_settings">手机操作设置</string>
   <string name="permission_local_network">本地网络</string>
   <string name="permission_local_network_desc">连接局域网内的自建服务时需要此权限。</string>
+  <string name="workspace_cleanup_title">旧环境清理</string>
+  <string name="workspace_cleanup_entry_description">检测并清理切换共享环境后遗留的旧 Linux 环境</string>
+  <string name="workspace_cleanup_description">这里只列出已不再使用的旧 Linux 目录。当前共享环境、独立环境、SSH 工作区和项目文件区会保留。</string>
+  <string name="workspace_cleanup_shared_required">请先安装并确认共享环境可用，再清理旧环境。</string>
+  <string name="workspace_cleanup_empty">没有发现可清理的旧环境。</string>
+  <string name="workspace_cleanup_unassigned">未关联的工作区目录</string>
+  <string name="workspace_cleanup_size">占用约 %1$s</string>
+  <string name="workspace_cleanup_scan">重新检测</string>
+  <string name="workspace_cleanup_cleaning">正在清理旧环境…</string>
+  <string name="workspace_cleanup_confirm_title">删除这个旧环境？</string>
+  <string name="workspace_cleanup_confirm_description">将删除旧系统、已安装工具、配置以及旧系统 /root 中的文件。工作区的项目文件区和当前共享环境会保留。删除后无法恢复。</string>
 </resources>

@@ -28,11 +28,12 @@ internal fun unreferencedQueuedAttachmentUrls(
     previous: QueuedMessage,
     conversations: List<Conversation>,
     pendingMessages: List<QueuedMessage>,
+    draftAttachmentUrls: Set<String> = emptySet(),
 ): Set<String> {
     val retainedParts = conversations.flatMap { conversation ->
         conversation.messageNodes.flatMap { node -> node.messages.flatMap { it.parts } }
     } + pendingMessages.flatMap { it.parts }
-    return previous.parts.localFileUrls() - retainedParts.localFileUrls()
+    return previous.parts.localFileUrls() - retainedParts.localFileUrls() - draftAttachmentUrls
 }
 
 /** Pending input is kept outside conversation history until dispatched. */
@@ -102,6 +103,15 @@ class MessageQueue {
             state.value.copy(messages = state.value.messages.filterNot { it.id == id })
         removed.reply?.complete(null)
         return removed
+    }
+
+    /** Transfer pending input to a draft before releasing its queue ownership. */
+    @Synchronized
+    fun cancel(id: Uuid, restoreDraft: (List<UIMessagePart>) -> Boolean): Boolean {
+        val message = state.value.messages.find { it.id == id && !it.isEditing } ?: return false
+        if (!restoreDraft(message.parts)) return false
+        remove(id)
+        return true
     }
 
     @Synchronized

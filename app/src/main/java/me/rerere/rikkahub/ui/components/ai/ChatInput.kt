@@ -62,6 +62,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -140,6 +142,7 @@ fun ChatInput(
     messageQueue: MessageQueueState = MessageQueueState(),
     onSendQueuedMessage: (Uuid) -> Unit = {},
     onRemoveQueuedMessage: (Uuid) -> Unit = {},
+    onCancelQueuedMessage: (Uuid) -> Boolean = { false },
     onMoveQueuedMessage: (Uuid, Uuid) -> Unit = { _, _ -> },
     onMessageQueueReorderingChange: (Boolean) -> Unit = {},
     onBeginEditQueuedMessage: (Uuid) -> QueuedMessage? = { null },
@@ -156,6 +159,7 @@ fun ChatInput(
 
     val keyboardController = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
+    val inputFocusRequester = remember { FocusRequester() }
 
     val themeShape = MaterialTheme.shapes.largeIncreased
     val containerShape = RoundedCornerShape(
@@ -239,6 +243,13 @@ fun ChatInput(
                 state = messageQueue,
                 onSend = onSendQueuedMessage,
                 onRemove = onRemoveQueuedMessage,
+                onCancel = { id ->
+                    if (onCancelQueuedMessage(id)) {
+                        inputFocusRequester.requestFocus()
+                        keyboardController?.show()
+                    }
+                },
+                canRestoreDraft = !state.isEditing(),
                 onMove = onMoveQueuedMessage,
                 onReorderingChange = onMessageQueueReorderingChange,
                 onBeginEdit = onBeginEditQueuedMessage,
@@ -280,6 +291,7 @@ fun ChatInput(
 
                     TextInputRow(
                         state = state,
+                        focusRequester = inputFocusRequester,
                         assistant = assistant,
                         completionProviders = completionProviders,
                         onSendMessage = { sendMessage() },
@@ -469,6 +481,7 @@ private fun ActionIconButton(
 @Composable
 private fun TextInputRow(
     state: ChatInputState,
+    focusRequester: FocusRequester,
     assistant: Assistant,
     completionProviders: List<ChatCompletionProvider>,
     onSendMessage: () -> Unit,
@@ -606,6 +619,7 @@ private fun TextInputRow(
             modifier = Modifier
                 .fillMaxWidth()
                 .testTag("chat_input")
+                .focusRequester(focusRequester)
                 .contentReceiver(receiveContentListener)
                 .onFocusChanged {
                     isFocused = it.isFocused

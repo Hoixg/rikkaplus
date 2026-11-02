@@ -1,7 +1,12 @@
 package me.rerere.rikkahub.service
 
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import me.rerere.ai.ui.UIMessagePart
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -11,6 +16,89 @@ import org.junit.Test
 
 class MessageQueueTest {
     private fun text(value: String) = listOf(UIMessagePart.Text(value))
+
+    @Test
+    fun `cancelling paused input returns text and attachments without resuming the remaining queue`() {
+        val queue = MessageQueue()
+        val parts = text("restore me") + UIMessagePart.Image("file:///reference.png")
+        queue.enqueue(parts)
+        queue.enqueue(text("keep waiting"))
+        queue.pause()
+        val original = queue.state.value.messages
+        var restored = emptyList<UIMessagePart>()
+
+        assertTrue(queue.cancel(original.first().id) {
+            restored = it
+            true
+        })
+
+        assertEquals(parts, restored)
+        assertEquals(listOf(original.last()), queue.state.value.messages)
+        assertTrue(queue.state.value.paused)
+        assertNull(queue.takeNext())
+        assertFalse(queue.cancel(original.first().id) { error("Cannot restore twice") })
+    }
+
+    @Test
+    fun `cancelling queued voice input releases its observer without sending it`() = runBlocking {
+        val queue = MessageQueue()
+        val reply = CompletableDeferred<String?>()
+        queue.enqueue(text("voice"), reply = reply)
+        assertTrue(queue.cancel(queue.state.value.messages.single().id) { true })
+        assertNull(reply.await())
+        assertTrue(queue.state.value.messages.isEmpty())
+    }
+
+    @Test
+    fun `a failed draft transfer or active edit leaves the pending item untouched`() {
+        val queue = MessageQueue()
+        queue.enqueue(text("pending"))
+        val original = queue.state.value.messages.single()
+        assertFalse(queue.cancel(original.id) { false })
+        assertEquals(listOf(original), queue.state.value.messages)
+        queue.beginEdit(original.id)
+        assertFalse(queue.cancel(original.id) { error("Editing input is reserved") })
+        assertTrue(queue.state.value.messages.single().isEditing)
+    }
+
+    @Test
+    fun `cancelling a scheduled head cannot dispatch its successor with the wrong answer mode`() {
+        val queue = MessageQueue()
+        queue.enqueue(text("scheduled"), answer = false)
+        queue.enqueue(text("next"))
+        val scheduled = queue.state.value.messages.first()
+        assertTrue(queue.cancel(scheduled.id) { true })
+        assertNull(queue.takeNext(scheduled.id))
+        val next = queue.takeNext()!!
+        assertTrue(next.answer)
+        assertEquals(text("next"), next.parts)
+        assertFalse(queue.cancel(next.id) { error("Already sent") })
+    }
+
+    @Test
+    fun `cancelling while an interjection waits for the previous job prevents its later dispatch`() = runBlocking {
+        val queue = MessageQueue()
+        queue.enqueue(text("waiting interjection"))
+        val id = queue.state.value.messages.single().id
+        val release = CompletableDeferred<Unit>()
+        val previous = launch(start = CoroutineStart.UNDISPATCHED) {
+            try {
+                awaitCancellation()
+            } finally {
+                withContext(NonCancellable) { release.await() }
+            }
+        }
+        var sent: QueuedMessage? = null
+        val waiting = launch(start = CoroutineStart.UNDISPATCHED) {
+            afterPreviousGenerations(listOf(previous)) { sent = queue.take(id) }
+        }
+        previous.cancel()
+        assertTrue(queue.cancel(id) { true })
+        release.complete(Unit)
+        waiting.join()
+        assertNull(sent)
+        assertTrue(queue.state.value.messages.isEmpty())
+    }
 
     @Test
     fun `moving messages changes send order while preserving attachments and voice observers`() {

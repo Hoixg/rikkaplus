@@ -1820,4 +1820,15 @@
   <string name="phone_control_settings">Phone Control Settings</string>
   <string name="permission_local_network">Local Network</string>
   <string name="permission_local_network_desc">Required to connect to self-hosted services on your local network.</string>
+  <string name="workspace_cleanup_title">Clean up old environments</string>
+  <string name="workspace_cleanup_entry_description">Inspect and remove unused Linux environments left after switching to a shared environment</string>
+  <string name="workspace_cleanup_description">Only unused old Linux directories are listed. The current shared environment, independent environments, SSH workspaces, and project files are kept.</string>
+  <string name="workspace_cleanup_shared_required">Install and verify the shared environment before deleting an old environment.</string>
+  <string name="workspace_cleanup_empty">No unused old environments found.</string>
+  <string name="workspace_cleanup_unassigned">Unassigned workspace directory</string>
+  <string name="workspace_cleanup_size">Estimated size: %1$s</string>
+  <string name="workspace_cleanup_scan">Scan again</string>
+  <string name="workspace_cleanup_cleaning">Cleaning old environment…</string>
+  <string name="workspace_cleanup_confirm_title">Delete this old environment?</string>
+  <string name="workspace_cleanup_confirm_description">This deletes the old system, installed tools, configuration, and files inside its /root directory. The workspace project files area and the current shared environment are kept. This cannot be undone.</string>
 </resources>

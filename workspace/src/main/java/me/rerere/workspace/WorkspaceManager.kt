@@ -8,6 +8,8 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.locks.ReentrantReadWriteLock
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
 
 class WorkspaceManager(
     private val baseDir: File,
@@ -19,6 +21,7 @@ class WorkspaceManager(
     private val fileSystem = WorkspaceFileSystem(config)
     private val independentRoots = ConcurrentHashMap.newKeySet<String>()
     private val environmentLocks = ConcurrentHashMap<String, ReentrantReadWriteLock>()
+    private val unusedEnvironmentLock = ReentrantLock()
     val sharedLinuxDir: File get() = File(environmentDir, LINUX_DIR)
     internal val environmentTempDir: File get() = File(environmentDir, TEMP_DIR)
     internal val previousLinuxDir: File get() = File(environmentDir, "previous-linux")
@@ -35,6 +38,14 @@ class WorkspaceManager(
         if (root in independentRoots) File(workspaceDir(root), "environment-tmp") else environmentTempDir
 
     internal fun previousLinuxDir(root: String): File = File(environmentHome(root), "previous-linux")
+
+    fun unusedEnvironments(protectedRoots: Set<String>): List<UnusedEnvironment> = unusedEnvironmentLock.withLock {
+        UnusedEnvironmentCleaner(baseDir, sharedLinuxDir, protectedRoots + independentRoots, ::requireValidRoot).scan()
+    }
+
+    fun deleteUnusedEnvironment(environment: UnusedEnvironment, protectedRoots: Set<String>): Long = unusedEnvironmentLock.withLock {
+        UnusedEnvironmentCleaner(baseDir, sharedLinuxDir, protectedRoots + independentRoots, ::requireValidRoot).delete(environment)
+    }
 
     internal fun <T> readEnvironment(root: String? = null, block: () -> T): T {
         val lock = environmentLocks.computeIfAbsent(

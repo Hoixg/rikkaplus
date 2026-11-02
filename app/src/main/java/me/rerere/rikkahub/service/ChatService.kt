@@ -90,6 +90,7 @@ import java.net.NoRouteToHostException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.uuid.Uuid
 
 private const val TAG = "ChatService"
@@ -122,6 +123,19 @@ class ChatService(
     private val folderRepository: FolderRepository,
     private val automationRepository: AutomationRepository? = null,
 ) {
+    private val draftAttachments = ConcurrentHashMap<Uuid, Set<String>>()
+
+    fun retainDraftAttachments(owner: Uuid, parts: List<UIMessagePart>) {
+        val urls = parts.localFileUrls()
+        if (urls.isEmpty()) draftAttachments.remove(owner) else draftAttachments[owner] = urls
+    }
+
+    fun releaseDraftAttachments(owner: Uuid) {
+        draftAttachments.remove(owner)
+    }
+
+    private fun retainedDraftAttachmentUrls(): Set<String> = draftAttachments.values.flatten().toSet()
+
     /** 一轮生成的结果 */
     private sealed interface TurnResult {
         data class Finished(val reason: AgentFinishReason) : TurnResult
@@ -326,7 +340,7 @@ class ChatService(
         val queuedFiles = (session?.messageQueue?.state?.value?.messages.orEmpty() +
             listOfNotNull(session?.submittingMessage))
             .flatMap { it.parts }.localFileUrls().map { it.toUri() }
-        val retainedFiles = (current.files + queuedFiles).toSet()
+        val retainedFiles = (current.files + queuedFiles + retainedDraftAttachmentUrls().map { it.toUri() }).toSet()
         val deletedFiles = previous.files.filter { it !in retainedFiles }
         if (deletedFiles.isNotEmpty()) {
             filesManager.deleteChatFiles(deletedFiles)
@@ -429,6 +443,20 @@ class ChatService(
         dispatchNextQueuedMessage(conversationId)
     }
 
+    fun cancelQueuedMessage(
+        conversationId: Uuid,
+        messageId: Uuid,
+        restoreDraft: (List<UIMessagePart>) -> Boolean,
+    ): Boolean {
+        val session = sessionManager.get(conversationId) ?: return false
+        return synchronized(session) {
+            val cancelled = session.messageQueue.cancel(messageId, restoreDraft)
+            // Ownership moved to the input draft; deleting its files here would destroy the restored attachments.
+            if (cancelled) dispatchNextQueuedMessage(conversationId)
+            cancelled
+        }
+    }
+
     fun setMessageQueueReordering(conversationId: Uuid, reordering: Boolean) {
         val session = sessionManager.get(conversationId) ?: return
         synchronized(session) {
@@ -473,6 +501,7 @@ class ChatService(
                     pendingMessages = currentSessions.flatMap {
                         it.messageQueue.state.value.messages + listOfNotNull(it.submittingMessage)
                     },
+                    draftAttachmentUrls = retainedDraftAttachmentUrls(),
                 ) - persistedReferences
                 if (unusedFiles.isNotEmpty()) {
                     filesManager.deleteChatFiles(unusedFiles.map { it.toUri() })

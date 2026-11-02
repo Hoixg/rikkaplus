@@ -25,6 +25,7 @@ import me.rerere.rikkahub.utils.JsonInstant
 import me.rerere.rikkahub.utils.SecretCipher
 import me.rerere.workspace.RootfsInstallProgress
 import me.rerere.workspace.RootfsInstaller
+import me.rerere.workspace.UnusedEnvironment
 import me.rerere.workspace.WorkspaceBackend
 import me.rerere.workspace.WorkspaceCommandResult
 import me.rerere.workspace.WorkspaceFileEntry
@@ -46,6 +47,9 @@ import java.io.InputStream
 import java.io.OutputStream
 import kotlin.uuid.Uuid
 
+data class UnusedWorkspaceEnvironment(val environment: UnusedEnvironment, val workspaceName: String?)
+data class UnusedWorkspaceEnvironments(val entries: List<UnusedWorkspaceEnvironment>, val sharedReady: Boolean)
+
 class WorkspaceRepository(
     private val dao: WorkspaceDAO,
     private val manager: WorkspaceManager,
@@ -54,6 +58,7 @@ class WorkspaceRepository(
     private val sshPool: SshConnectionPool,
 ) {
     private val environmentInitialization = Mutex()
+    private val unusedEnvironmentCleanup = Mutex()
     private val environmentInstallations = ConcurrentHashMap<String, Mutex>()
     private var environmentInitialized = false
     private val environmentStatus = MutableStateFlow<Map<String, WorkspaceShellStatus>>(emptyMap())
@@ -109,6 +114,28 @@ class WorkspaceRepository(
                 else latest + (workspace.environmentKey() to installedEnvironmentStatus(workspace))
             }
         }
+    }
+
+    suspend fun unusedEnvironments(): UnusedWorkspaceEnvironments = unusedEnvironmentCleanup.withLock {
+        ensureEnvironment()
+        val workspaces = dao.getAll()
+        val protected = workspaces.filter { it.isSsh() || it.independentEnvironment }.mapTo(mutableSetOf()) { it.root }
+        runInterruptible(Dispatchers.IO) {
+            UnusedWorkspaceEnvironments(
+                entries = manager.unusedEnvironments(protected).map { environment ->
+                    UnusedWorkspaceEnvironment(environment, workspaces.find { it.root == environment.root }?.name)
+                },
+                sharedReady = WorkspaceManager.isUsableRootfs(manager.sharedLinuxDir),
+            )
+        }
+    }
+
+    suspend fun deleteUnusedEnvironment(environment: UnusedEnvironment): Long = unusedEnvironmentCleanup.withLock {
+        ensureEnvironment()
+        check(environmentStatus.value["@shared"] != WorkspaceShellStatus.INSTALLING) { "Shared environment installation is in progress" }
+        // Re-read records at deletion time; an old preview cannot authorize removal of a current private or SSH environment.
+        val protected = dao.getAll().filter { it.isSsh() || it.independentEnvironment }.mapTo(mutableSetOf()) { it.root }
+        runInterruptible(Dispatchers.IO) { manager.deleteUnusedEnvironment(environment, protected) }
     }
 
     suspend fun getById(id: String): WorkspaceEntity? {

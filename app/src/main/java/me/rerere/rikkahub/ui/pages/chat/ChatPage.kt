@@ -356,6 +356,7 @@ private fun ChatPageContent(
                     messageQueue = messageQueue,
                     onSendQueuedMessage = vm::sendQueuedMessage,
                     onRemoveQueuedMessage = vm::removeQueuedMessage,
+                    onCancelQueuedMessage = vm::cancelQueuedMessage,
                     onMoveQueuedMessage = vm::moveQueuedMessage,
                     onMessageQueueReorderingChange = vm::setMessageQueueReordering,
                     onBeginEditQueuedMessage = vm::beginEditQueuedMessage,
