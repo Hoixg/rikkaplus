@@ -67,6 +67,8 @@ import me.rerere.rikkahub.ui.components.ui.CardGroup
 import me.rerere.rikkahub.ui.components.ui.CardGroupIcon
 import me.rerere.rikkahub.ui.components.ui.ConnectedChoiceButtons
 import me.rerere.rikkahub.ui.components.ui.ConnectedChoiceLabel
+import me.rerere.rikkahub.ui.components.ui.permission.LocalNetworkPermissionCard
+import me.rerere.rikkahub.ui.components.ui.permission.rememberLocalNetworkPermissionState
 import me.rerere.rikkahub.ui.context.LocalNavController
 import me.rerere.rikkahub.ui.hooks.rememberColorMode
 import me.rerere.rikkahub.ui.theme.ColorMode
@@ -82,6 +84,7 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
     val navController = LocalNavController.current
     val settings by vm.settings.collectAsStateWithLifecycle()
     val filesManager: FilesManager = koinInject()
+    val localNetworkPermission = rememberLocalNetworkPermissionState()
 
     Scaffold(
         topBar = {
@@ -109,6 +112,12 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                     ProviderConfigWarningCard(
                         onClick = { navController.navigate(Screen.SettingProvider) }
                     )
+                }
+            }
+
+            if (localNetworkPermission?.allRequiredPermissionsGranted == false) {
+                item("localNetworkPermission") {
+                    LocalNetworkPermissionCard(permissionState = localNetworkPermission)
                 }
             }
 

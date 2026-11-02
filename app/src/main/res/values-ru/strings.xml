@@ -1747,4 +1747,6 @@
   <string name="setting_model_page_memory_model_follow_fast">Как у быстрой модели</string>
   <string name="about_page_check_updates">Проверить обновления</string>
   <string name="about_page_check_updates_desc">Версии и загрузки на странице релизов RikkaPlus в GitHub</string>
+  <string name="permission_local_network">Локальная сеть</string>
+  <string name="permission_local_network_desc">Необходимо для подключения к собственным сервисам в локальной сети.</string>
 </resources>

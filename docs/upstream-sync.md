@@ -22,6 +22,7 @@
 
 应用内 WebView、HTML/Markdown 预览、联网搜索、WebDAV 备份以及 MCP/SSH/Termux 的客户端网络访问仍需保留。
 `ACCESS_LOCAL_NETWORK` 等共享网络权限不等于内置 Web 服务器，不按名称批量删除。
+设置页的本地网络权限提示和 `permission_local_network*` 文案用于连接局域网自建服务，必须保留；说明只描述客户端连接，不提已移除的内置服务器。
 
 订阅账号登录还需要 `oauth/src/main/java/me/rerere/oauth/OAuthLoopbackCallbackServer.kt` 及
 `oauth/build.gradle.kts` 使用的 Ktor Server Core/CIO。该回调接收器只绑定 `127.0.0.1`，在授权期间临时接收登录结果，
@@ -40,7 +41,7 @@ git ls-files -- web web-ui app/src/main/java/me/rerere/rikkahub/web app/src/test
 
 ```powershell
 rg -n 'WebServerManager|startWebServerIfEnabled|WebApiModule|WebJwt|io\.ktor\.server|org\.jmdns' app/src/main/java app/src/test
-rg -n 'web_server|permission_local_network' app/src/main/res -g strings.xml
+rg -n 'web_server' app/src/main/res -g strings.xml
 rg -n 'libs\.ktor\.server|jmdns|project\(":web"\)|include\(":web"\)' app/build.gradle.kts settings.gradle.kts
 rg -n 'ktor-server-auth|ktor-server-auth-jwt|jmdns|auth0' gradle/libs.versions.toml
 ```

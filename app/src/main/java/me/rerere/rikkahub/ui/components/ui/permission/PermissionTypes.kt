@@ -27,10 +27,13 @@ data class PermissionInfo(
 enum class PermissionStatus {
     /** 未请求 */
     NotRequested,
+
     /** 已授权 */
     Granted,
+
     /** 被拒绝但可以再次请求 */
     Denied,
+
     /** 被拒绝且用户选择"不再询问" */
     DeniedPermanently
 }
@@ -79,5 +82,13 @@ val PermissionNotification = PermissionInfo(
     permission = Manifest.permission.POST_NOTIFICATIONS,
     displayName = { Text(stringResource(R.string.permission_notification)) },
     usage = { Text(stringResource(R.string.permission_notification_desc)) },
+    required = true
+)
+
+@RequiresApi(37)
+val PermissionLocalNetwork = PermissionInfo(
+    permission = Manifest.permission.ACCESS_LOCAL_NETWORK,
+    displayName = { Text(stringResource(R.string.permission_local_network)) },
+    usage = { Text(stringResource(R.string.permission_local_network_desc)) },
     required = true
 )

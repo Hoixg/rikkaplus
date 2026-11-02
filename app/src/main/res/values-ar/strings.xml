@@ -1747,4 +1747,6 @@
   <string name="setting_model_page_memory_model_follow_fast">نفس النموذج السريع</string>
   <string name="about_page_check_updates">التحقق من التحديثات</string>
   <string name="about_page_check_updates_desc">عرض الإصدارات والتنزيلات في صفحة RikkaPlus على GitHub</string>
+  <string name="permission_local_network">الشبكة المحلية</string>
+  <string name="permission_local_network_desc">مطلوب للاتصال بالخدمات المستضافة ذاتيًا على الشبكة المحلية.</string>
 </resources>

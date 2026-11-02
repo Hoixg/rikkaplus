@@ -1750,4 +1750,6 @@
   <string name="setting_model_page_memory_model_follow_fast">Wie das schnelle Modell</string>
   <string name="about_page_check_updates">Nach Updates suchen</string>
   <string name="about_page_check_updates_desc">Versionen und Downloads auf der GitHub-Releaseseite von RikkaPlus ansehen</string>
+  <string name="permission_local_network">Lokales Netzwerk</string>
+  <string name="permission_local_network_desc">Erforderlich, um eine Verbindung zu selbst gehosteten Diensten im lokalen Netzwerk herzustellen.</string>
 </resources>

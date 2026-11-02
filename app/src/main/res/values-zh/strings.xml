@@ -1818,4 +1818,6 @@
   <string name="phone_control_action_tool">操作手机界面</string>
   <string name="phone_control_apps_tool">查询或打开手机应用</string>
   <string name="phone_control_settings">手机操作设置</string>
+  <string name="permission_local_network">本地网络</string>
+  <string name="permission_local_network_desc">连接局域网内的自建服务时需要此权限。</string>
 </resources>

@@ -1747,4 +1747,6 @@
   <string name="setting_model_page_memory_model_follow_fast">高速モデルと同じ</string>
   <string name="about_page_check_updates">更新を確認</string>
   <string name="about_page_check_updates_desc">RikkaPlus の GitHub リリースページでバージョンとダウンロードを確認</string>
+  <string name="permission_local_network">ローカルネットワーク</string>
+  <string name="permission_local_network_desc">ローカルネットワーク上のセルフホストサービスへの接続に必要です。</string>
 </resources>
