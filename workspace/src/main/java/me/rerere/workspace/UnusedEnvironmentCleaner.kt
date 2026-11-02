@@ -3,11 +3,9 @@ package me.rerere.workspace
 import java.io.File
 import java.io.IOException
 import java.io.InterruptedIOException
-import java.nio.file.FileVisitResult
 import java.nio.file.Files
 import java.nio.file.LinkOption.NOFOLLOW_LINKS
 import java.nio.file.Path
-import java.nio.file.SimpleFileVisitor
 import java.nio.file.attribute.BasicFileAttributes
 import java.security.MessageDigest
 
@@ -38,39 +36,7 @@ internal class UnusedEnvironmentCleaner(
             current.identity == expected.identity
         ) { "The old environment changed after scanning; scan again before deleting it" }
         val directory = requireNotNull(candidate(expected.root))
-        val boundary = directory.canonicalFile.toPath()
-        Files.walkFileTree(directory.toPath(), object : SimpleFileVisitor<Path>() {
-            private fun checkParent(path: Path) {
-                interrupted()
-                val parent = path.parent.toFile().canonicalFile.toPath()
-                check(
-                    path == boundary || parent == boundary || parent.startsWith(boundary)
-                ) { "Cleanup path escaped the old environment" }
-            }
-
-            override fun preVisitDirectory(dir: Path, attrs: BasicFileAttributes): FileVisitResult {
-                checkParent(dir)
-                check(
-                    dir.toFile().canonicalFile.toPath().startsWith(boundary)
-                ) { "Cleanup directory escaped the old environment" }
-                // Some installed packages leave read-only directories. Never chmod or follow symbolic links.
-                dir.toFile().setWritable(true, true)
-                return FileVisitResult.CONTINUE
-            }
-
-            override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
-                checkParent(file)
-                Files.delete(file)
-                return FileVisitResult.CONTINUE
-            }
-
-            override fun postVisitDirectory(dir: Path, exc: IOException?): FileVisitResult {
-                if (exc != null) throw exc
-                checkParent(dir)
-                Files.delete(dir)
-                return FileVisitResult.CONTINUE
-            }
-        })
+        walk(directory, deleting = true) { _, _ -> }
         return current.sizeBytes
     }
 
@@ -94,41 +60,73 @@ internal class UnusedEnvironmentCleaner(
         var bytes = 0L
         var count = 0L
         val metadata = mutableListOf<String>()
-        Files.walkFileTree(directory.toPath(), object : SimpleFileVisitor<Path>() {
-            private fun record(path: Path, attrs: BasicFileAttributes) {
-                interrupted()
-                metadata += listOf(
-                    directory.toPath().relativize(path).toString(),
-                    attrs.fileKey()?.toString().orEmpty(),
-                    attrs.creationTime().toString(),
-                    attrs.lastModifiedTime().toString(),
-                    attrs.size().toString(),
-                    attrs.isDirectory.toString(),
-                    attrs.isSymbolicLink.toString(),
-                ).joinToString("\u0000")
-            }
-
-            override fun preVisitDirectory(dir: Path, attrs: BasicFileAttributes): FileVisitResult {
-                check(
-                    dir.toFile().canonicalFile.toPath().startsWith(directory.toPath())
-                ) { "Scan directory escaped the old environment" }
-                record(dir, attrs)
-                return FileVisitResult.CONTINUE
-            }
-
-            override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
-                record(file, attrs)
+        walk(directory) { path, attrs ->
+            metadata += listOf(
+                directory.toPath().relativize(path).toString(),
+                attrs.fileKey()?.toString().orEmpty(),
+                attrs.creationTime().toString(),
+                attrs.lastModifiedTime().toString(),
+                attrs.size().toString(),
+                attrs.isDirectory.toString(),
+                attrs.isSymbolicLink.toString(),
+            ).joinToString("\u0000")
+            if (!attrs.isDirectory) {
                 bytes += attrs.size()
                 count++
-                return FileVisitResult.CONTINUE
             }
-        })
+        }
         val digest = MessageDigest.getInstance("SHA-256")
         metadata.sorted().forEach {
             digest.update(it.toByteArray())
             digest.update(0.toByte())
         }
         return UnusedEnvironment(root, bytes, count, digest.digest().joinToString("") { "%02x".format(it) })
+    }
+
+    private fun walk(directory: File, deleting: Boolean = false, visit: (Path, BasicFileAttributes) -> Unit) {
+        val boundary = directory.toPath()
+        data class Entry(val path: Path, val directoryEnd: Boolean = false)
+        val pending = ArrayDeque<Entry>()
+        pending.addLast(Entry(boundary))
+        while (pending.isNotEmpty()) {
+            interrupted()
+            val (path, directoryEnd) = pending.removeLast()
+            val parent = path.parent.toFile().canonicalFile.toPath()
+            check(path == boundary || parent == boundary || parent.startsWith(boundary)) {
+                "Cleanup path escaped the old environment"
+            }
+            var attrs = Files.readAttributes(path, BasicFileAttributes::class.java, NOFOLLOW_LINKS)
+            if (attrs.isDirectory) {
+                check(!attrs.isSymbolicLink && path.toFile().canonicalFile.toPath().startsWith(boundary)) {
+                    "Cleanup directory escaped the old environment"
+                }
+                if (directoryEnd) {
+                    Files.delete(path)
+                    continue
+                }
+                val dir = path.toFile()
+                // PRoot can leave mode-000 bind placeholders (e.g. /workspace). Repair owner access
+                // BEFORE opening a directory: walkFileTree opens it before preVisitDirectory runs.
+                // Only verified retired directories reach here; never chmod a symbolic link.
+                if (!dir.canRead() && !dir.setReadable(true, true) ||
+                    !dir.canExecute() && !dir.setExecutable(true, true) ||
+                    deleting && !dir.canWrite() && !dir.setWritable(true, true)) {
+                    throw IOException("Cannot access the old environment directory: $path")
+                }
+                // Android may derive creationTime from ctime, which chmod changes.
+                attrs = Files.readAttributes(path, BasicFileAttributes::class.java, NOFOLLOW_LINKS)
+                check(attrs.isDirectory && !attrs.isSymbolicLink) { "Old environment directory changed during cleanup" }
+                visit(path, attrs)
+                if (deleting) pending.addLast(Entry(path, directoryEnd = true))
+                Files.newDirectoryStream(path).use { children ->
+                    children.forEach { pending.addLast(Entry(it)) }
+                }
+            } else {
+                check(!directoryEnd) { "Old environment directory changed during cleanup" }
+                visit(path, attrs)
+                if (deleting) Files.delete(path)
+            }
+        }
     }
 
     private fun interrupted() {

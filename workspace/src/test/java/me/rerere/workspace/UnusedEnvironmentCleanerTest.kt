@@ -115,4 +115,17 @@ class UnusedEnvironmentCleanerTest {
         assertEquals("important", File(outside, "keep").readText())
         assertEquals("shared", File(manager.sharedLinuxDir, "bin/sh").readText())
     }
+
+    @Test fun `dangling and looping Linux symlinks do not interrupt cleanup`() {
+        val manager = manager()
+        val directory = old(manager, "old")
+        try {
+            Files.createSymbolicLink(File(directory, "workspace").toPath(), temp.root.toPath().resolve("missing-project"))
+            Files.createSymbolicLink(File(directory, "loop").toPath(), File(directory, "loop").toPath())
+        } catch (error: Exception) { assumeNoException("Host cannot create symbolic links", error) }
+        val preview = manager.unusedEnvironments(emptySet()).single()
+        manager.deleteUnusedEnvironment(preview, emptySet())
+        assertFalse(directory.exists())
+        assertEquals("shared", File(manager.sharedLinuxDir, "bin/sh").readText())
+    }
 }

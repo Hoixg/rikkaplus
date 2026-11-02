@@ -48,7 +48,10 @@ internal fun EnvironmentCleanupSheet(
             if (!state.loading && state.entries.isNotEmpty() && !state.sharedReady) {
                 Text(stringResource(R.string.workspace_cleanup_shared_required), color = MaterialTheme.colorScheme.error)
             }
-            state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            state.error?.let {
+                Text(stringResource(R.string.error_title_operation), color = MaterialTheme.colorScheme.error)
+                Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            }
             if (busy) {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                     CircularProgressIndicator()
