@@ -12,14 +12,16 @@ import java.security.MessageDigest
 @Serializable
 data class PhoneControlConfig(val enabled: Boolean = false, val approvalRequired: Boolean = true)
 
-internal data class PhoneNodeContent(val text: String, val description: String, val identity: String)
+internal data class PhoneNodeContent(val text: String, val description: String, val identity: String, val textIdentity: String)
 
-internal fun phoneNodeContent(text: CharSequence?, description: CharSequence?, password: Boolean): PhoneNodeContent {
-    val safeText = if (password) "[password]" else text?.toString().orEmpty()
+internal fun phoneTextIdentity(text: String): String = MessageDigest.getInstance("SHA-256")
+    .digest(text.toByteArray()).joinToString("") { "%02x".format(it) }
+
+internal fun phoneNodeContent(text: CharSequence?, description: CharSequence?, password: Boolean, textIsHint: Boolean = false): PhoneNodeContent {
+    val safeText = if (password) "[password]" else if (textIsHint) "" else text?.toString().orEmpty()
     val safeDescription = if (password) "" else description?.toString().orEmpty()
-    val identity = MessageDigest.getInstance("SHA-256").digest((safeText + "\u0000" + safeDescription).toByteArray())
-        .joinToString("") { "%02x".format(it) }
-    return PhoneNodeContent(safeText.take(400), safeDescription.take(400), identity)
+    return PhoneNodeContent(safeText.take(400), safeDescription.take(400),
+        phoneTextIdentity(safeText + "\u0000" + safeDescription), phoneTextIdentity(safeText))
 }
 
 @Serializable
@@ -42,6 +44,14 @@ data class PhoneNode(
     val password: Boolean,
     @Transient val path: List<Int> = emptyList(),
     @Transient val identity: String = "",
+    val hint: String = "",
+    val stateDescription: String = "",
+    val checkable: Boolean = false,
+    val checked: Boolean = false,
+    val selected: Boolean = false,
+    val focused: Boolean = false,
+    val actions: List<String> = emptyList(),
+    @Transient val textIdentity: String = "",
 )
 
 @Serializable
@@ -53,6 +63,8 @@ data class PhoneScreen(
     val nodes: List<PhoneNode>,
     val truncated: Boolean,
     val windowId: Int = 0,
+    val windowBounds: PhoneBounds? = null,
+    val keyboardVisible: Boolean? = null,
 ) {
     fun sameLayout(other: PhoneScreen): Boolean = copy(snapshotId = "") == other.copy(snapshotId = "")
 }
@@ -120,6 +132,11 @@ enum class PhoneActionKind(val key: String, val needsNode: Boolean = false) {
     INPUT("input", true),
     SCROLL_FORWARD("scroll_forward", true),
     SCROLL_BACKWARD("scroll_backward", true),
+    SCROLL_UP("scroll_up", true),
+    SCROLL_DOWN("scroll_down", true),
+    SCROLL_LEFT("scroll_left", true),
+    SCROLL_RIGHT("scroll_right", true),
+    IME_ENTER("ime_enter", true),
     TAP("tap"),
     SWIPE("swipe"),
     BACK("back"),

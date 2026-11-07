@@ -12,7 +12,7 @@
 
 - `phone_status`：授权、服务连接、锁屏、截图支持等诊断；不读取界面内容。
 - `phone_screen`：读取当前应用可见节点及边界，或附带截图。截图需 Android 11+ 和能处理图片的模型；Android 8–10 仍可使用节点与手势。
-- `phone_action`：节点点击、长按、输入/清空文本、前后滚动；坐标点击和滑动；返回、主页、最近任务、通知栏与快捷设置。
+- `phone_action`：节点点击、长按、输入/清空文本、前后及上下左右滚动；键盘搜索/发送/完成；坐标点击和滑动；返回、主页、最近任务、通知栏与快捷设置。方向滚动和 `ime_enter` 只在节点 `actions` 列出时可用，键盘提交需要 Android 11+。
 - `phone_apps`：查询可启动应用（最多 100 条，可搜索）及打开指定包名的应用。只查询启动器可见应用，不申请全量应用列表权限。
 
 默认打开应用和修改界面的操作需逐次审批，读取界面、截图与应用列表不单独审批。可在同一设置页关闭「操作前审批」用于连续操作。AI 总开关关闭后，已经创建的工具也不能继续读取或操作。
@@ -27,6 +27,12 @@
 
 操作前后等待连续 300 毫秒没有相关界面变化事件，最多等待 2 秒。持续动画等导致等待超时时返回 `settled=false`，模型需要结合新界面判断；不把超时当成操作失败。读取不到活动窗口时最多尝试 3 次，间隔 300 毫秒，仅重试读取，不重复点击、输入或手势。事件回调只更新时间，不读取或保存屏幕内容。
 
+操作后先允许最多 600 毫秒等待首个界面变化，再等待安静间隔，整体仍受 2 秒上限约束，避免异步跳转尚未开始就读回旧页面。短暂的空节点树也最多读取 3 次；仍为空时返回 `tree_empty` 提示，说明可能仍在加载、使用画布或限制了无障碍数据，不把空树当成空白页面。
+
+前台窗口从系统窗口列表选择，区分应用、键盘、系统面板和覆盖层；键盘获得焦点时仍读取应用内容。快照增加 `keyboardVisible` 和窗口边界，键盘或窗口尺寸变化会使旧坐标失效。前台对话框读不到根节点时不改读下面的应用。窗口列表不可用时才回退到活动根节点。
+
+节点增加输入提示、状态说明、可勾选/勾选/选中/焦点状态和系统提供的动作列表。输入框显示提示文字时将其放入 `hint`，不当作已经输入的内容。输入前按需聚焦，只执行一次文本替换，随后对同一控件的完整文本做精确核对；`input_verified=false` / `input_mismatch` 表示新界面内容不符，不自动重输。密码、窗口变化或字段消失时标记无法验证，不猜测结果；文本指纹仅保存在内部快照中。
+
 结果分别报告 `success`、`action_attempted` 和界面观察状态。操作成功但新界面读取失败时保留成功结果，返回 `read_screen_again=true`；操作抛异常、结果无法确认时标记 `outcome_unknown`。这些情况都不会自动重放操作，避免重复发送、提交或支付。工具快照输出保留在上下文中，不转成需要另行读取的文件。
 
 审批时回到聊天可能改变前台应用。若当前前台是本应用，执行前尝试恢复快照中的目标应用，再进行校验；不会把旧坐标直接点到聊天中。没有启动入口的系统窗口可能无法恢复，适合在关闭逐次审批后连续操作。手势串行执行并等待完成、取消或超时结果，不自动重试失败点击。
@@ -37,6 +43,7 @@
 
 - [RikkaHub Agent 的应用内 AccessibilityService](https://github.com/ExTV/rikkahub-agent/blob/a88f5854b4d2e2706ea2ae8304a7d66a3f9f2bbc/app/src/main/java/me/rerere/rikkahub/service/RikkaAccessibilityService.kt)：界面树、手势、截图与系统授权。
 - [Operit 的 AccessibilityUITools](https://github.com/AAswordman/Operit/blob/dbf71916fae9750cfdc9f9a774f5a0fee56633fb/app/src/main/java/com/ai/assistance/operit/core/tools/defaultTool/accessbility/AccessibilityUITools.kt)：服务桥接、UI 树与操作封装。
+- [DSH Go 的手机操作模块](https://github.com/ccch1mneyyy/dsh-Go/tree/d5ad25c5bc4c66ecacee76b3c5378db45e1db3fa/app/android/app/src/main/kotlin/io/github/ccch1mneyyy/dsh_app/phone/a11y)：对照 `TreeCapture` 的窗口分类、`EventClock` 的操作后等待、`Actuator` 的方向滚动/键盘提交与 `MainScreenDriver` 的输入读回思路，使用本项目现有服务、快照和审批机制独立实现。调研源码放在 Git 忽略的临时目录，不作为 App 模块引入。
 - [Android 官方无障碍服务文档](https://developer.android.com/guide/topics/ui/accessibility/service)、[API 参考](https://developer.android.com/reference/android/accessibilityservice/AccessibilityService)。
 
 本实现参考上述分层思路，使用 Android API 独立接入。真机上的厂商授权、前后台切换、手势、截图、不同应用节点与锁屏行为仍需实测。

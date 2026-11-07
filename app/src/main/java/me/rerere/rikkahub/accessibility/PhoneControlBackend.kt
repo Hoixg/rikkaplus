@@ -14,11 +14,11 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
-import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.encodeToJsonElement
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.rikkahub.data.files.FilesManager
@@ -50,7 +50,7 @@ class AndroidPhoneControlBackend(
             arguments.forEach { (key, value) -> if (key !in setOf("target_package", "target_label", "target_bounds")) put(key, value) }
             put("target_package", screen.packageName)
             if (node != null) {
-                put("target_label", node.text.ifBlank { node.description }.take(160))
+                put("target_label", node.text.ifBlank { node.description }.ifBlank { node.hint }.take(160))
                 put("target_bounds", JsonInstant.encodeToJsonElement(node.bounds))
             }
         }
@@ -75,7 +75,7 @@ class AndroidPhoneControlBackend(
         val service = requireService()
         service.operations.withLock {
             val device = actionDevice(service)
-            device.awaitQuiet()
+            val settled = device.awaitQuiet()
             val before = device.capture()
             val image = if (screenshot) service.screenshot() else null
             try {
@@ -84,7 +84,14 @@ class AndroidPhoneControlBackend(
                     "Screen changed while reading; read the screen again"
                 }
                 service.snapshots.put(owner, current)
-                val output = mutableListOf<UIMessagePart>(UIMessagePart.Text(JsonInstant.encodeToString(current)))
+                val output = mutableListOf<UIMessagePart>(UIMessagePart.Text(buildJsonObject {
+                    JsonInstant.encodeToJsonElement(current).jsonObject.forEach { (key, value) -> put(key, value) }
+                    put("settled", settled)
+                    if (current.nodes.isEmpty()) {
+                        put("tree_empty", true)
+                        put("observation_hint", "No readable controls are exposed. The page may be loading, canvas-based, or accessibility-restricted; request a screenshot if needed.")
+                    }
+                }.toString()))
                 if (image != null) {
                     val bytes = withContext(Dispatchers.Default) {
                         val scale = (1440.0 / maxOf(image.width, image.height)).coerceAtMost(1.0)
@@ -129,9 +136,10 @@ class AndroidPhoneControlBackend(
                 require(!packageName.isNullOrBlank()) { "package_name is required" }
                 val service = requireService()
                 service.operations.withLock {
+                    val version = service.changeVersion
                     openApp(packageName)
                     awaitPackage(service, packageName)
-                    val observation = PhoneActionRunner(service.snapshots, actionDevice(service)).observe(owner)
+                    val observation = PhoneActionRunner(service.snapshots, actionDevice(service)).observe(owner, afterChange = version)
                     buildJsonObject {
                         put("opened", true)
                         put("package_name", packageName)
@@ -168,6 +176,15 @@ class AndroidPhoneControlBackend(
             return quiet
         }
 
+        override fun changeVersion(): Long = service.changeVersion
+
+        override suspend fun awaitAfter(since: Long): Boolean {
+            requireService(service)
+            val quiet = service.awaitAfter(since)
+            requireService(service)
+            return quiet
+        }
+
         override suspend fun capture(): PhoneScreen = capturePhoneScreen {
             requireService(service)
             service.capture()
@@ -178,6 +195,9 @@ class AndroidPhoneControlBackend(
             return when (action.kind) {
                 PhoneActionKind.CLICK, PhoneActionKind.LONG_CLICK, PhoneActionKind.INPUT,
                 PhoneActionKind.SCROLL_FORWARD, PhoneActionKind.SCROLL_BACKWARD ->
+                    service.performNodeAction(checkNotNull(target), action, screen)
+                PhoneActionKind.SCROLL_UP, PhoneActionKind.SCROLL_DOWN, PhoneActionKind.SCROLL_LEFT,
+                PhoneActionKind.SCROLL_RIGHT, PhoneActionKind.IME_ENTER ->
                     service.performNodeAction(checkNotNull(target), action, screen)
                 PhoneActionKind.TAP, PhoneActionKind.SWIPE -> service.gesture(action)
                 else -> service.performGlobalAction(when (action.kind) {

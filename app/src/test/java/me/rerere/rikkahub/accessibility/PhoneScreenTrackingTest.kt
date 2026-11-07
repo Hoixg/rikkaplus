@@ -13,6 +13,44 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class PhoneScreenTrackingTest {
+    @Test fun `post action wait observes a delayed transition instead of returning the old quiet screen`() = runTest {
+        val tracker = PhoneScreenTracker { testScheduler.currentTime }
+        val version = tracker.version
+        val waiting = async { tracker.awaitAfter(version) }
+        advanceTimeBy(500)
+        assertFalse(waiting.isCompleted)
+        tracker.changed()
+        advanceTimeBy(299)
+        runCurrent()
+        assertFalse(waiting.isCompleted)
+        advanceTimeBy(26)
+        assertTrue(waiting.await())
+        assertTrue(testScheduler.currentTime in 800..825)
+    }
+
+    @Test fun `unchanged screens and continuous animation both have bounded post action waits`() = runTest {
+        val tracker = PhoneScreenTracker { testScheduler.currentTime }
+        assertTrue(tracker.awaitAfter(tracker.version))
+        assertEquals(600L, testScheduler.currentTime)
+        val version = tracker.version
+        val events = launch { while (true) { delay(100); tracker.changed() } }
+        assertFalse(tracker.awaitAfter(version))
+        assertEquals(2_600L, testScheduler.currentTime)
+        events.cancelAndJoin()
+    }
+
+    @Test fun `an empty transitioning tree is reread without retrying an operation`() = runTest {
+        val empty = PhoneScreen("loading", "app", 100, 200, emptyList(), false)
+        val node = PhoneNode("1", null, "ready", "", "", "TextView", PhoneBounds(0, 0, 50, 50), false, false, false, false, true, false)
+        var reads = 0
+        val screen = capturePhoneScreen { reads++; if (reads == 3) empty.copy(nodes = listOf(node)) else empty }
+        assertEquals(listOf(node), screen.nodes)
+        assertEquals(3, reads)
+        reads = 0
+        assertEquals(empty, capturePhoneScreen { reads++; empty })
+        assertEquals(3, reads)
+    }
+
     @Test fun `quiet waiting restarts when the layout changes`() = runTest {
         val tracker = PhoneScreenTracker { testScheduler.currentTime }
         val waiting = async { tracker.awaitQuiet() }

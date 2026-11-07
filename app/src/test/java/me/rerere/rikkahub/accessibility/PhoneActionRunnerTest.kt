@@ -17,6 +17,71 @@ class PhoneActionRunnerTest {
     private val click = PhoneAction(PhoneActionKind.CLICK, "old", nodeId = "1")
     private val snapshots = PhoneSnapshots().apply { put("chat", original) }
 
+    @Test fun `post action observation waits from the event version captured before dispatch`() = runTest {
+        val device = Device().apply { changeMarker = 7L }
+        val result = PhoneActionRunner(snapshots, device).run("chat", click)
+        assertTrue(result.flag("success"))
+        assertEquals(listOf("prepare", "settle", "capture", "perform", "settle-after:7", "capture"), device.calls)
+        assertEquals(1, device.actions)
+    }
+
+    @Test fun `input checks the resulting full text and never retries when Android accepted the wrong value`() = runTest {
+        val requested = "a".repeat(400) + "wanted"
+        val wrong = "a".repeat(400) + "different"
+        val node = original.nodes.single().copy(editable = true, className = "EditText", viewId = "app:id/input", text = "old")
+        val inputScreen = original.copy(nodes = listOf(node))
+        val input = PhoneAction(PhoneActionKind.INPUT, "old", nodeId = "1", text = requested)
+        listOf(requested, wrong).forEach { value ->
+            snapshots.put("chat", inputScreen)
+            val device = Device(inputScreen).apply {
+                afterScreen = inputScreen.copy(nodes = listOf(node.copy(text = value.take(400), textIdentity = phoneTextIdentity(value))))
+            }
+            val result = PhoneActionRunner(snapshots, device).run("chat", input)
+            assertTrue(result.flag("native_success"))
+            assertEquals(value == requested, result.flag("input_verified"))
+            assertEquals(value == requested, result.flag("success"))
+            if (value != requested) assertEquals("input_mismatch", result.getValue("error").jsonPrimitive.content)
+            assertEquals(1, device.actions)
+            assertFalse(result.flag("read_screen_again"))
+        }
+    }
+
+    @Test fun `passwords and a replaced input window are not falsely reported as verified`() = runTest {
+        val node = original.nodes.single().copy(editable = true, password = true, text = "[password]")
+        val passwordScreen = original.copy(nodes = listOf(node))
+        snapshots.put("chat", passwordScreen)
+        val device = Device(passwordScreen)
+        val result = PhoneActionRunner(snapshots, device).run("chat", PhoneAction(PhoneActionKind.INPUT, "old", nodeId = "1", text = "private-value"))
+        assertEquals("unavailable", result.getValue("input_verification").jsonPrimitive.content)
+        assertFalse(result.toString().contains("private-value"))
+        assertNull(verifyPhoneInput(node.copy(password = false), passwordScreen, passwordScreen.copy(windowId = 99), "text"))
+    }
+
+    @Test fun `directional scroll and keyboard submit require the corresponding offered action`() = runTest {
+        listOf(PhoneActionKind.SCROLL_LEFT, PhoneActionKind.SCROLL_RIGHT, PhoneActionKind.SCROLL_UP, PhoneActionKind.SCROLL_DOWN, PhoneActionKind.IME_ENTER).forEach { kind ->
+            val node = original.nodes.single().copy(editable = true, actions = listOf(kind.key))
+            val screen = original.copy(nodes = listOf(node))
+            snapshots.put("chat", screen)
+            val device = Device(screen)
+            assertTrue(PhoneActionRunner(snapshots, device).run("chat", click.copy(kind = kind)).flag("success"))
+            assertEquals(1, device.actions)
+            snapshots.put("chat", screen.copy(nodes = listOf(node.copy(actions = emptyList()))))
+            val unavailable = Device(screen.copy(nodes = listOf(node.copy(actions = emptyList()))))
+            assertFalse(PhoneActionRunner(snapshots, unavailable).run("chat", click.copy(kind = kind)).flag("action_attempted"))
+            assertEquals(0, unavailable.actions)
+        }
+    }
+
+    @Test fun `keyboard visibility and window viewport changes invalidate old gesture coordinates`() = runTest {
+        listOf(original.copy(keyboardVisible = true), original.copy(windowBounds = PhoneBounds(0, 0, 1080, 1500))).forEach { screen ->
+            snapshots.put("chat", original)
+            val device = Device(screen)
+            val result = PhoneActionRunner(snapshots, device).run("chat", click.copy(kind = PhoneActionKind.TAP, x = 20.0, y = 120.0))
+            assertEquals("layout_changed", result.getValue("error").jsonPrimitive.content)
+            assertEquals(0, device.actions)
+        }
+    }
+
     @Test fun `successful actions return a usable next snapshot without a separate read`() = runTest {
         val device = Device()
         val runner = PhoneActionRunner(snapshots, device)
@@ -170,18 +235,23 @@ class PhoneActionRunnerTest {
         var failAfterActionRead = false
         var actionError: Exception? = null
         var target: PhoneNode? = null
+        var afterScreen: PhoneScreen? = null
+        var changeMarker: Long? = null
         val calls = mutableListOf<String>()
         override suspend fun prepare(packageName: String) { calls += "prepare" }
         override suspend fun awaitQuiet(): Boolean { calls += "settle"; return quiet }
+        override fun changeVersion(): Long? = changeMarker
+        override suspend fun awaitAfter(since: Long): Boolean { calls += "settle-after:$since"; return quiet }
         override suspend fun capture(): PhoneScreen {
             calls += "capture"
             reads++
             if (failAfterActionRead && actions > 0) error("Window temporarily unavailable")
-            return current.copy(snapshotId = "fresh-$reads")
+            return (afterScreen?.takeIf { actions > 0 } ?: current).copy(snapshotId = "fresh-$reads")
         }
         override suspend fun perform(action: PhoneAction, target: PhoneNode?, screen: PhoneScreen): Boolean {
             calls += "perform"
             actions++
+            changeMarker = changeMarker?.plus(1)
             this.target = target
             actionError?.let { throw it }
             return actionResult

@@ -10,7 +10,7 @@ import org.junit.Test
 class PhoneControlModelsTest {
     private fun screen(id: String = "screen") = PhoneScreen(id, "example.app", 1080, 2400, listOf(
         PhoneNode("1", null, "Continue", "", "example.app:id/continue", "Button", PhoneBounds(0, 0, 100, 100),
-            true, false, false, false, true, false, listOf(0), "internal-identity"),
+            true, false, false, false, true, false, listOf(0), "internal-identity", textIdentity = "internal-text-fingerprint"),
     ), false)
 
     @Test fun `snapshots cannot cross conversations or be replayed`() {
@@ -83,6 +83,25 @@ class PhoneControlModelsTest {
         assertFalse(encoded.contains("internal-identity"))
         assertFalse(encoded.contains("\"path\""))
         assertFalse(encoded.contains("\"identity\""))
+        assertFalse(encoded.contains("internal-text-fingerprint"))
+        assertFalse(encoded.contains("\"textIdentity\""))
+    }
+
+    @Test fun `empty input hints are not mistaken for entered content and password hints remain redacted`() {
+        val content = phoneNodeContent("Search here", "field", false, textIsHint = true)
+        assertEquals("", content.text)
+        assertEquals(phoneTextIdentity(""), content.textIdentity)
+        assertEquals(phoneNodeContent("secret", "secret", true), phoneNodeContent("other", "other", true, textIsHint = true))
+    }
+
+    @Test fun `control state and offered actions are visible to the model`() {
+        val before = screen()
+        val node = before.nodes.single().copy(hint = "Search", checkable = true, checked = true,
+            selected = true, focused = true, stateDescription = "Enabled", actions = listOf("ime_enter", "scroll_left"))
+        val output = JsonInstant.encodeToString(before.copy(nodes = listOf(node), keyboardVisible = true))
+        listOf("Search", "Enabled", "ime_enter", "scroll_left", "\"checked\":true", "\"keyboardVisible\":true").forEach {
+            assertTrue(output.contains(it))
+        }
     }
 
     @Test fun `input and gesture arguments reject malformed or oversized values`() {

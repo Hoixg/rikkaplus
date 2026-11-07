@@ -34,6 +34,7 @@ internal fun resolvePhoneTarget(before: PhoneScreen, current: PhoneScreen, actio
         parentId = other.parentId,
         path = other.path,
         bounds = other.bounds,
+        focused = other.focused,
     ) == other
     val matches = current.nodes.filter { expected.matches(it) }
     val exact = matches.singleOrNull { it.path == expected.path && it.bounds == expected.bounds }
@@ -60,6 +61,9 @@ internal fun resolvePhoneTarget(before: PhoneScreen, current: PhoneScreen, actio
         PhoneActionKind.LONG_CLICK -> target.longClickable
         PhoneActionKind.INPUT -> target.editable
         PhoneActionKind.SCROLL_FORWARD, PhoneActionKind.SCROLL_BACKWARD -> target.scrollable
+        PhoneActionKind.SCROLL_UP, PhoneActionKind.SCROLL_DOWN, PhoneActionKind.SCROLL_LEFT,
+        PhoneActionKind.SCROLL_RIGHT -> action.kind.key in target.actions
+        PhoneActionKind.IME_ENTER -> target.editable && action.kind.key in target.actions
         else -> false
     }
     if (!supported) {
@@ -75,6 +79,8 @@ internal fun resolvePhoneTarget(before: PhoneScreen, current: PhoneScreen, actio
 internal interface PhoneActionDevice {
     suspend fun prepare(packageName: String)
     suspend fun awaitQuiet(): Boolean
+    fun changeVersion(): Long? = null
+    suspend fun awaitAfter(since: Long): Boolean = awaitQuiet()
     suspend fun capture(): PhoneScreen
     suspend fun perform(action: PhoneAction, target: PhoneNode?, screen: PhoneScreen): Boolean
 }
@@ -86,6 +92,8 @@ internal class PhoneActionRunner(private val snapshots: PhoneSnapshots, private 
         var success = false
         var relocated = false
         var failure: Exception? = null
+        var targetNode: PhoneNode? = null
+        var changeVersion: Long? = null
         try {
             val expected = snapshots.get(owner, action.snapshotId)
             action.validateBounds(expected)
@@ -95,6 +103,8 @@ internal class PhoneActionRunner(private val snapshots: PhoneSnapshots, private 
             before = current
             val target = resolvePhoneTarget(expected, current, action)
             relocated = target?.relocated == true
+            targetNode = target?.node
+            changeVersion = device.changeVersion()
             snapshots.consume(owner, action.snapshotId)
             // Consume before dispatch even if Android throws or reports failure: never replay a possible write.
             attempted = true
@@ -104,13 +114,32 @@ internal class PhoneActionRunner(private val snapshots: PhoneSnapshots, private 
         } catch (error: Exception) {
             failure = error
         }
-        val observation = observe(owner, before)
+        val observation = captureObservation(owner, before, changeVersion.takeIf { attempted })
+        val inputVerified = if (attempted && action.kind == PhoneActionKind.INPUT) {
+            verifyPhoneInput(targetNode, before, observation.screen, action.text.orEmpty())
+        } else {
+            null
+        }
         return buildJsonObject {
-            put("success", success)
+            put("success", success && inputVerified != false)
+            if (attempted) put("native_success", success)
             put("action", action.kind.key)
             put("action_attempted", attempted)
             if (relocated) put("target_relocated", true)
-            if (failure != null) {
+            if (action.kind == PhoneActionKind.INPUT && attempted) {
+                if (inputVerified != null) {
+                    put("input_verified", inputVerified)
+                } else {
+                    put("input_verification", "unavailable")
+                }
+            }
+            if (inputVerified == false) {
+                put("error", "input_mismatch")
+                put(
+                    "reason",
+                    "The input field does not contain the requested text. Inspect after before deciding what to do; the input was not retried."
+                )
+            } else if (failure != null) {
                 put(
                     "error",
                     (failure as? PhoneActionRejected)?.code
@@ -124,31 +153,61 @@ internal class PhoneActionRunner(private val snapshots: PhoneSnapshots, private 
                     "Android did not report success; inspect the new screen before deciding what to do. Do not blindly repeat the action."
                 )
             }
-            observation.forEach { (key, value) -> put(key, value) }
+            observation.fields.forEach { (key, value) -> put(key, value) }
         }
     }
 
-    suspend fun observe(owner: String, before: PhoneScreen? = null): JsonObject {
+    suspend fun observe(owner: String, before: PhoneScreen? = null, afterChange: Long? = null): JsonObject =
+        captureObservation(owner, before, afterChange).fields
+
+    private data class Observation(val screen: PhoneScreen?, val fields: JsonObject)
+
+    private suspend fun captureObservation(owner: String, before: PhoneScreen?, afterChange: Long?): Observation {
         var settled: Boolean? = null
         return try {
-            settled = device.awaitQuiet()
+            settled = if (afterChange == null) device.awaitQuiet() else device.awaitAfter(afterChange)
             val after = device.capture()
             snapshots.put(owner, after)
-            buildJsonObject {
+            Observation(after, buildJsonObject {
                 put("after", JsonInstant.encodeToJsonElement(after))
                 put("settled", settled)
                 if (before != null) put("screen_changed", !before.sameLayout(after))
                 put("read_screen_again", false)
-            }
+                if (after.nodes.isEmpty()) {
+                    put("tree_empty", true)
+                    put(
+                        "observation_hint",
+                        "The window exposes no readable controls. It may still be loading, use a canvas, or restrict accessibility data. Request a screenshot if needed; do not assume the page is empty."
+                    )
+                }
+            })
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Exception) {
             // A failed observation must not turn a successful action into a failure and trigger a repeated write.
-            buildJsonObject {
+            Observation(null, buildJsonObject {
                 if (settled != null) put("settled", settled)
                 put("read_screen_again", true)
                 put("observation_error", error.message ?: "Current screen is unavailable")
-            }
+            })
         }
     }
+}
+
+/** Verify the same editable control only. A window change or password mask cannot prove what was entered. */
+internal fun verifyPhoneInput(
+    target: PhoneNode?,
+    before: PhoneScreen?,
+    after: PhoneScreen?,
+    expected: String
+): Boolean? {
+    if (target == null || target.password || before == null || after == null ||
+        before.packageName != after.packageName || before.windowId != after.windowId) {
+        return null
+    }
+    val current = after.nodes.singleOrNull {
+        it.editable && it.path == target.path && it.viewId == target.viewId && it.className == target.className
+    }?.takeUnless { it.password } ?: return null
+    if (current.textIdentity.isNotBlank()) return current.textIdentity == phoneTextIdentity(expected)
+    return if (expected.length <= 400 && current.text.length < 400) current.text == expected else null
 }

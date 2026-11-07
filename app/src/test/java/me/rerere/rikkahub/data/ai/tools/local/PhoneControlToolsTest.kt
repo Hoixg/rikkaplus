@@ -66,6 +66,26 @@ class PhoneControlToolsTest {
         assertEquals("chat-a", backend.lastOwner)
     }
 
+    @Test fun `keyboard submission and directional scrolling retain the normal action approval`() = runBlocking {
+        listOf("ime_enter", "scroll_up", "scroll_down", "scroll_left", "scroll_right").forEach { kind ->
+            val args = buildJsonObject {
+                put("action", kind)
+                put("snapshot_id", "snapshot")
+                put("node_id", "1")
+            }
+            assertEquals(
+                AgentFinishReason.AwaitingApproval(setOf("phone-call")),
+                throughAgent("phone_action", args, ToolApprovalState.Auto).reason
+            )
+            assertEquals(0, backend.calls)
+            assertEquals(
+                AgentFinishReason.Completed,
+                throughAgent("phone_action", args, ToolApprovalState.Denied("stop")).reason
+            )
+            assertEquals(0, backend.calls)
+        }
+    }
+
     @Test fun `reads and app listing skip approval while app opening requires approval`() = runBlocking {
         val set = tools()
         assertFalse(set.single { it.name == "phone_screen" }.needsApproval(buildJsonObject {}))
