@@ -26,7 +26,7 @@ android {
         applicationId = "io.github.hoixg.rikkaplus"
         minSdk = 26
         targetSdk = 37
-        versionCode = 197
+        versionCode = 198
         versionName = "3.1.25"
 
         val appPackageName = requireNotNull(applicationId)

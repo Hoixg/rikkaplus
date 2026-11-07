@@ -90,7 +90,6 @@ fun SettingPhoneControlPage(vm: SettingVM = koinViewModel()) {
                     checked = settings.phoneControlConfig.enabled,
                     onCheckedChange = { enabled ->
                         vm.updateSettings { it.copy(phoneControlConfig = it.phoneControlConfig.copy(enabled = enabled)) }
-                        if (!enabled) PhoneAccessibilityService.instance?.snapshots?.clear()
                     },
                     headlineContent = { Text(stringResource(R.string.phone_control_ai_enabled)) },
                     supportingContent = { Text(stringResource(R.string.phone_control_ai_enabled_desc)) },

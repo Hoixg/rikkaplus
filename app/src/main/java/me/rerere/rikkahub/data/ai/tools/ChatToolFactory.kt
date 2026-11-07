@@ -13,6 +13,7 @@ import me.rerere.rikkahub.data.ai.mcp.McpManager
 import me.rerere.rikkahub.data.ai.mcp.isValidMcpName
 import me.rerere.rikkahub.data.ai.tools.local.LocalToolOption
 import me.rerere.rikkahub.data.ai.tools.local.LocalTools
+import me.rerere.rikkahub.data.ai.tools.local.PHONE_TOOL_NAMES
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.files.FileFolders
@@ -31,8 +32,8 @@ private const val TAG = "ChatToolFactory"
 private const val MAX_TOOL_OUTPUT_CHARS = 32 * 1024
 private const val TOOL_OUTPUT_PREVIEW_CHARS = 4 * 1024
 
-// 搜索结果与有界界面树需要完整结构；界面树还关联快照和截图，不能替换成仅本地工作区能读取的文本文件。
-private val TOOLS_WITHOUT_OUTPUT_TRUNCATION = setOf("search_web", "phone_screen", "phone_action", "phone_apps")
+// 搜索和手机操作保留结构化结果与图片附件，避免被替换为工作区文本文件。
+private val TOOLS_WITHOUT_OUTPUT_TRUNCATION = setOf("search_web") + PHONE_TOOL_NAMES
 
 internal fun shouldUseExternalWebSearch(assistant: Assistant, model: Model): Boolean {
     return assistant.enableWebSearch && BuiltInTools.Search !in model.tools

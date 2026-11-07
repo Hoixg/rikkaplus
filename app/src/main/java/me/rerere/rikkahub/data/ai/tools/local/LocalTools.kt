@@ -83,7 +83,6 @@ class LocalTools(
         if (LocalToolOption.PhoneControl in options) {
             tools.addAll(
                 createPhoneControlTools(
-                    conversationId,
                     phoneBackend
                 ) { settingsStore.settingsFlow.value.phoneControlConfig }
             )

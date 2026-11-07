@@ -1,286 +1,282 @@
+// Adapted from ExTV/rikkahub-agent, a88f5854b4d2e2706ea2ae8304a7d66a3f9f2bbc.
+// SPDX-License-Identifier: AGPL-3.0-only
+// Source and adaptation notes: docs/phone-control-sources.md
 package me.rerere.rikkahub.accessibility
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
-import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Path
-import android.graphics.Rect
-import android.hardware.display.DisplayManager
 import android.os.Build
-import android.os.Bundle
-import android.util.DisplayMetrics
-import android.view.Display
+import android.os.Handler
+import android.os.HandlerThread
+import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
-import android.view.accessibility.AccessibilityWindowInfo
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeoutOrNull
+import java.util.concurrent.Executors
 import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
-import kotlin.uuid.Uuid
 
-/** The system binds this service only after the user enables it in accessibility settings. */
+private const val TAG = "RikkaAccService"
+private const val GESTURE_TIMEOUT_MS = 5_000L
+private const val LOG_RING_SIZE = 50
+
+data class ActionLogEntry(
+    val type: String,
+    val paramsSummary: String,
+    val success: Boolean,
+    val timestampMs: Long,
+)
+
 class PhoneAccessibilityService : AccessibilityService() {
-    val snapshots = PhoneSnapshots()
-    val operations = Mutex()
-    private val screenTracker = PhoneScreenTracker()
+
+    private val gestureExecutor = Executors.newSingleThreadExecutor { r ->
+        Thread(r, "RikkaAcc-Gesture").apply { isDaemon = true }
+    }
+    private val gestureHandlerThread = HandlerThread("RikkaAcc-Callback").apply { start() }
+    private val gestureHandler = Handler(gestureHandlerThread.looper)
+
+    private val _running = MutableStateFlow(false)
+    val running = _running.asStateFlow()
+
+    private val _lastActions = MutableStateFlow<List<ActionLogEntry>>(emptyList())
+    val lastActions = _lastActions.asStateFlow()
+
+    // Uptime of the last window state/content change event. ScreenState.awaitQuiet polls
+    // this to detect UI settle after an action.
+    @Volatile
+    var lastWindowEventUptime: Long = 0L
+        private set
+
+    // Serialises overlapping gesture-dispatch callers (the OS rejects overlapping
+    // dispatchGesture calls). Mutex.withLock releases correctly when a waiter is
+    // cancelled mid-wait, which the previous ticket counter did not.
+    private val gestureMutex = Mutex()
 
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
+        _running.value = true
         mutableConnected.value = true
-        screenTracker.changed()
+        Log.i(TAG, "AccessibilityService connected")
     }
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        if (event != null) screenTracker.changed()
-    }
-
-    suspend fun awaitQuiet(): Boolean = screenTracker.awaitQuiet()
-    val changeVersion: Long get() = screenTracker.version
-    suspend fun awaitAfter(since: Long): Boolean = screenTracker.awaitAfter(since)
-
-    override fun onInterrupt() {
-        snapshots.clear()
-    }
-
-    override fun onUnbind(intent: Intent?): Boolean {
-        detach()
+    override fun onUnbind(intent: android.content.Intent?): Boolean {
+        instance = null
+        _running.value = false
+        mutableConnected.value = false
+        _lastActions.value = emptyList()
+        Log.i(TAG, "AccessibilityService unbound")
         return super.onUnbind(intent)
     }
 
     override fun onDestroy() {
-        detach()
+        instance = null
+        _running.value = false
+        mutableConnected.value = false
+        gestureHandlerThread.quitSafely()
+        gestureExecutor.shutdownNow()
         super.onDestroy()
     }
 
-    private fun detach() {
-        snapshots.clear()
-        if (instance === this) {
-            instance = null
-            mutableConnected.value = false
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        // The service config only subscribes to typeWindowStateChanged|typeWindowContentChanged,
+        // so any event delivery means the UI moved.
+        if (event != null) {
+            lastWindowEventUptime = android.os.SystemClock.uptimeMillis()
         }
     }
 
-    fun foregroundPackage(): String? {
-        val root = try { contentRoot().node } catch (_: PhoneScreenUnavailable) { return null }
-        return try { root.packageName?.toString() } finally { recycle(root) }
+    override fun onInterrupt() {
+        // Required override; no-op.
     }
 
-    private data class ContentRoot(val node: AccessibilityNodeInfo, val bounds: PhoneBounds?, val keyboardVisible: Boolean?)
-
-    /** IME focus must not turn the keyboard into the app being controlled. */
-    private fun contentRoot(): ContentRoot {
-        val (width, height) = displaySize()
-        val windows = runCatching { this.windows }.getOrNull()
-        try {
-            val candidates = windows.orEmpty().mapIndexed { index, window ->
-                val rect = Rect().also(window::getBoundsInScreen)
-                PhoneWindowCandidate(window.id, index, when (window.type) {
-                    AccessibilityWindowInfo.TYPE_APPLICATION -> PhoneWindowKind.APPLICATION
-                    AccessibilityWindowInfo.TYPE_SYSTEM -> PhoneWindowKind.SYSTEM
-                    AccessibilityWindowInfo.TYPE_INPUT_METHOD -> PhoneWindowKind.KEYBOARD
-                    else -> PhoneWindowKind.OTHER
-                }, window.layer, window.isActive, window.isFocused, PhoneBounds(rect.left, rect.top, rect.right, rect.bottom))
-            }
-            val selected = selectPhoneWindow(candidates, width, height)
-            val root = if (selected != null) {
-                windows?.get(selected.index)?.root ?: rootInActiveWindow?.let {
-                    if (it.windowId == selected.id) it else { recycle(it); null }
-                }
-            } else if (windows.isNullOrEmpty()) rootInActiveWindow else null
-            // Never fall through an unreadable foreground dialog to an underlying application.
-            return ContentRoot(root ?: throw PhoneScreenUnavailable(), selected?.bounds,
-                windows?.takeIf { it.isNotEmpty() }?.any { it.type == AccessibilityWindowInfo.TYPE_INPUT_METHOD })
-        } finally {
-            @Suppress("DEPRECATION")
-            if (Build.VERSION.SDK_INT < 33) windows.orEmpty().forEach { it.recycle() }
-        }
+    fun appendLog(entry: ActionLogEntry) {
+        val current = _lastActions.value
+        val next = (current + entry).takeLast(LOG_RING_SIZE)
+        _lastActions.value = next
     }
 
-    @Suppress("DEPRECATION")
-    private fun displaySize(): Pair<Int, Int> {
-        val metrics = DisplayMetrics().also {
-            val display = getSystemService(DisplayManager::class.java).getDisplay(Display.DEFAULT_DISPLAY)
-            if (display != null) display.getRealMetrics(it) else it.setTo(resources.displayMetrics)
-        }
-        return metrics.widthPixels to metrics.heightPixels
-    }
-
-    fun capture(): PhoneScreen {
-        val content = contentRoot()
-        val root = content.node
-        try {
-            val nodes = mutableListOf<PhoneNode>()
-            var visited = 0
-            var characters = 0
-            var truncated = false
-            val deadline = System.nanoTime() + 350_000_000L
-            fun visit(node: AccessibilityNodeInfo, path: List<Int>, parentId: String?, passwordParent: Boolean) {
-                if (visited++ >= 1_200 || nodes.size >= 250 || characters >= 24_000 || path.size > 40 || System.nanoTime() >= deadline) {
-                    truncated = true
-                    return
-                }
-                val password = passwordParent || node.isPassword
-                var parent = parentId
-                if (node.isVisibleToUser && (node.text?.isNotBlank() == true || node.contentDescription?.isNotBlank() == true ||
-                    node.hintText?.isNotBlank() == true || node.isCheckable ||
-                    node.isClickable || node.isLongClickable || node.isEditable || node.isScrollable)) {
-                    val copy = copyNode(node, (nodes.size + 1).toString(), parentId, path, password)
-                    nodes.add(copy)
-                    characters += copy.text.length + copy.description.length + copy.hint.length + copy.stateDescription.length
-                    parent = copy.id
-                }
-                for (index in 0 until node.childCount) {
-                    if (visited >= 1_200 || nodes.size >= 250 || characters >= 24_000 || System.nanoTime() >= deadline) {
-                        truncated = true
-                        break
+    /**
+     * Dispatches a gesture and suspends until it completes / cancels / times out (5s).
+     */
+    suspend fun dispatchGestureAsync(gesture: GestureDescription): Boolean =
+        gestureMutex.withLock {
+            withTimeoutOrNull(GESTURE_TIMEOUT_MS) {
+                suspendCancellableCoroutine<Boolean> { cont ->
+                    val callback = object : GestureResultCallback() {
+                        override fun onCompleted(d: GestureDescription) {
+                            if (cont.isActive) cont.resume(true)
+                        }
+                        override fun onCancelled(d: GestureDescription) {
+                            if (cont.isActive) cont.resume(false)
+                        }
                     }
-                    val child = node.getChild(index) ?: continue
-                    try { visit(child, path + index, parent, password) } finally { recycle(child) }
+                    val dispatched = dispatchGesture(gesture, callback, gestureHandler)
+                    if (!dispatched && cont.isActive) cont.resume(false)
                 }
-            }
-            visit(root, emptyList(), null, false)
-            val (width, height) = displaySize()
-            val screen = PhoneScreen(Uuid.random().toString(), root.packageName?.toString().orEmpty(),
-                width, height, nodes, truncated, root.windowId, content.bounds, content.keyboardVisible)
-            check(screen.packageName.isNotBlank()) { "Active application could not be identified" }
-            return screen
-        } finally { recycle(root) }
+            } ?: false
+        }
+
+    fun buildTapPath(x: Float, y: Float): Path = Path().apply { moveTo(x, y) }
+
+    fun buildSwipePath(sx: Float, sy: Float, ex: Float, ey: Float): Path = Path().apply {
+        moveTo(sx, sy)
+        lineTo(ex, ey)
     }
 
-    fun performNodeAction(expected: PhoneNode, action: PhoneAction, screen: PhoneScreen): Boolean {
-        val root = contentRoot().node
-        val allocated = mutableListOf<AccessibilityNodeInfo>()
-        try {
-            check(root.packageName?.toString() == screen.packageName && root.windowId == screen.windowId) {
-                "Foreground window changed; read the screen again"
+    /**
+     * Walk the active window's node tree depth-first (preorder, children in order).
+     * `filter` decides whether to emit a node; traversal stops once `cap` nodes have been
+     * emitted. traversalIndex counts every node seen (1-based), independent of the filter.
+     * Depth is capped at 60 to survive pathological trees (deep WebView/Compose nesting).
+     *
+     * recycle=true recycles every visited non-root node on API < 33 after its subtree is
+     * done (a no-op on 33+ where nodes are not pooled). Callers passing recycle=true MUST
+     * NOT retain nodes past the emit callback; serialise or copy inside emit.
+     *
+     * Returns (emitted, totalSeen, truncated).
+     */
+    fun traverseTree(
+        root: AccessibilityNodeInfo,
+        filter: (AccessibilityNodeInfo, depth: Int) -> Boolean,
+        cap: Int,
+        emit: (AccessibilityNodeInfo, depth: Int, traversalIndex: Int) -> Unit,
+        recycle: Boolean = false,
+    ): Triple<Int, Int, Boolean> {
+        val maxDepth = 60
+        var emitted = 0
+        var seen = 0
+        var truncated = false
+        val canRecycle = recycle && Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU
+        val stack = ArrayDeque<Pair<AccessibilityNodeInfo, Int>>()
+        stack.addLast(root to 0)
+        while (stack.isNotEmpty()) {
+            val (n, depth) = stack.removeLast()
+            seen++
+            if (filter(n, depth)) {
+                emit(n, depth, seen)
+                emitted++
+                if (emitted >= cap) truncated = true
             }
-            var node = root
-            var password = root.isPassword
-            for (index in expected.path) {
-                node = node.getChild(index)?.also { allocated.add(it) } ?: error("Target node changed; read the screen again")
-                password = password || node.isPassword
-            }
-            val actual = copyNode(node, expected.id, expected.parentId, expected.path, password)
-            check(actual == expected && node.isVisibleToUser && node.isEnabled) { "Target node changed; read the screen again" }
-            return when (action.kind) {
-                PhoneActionKind.CLICK -> node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                PhoneActionKind.LONG_CLICK -> node.performAction(AccessibilityNodeInfo.ACTION_LONG_CLICK)
-                PhoneActionKind.INPUT -> {
-                    check(node.isEditable) { "Select an editable node" }
-                    if (!node.isFocused) node.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
-                    node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, Bundle().apply {
-                        putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, action.text)
-                    })
+            if (!truncated && depth < maxDepth) {
+                for (i in n.childCount - 1 downTo 0) {
+                    val child = n.getChild(i) ?: continue
+                    stack.addLast(child to depth + 1)
                 }
-                PhoneActionKind.SCROLL_FORWARD -> node.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)
-                PhoneActionKind.SCROLL_BACKWARD -> node.performAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)
-                PhoneActionKind.SCROLL_UP, PhoneActionKind.SCROLL_DOWN, PhoneActionKind.SCROLL_LEFT,
-                PhoneActionKind.SCROLL_RIGHT, PhoneActionKind.IME_ENTER -> {
-                    val id = nodeActions.entries.firstOrNull { it.value == action.kind.key }?.key
-                        ?: error("This Android version does not support the action")
-                    check(node.actionList.any { it.id == id }) { "The node no longer offers this action" }
-                    node.performAction(id)
-                }
-                else -> error("Not a node action")
             }
-        } finally {
-            allocated.asReversed().forEach(::recycle)
-            recycle(root)
+            if (canRecycle && n !== root) {
+                @Suppress("DEPRECATION")
+                n.recycle()
+            }
+            if (truncated) break
         }
+        if (canRecycle) {
+            // Drain children queued but never visited (truncation / depth-cap leftovers).
+            while (stack.isNotEmpty()) {
+                val (n, _) = stack.removeLast()
+                if (n !== root) {
+                    @Suppress("DEPRECATION")
+                    n.recycle()
+                }
+            }
+        }
+        return Triple(emitted, seen, truncated)
     }
 
-    suspend fun gesture(action: PhoneAction): Boolean = withTimeout(5_000) {
-        val path = Path().apply {
-            moveTo(action.x!!.toFloat(), action.y!!.toFloat())
-            if (action.kind == PhoneActionKind.SWIPE) lineTo(action.endX!!.toFloat(), action.endY!!.toFloat())
+    /**
+     * Walks up the parent chain looking for a clickable node. Returns the original if it's
+     * already clickable, or the nearest clickable ancestor, or null if none exists.
+     */
+    fun resolveClickable(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        var cur: AccessibilityNodeInfo? = node
+        while (cur != null) {
+            if (cur.isClickable) return cur
+            cur = cur.parent
         }
-        val duration = if (action.kind == PhoneActionKind.TAP) 60L else action.durationMillis
-        val description = GestureDescription.Builder().addStroke(GestureDescription.StrokeDescription(path, 0, duration)).build()
-        suspendCancellableCoroutine { continuation ->
-            val accepted = dispatchGesture(description, object : GestureResultCallback() {
-                override fun onCompleted(gestureDescription: GestureDescription) {
-                    if (continuation.isActive) continuation.resume(true)
-                }
-                override fun onCancelled(gestureDescription: GestureDescription) {
-                    if (continuation.isActive) continuation.resume(false)
-                }
-            }, null)
-            if (!accepted && continuation.isActive) continuation.resume(false)
-        }
+        return null
     }
 
-    suspend fun screenshot(): Bitmap {
-        check(Build.VERSION.SDK_INT >= 30) { "Accessibility screenshots require Android 11 or later; screen reading still works" }
-        return withTimeout(5_000) {
-            suspendCancellableCoroutine { continuation ->
-                takeScreenshot(Display.DEFAULT_DISPLAY, mainExecutor, object : TakeScreenshotCallback {
-                    override fun onSuccess(screenshot: ScreenshotResult) {
-                        var copy: Bitmap? = null
+    /**
+     * Captures a screenshot of the given display. Suspends until callback fires; returns
+     * ScreenshotOutcome.Success(softwareBitmap) or Failure(reason). The success bitmap is a
+     * software bitmap (ARGB_8888) — caller MUST call bitmap.recycle() when done to free
+     * native memory. Returns Failure("api_too_low") on Android < 11 (API 30).
+     */
+    suspend fun captureScreenshot(displayId: Int): ScreenshotOutcome =
+        withTimeoutOrNull(GESTURE_TIMEOUT_MS) { captureScreenshotOnce(displayId) }
+            ?: ScreenshotOutcome.Failure("timeout")
+
+    private suspend fun captureScreenshotOnce(displayId: Int): ScreenshotOutcome {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            return ScreenshotOutcome.Failure("api_too_low")
+        }
+        return suspendCancellableCoroutine { cont ->
+            takeScreenshot(
+                displayId,
+                gestureExecutor,
+                object : TakeScreenshotCallback {
+                    override fun onSuccess(result: ScreenshotResult) {
                         try {
-                            val hardware = Bitmap.wrapHardwareBuffer(screenshot.hardwareBuffer, screenshot.colorSpace)
-                                ?: error("Screenshot could not be decoded")
-                            try { copy = hardware.copy(Bitmap.Config.ARGB_8888, false) } finally { hardware.recycle() }
-                            val result = copy ?: error("Screenshot could not be copied")
-                            if (continuation.isActive) {
-                                continuation.resume(result) { _, value, _ -> value.recycle() }
-                            } else result.recycle()
-                        } catch (error: Exception) {
-                            copy?.takeUnless { it.isRecycled }?.recycle()
-                            if (continuation.isActive) continuation.resumeWithException(error)
-                        } finally { screenshot.hardwareBuffer.close() }
+                            val bmp = try {
+                                Bitmap.wrapHardwareBuffer(result.hardwareBuffer, result.colorSpace)?.let { hardware ->
+                                    try {
+                                        hardware.copy(Bitmap.Config.ARGB_8888, false)
+                                    } finally {
+                                        hardware.recycle()
+                                    }
+                                }
+                            } finally {
+                                result.hardwareBuffer.close()
+                            }
+                            if (cont.isActive) {
+                                cont.resume(
+                                    if (bmp != null) {
+                                        ScreenshotOutcome.Success(bmp)
+                                    } else {
+                                        ScreenshotOutcome.Failure("bitmap_decode_failed")
+                                    }
+                                ) { _, value, _ ->
+                                    (value as? ScreenshotOutcome.Success)?.bitmap?.recycle()
+                                }
+                            } else {
+                                bmp?.recycle()
+                            }
+                        } catch (t: Throwable) {
+                            if (cont.isActive) cont.resume(ScreenshotOutcome.Failure("exception:${t.message}"))
+                        }
                     }
+
                     override fun onFailure(errorCode: Int) {
-                        if (continuation.isActive) continuation.resumeWithException(IllegalStateException(
-                            "Screenshot unavailable (Android error $errorCode); protected windows cannot be captured"))
+                        val reason = when (errorCode) {
+                            ERROR_TAKE_SCREENSHOT_INTERVAL_TIME_SHORT -> "rate_limited"
+                            ERROR_TAKE_SCREENSHOT_NO_ACCESSIBILITY_ACCESS -> "no_access"
+                            ERROR_TAKE_SCREENSHOT_INTERNAL_ERROR -> "internal_error"
+                            else -> "error_code_$errorCode"
+                        }
+                        if (cont.isActive) cont.resume(ScreenshotOutcome.Failure(reason))
                     }
-                })
-            }
+                }
+            )
         }
     }
 
-    private fun copyNode(node: AccessibilityNodeInfo, id: String, parent: String?, path: List<Int>, password: Boolean): PhoneNode {
-        val content = phoneNodeContent(node.text, node.contentDescription, password,
-            textIsHint = node.isEditable && node.isShowingHintText)
-        val rect = Rect().also(node::getBoundsInScreen)
-        return PhoneNode(id, parent, content.text, content.description, node.viewIdResourceName.orEmpty(),
-            node.className?.toString().orEmpty(), PhoneBounds(rect.left, rect.top, rect.right, rect.bottom),
-            node.isClickable, node.isLongClickable, node.isEditable, node.isScrollable, node.isEnabled, password, path, content.identity,
-            hint = if (password) "" else node.hintText?.toString().orEmpty().take(400),
-            stateDescription = if (password || Build.VERSION.SDK_INT < 30) "" else node.stateDescription?.toString().orEmpty().take(400),
-            checkable = node.isCheckable, checked = @Suppress("DEPRECATION") node.isChecked,
-            selected = node.isSelected, focused = node.isFocused,
-            actions = node.actionList.mapNotNull { nodeActions[it.id] }.distinct().sorted(), textIdentity = content.textIdentity)
-    }
-
-    @Suppress("DEPRECATION")
-    private fun recycle(node: AccessibilityNodeInfo) {
-        if (Build.VERSION.SDK_INT < 33) node.recycle()
+    sealed class ScreenshotOutcome {
+        data class Success(val bitmap: Bitmap) : ScreenshotOutcome()
+        data class Failure(val reason: String) : ScreenshotOutcome()
     }
 
     companion object {
-        private val nodeActions by lazy {
-            buildMap {
-                put(AccessibilityNodeInfo.ACTION_CLICK, "click")
-                put(AccessibilityNodeInfo.ACTION_LONG_CLICK, "long_click")
-                put(AccessibilityNodeInfo.ACTION_SET_TEXT, "input")
-                put(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD, "scroll_forward")
-                put(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD, "scroll_backward")
-                put(AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_UP.id, "scroll_up")
-                put(AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_DOWN.id, "scroll_down")
-                put(AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_LEFT.id, "scroll_left")
-                put(AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_RIGHT.id, "scroll_right")
-                if (Build.VERSION.SDK_INT >= 30) put(AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.id, "ime_enter")
-            }
-        }
-        @Volatile var instance: PhoneAccessibilityService? = null
-            private set
         private val mutableConnected = MutableStateFlow(false)
         val connected = mutableConnected.asStateFlow()
+
+        @Volatile
+        var instance: PhoneAccessibilityService? = null
+            private set
     }
 }
