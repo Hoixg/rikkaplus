@@ -18,6 +18,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import me.rerere.rikkahub.data.db.entity.WorkspaceEntity
 import me.rerere.rikkahub.data.repository.WorkspaceRepository
+import me.rerere.rikkahub.service.BackgroundShellManager
 import me.rerere.workspace.WorkspaceCommandResult
 import me.rerere.workspace.WorkspaceFileEntry
 import me.rerere.workspace.WorkspaceLayout
@@ -29,6 +30,7 @@ class WorkspaceDetailVM(
     private val id: String,
     private val repository: WorkspaceRepository,
     private val terminalSessionManager: WorkspaceTerminalSessionManager,
+    private val backgroundShellManager: BackgroundShellManager,
 ) : ViewModel() {
     private val _state = MutableStateFlow(WorkspaceDetailState())
     val state = _state.asStateFlow()
@@ -335,7 +337,10 @@ class WorkspaceDetailVM(
                     workspace.id,
                     url,
                     replaceExisting = workspace.shellStatus == me.rerere.workspace.WorkspaceShellStatus.READY.name,
-                    beforeInstall = { terminalSessionManager.closeLocalWorkspaces(workspace) },
+                    beforeInstall = {
+                        terminalSessionManager.closeLocalWorkspaces(workspace)
+                        backgroundShellManager.killLocalEnvironment(workspace)
+                    },
                 )
                 loadWorkspace()
                 refresh()

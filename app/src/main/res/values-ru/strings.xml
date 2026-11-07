@@ -1749,4 +1749,24 @@
   <string name="about_page_check_updates_desc">Версии и загрузки на странице релизов RikkaPlus в GitHub</string>
   <string name="permission_local_network">Локальная сеть</string>
   <string name="permission_local_network_desc">Необходимо для подключения к собственным сервисам в локальной сети.</string>
+  <string name="background_tasks_running">Фоновые задачи: %1$d в работе</string>
+  <string name="background_tasks_title">Фоновые задачи</string>
+  <string name="background_tasks_empty">В этом диалоге нет фоновых задач</string>
+  <string name="background_tasks_stopping">Остановка…</string>
+  <string name="background_tasks_log_truncated">Показан конец журнала. Полный журнал: %1$s</string>
+  <string name="background_tasks_no_output_yet">Вывода пока нет</string>
+  <string name="background_tasks_no_output">Нет вывода</string>
+  <string name="background_tasks_status_running">Выполняется · %1$s</string>
+  <string name="background_tasks_status_exited">Завершено с кодом %1$d · %2$s</string>
+  <string name="background_tasks_status_stopped">Остановлено · %1$s</string>
+  <string name="background_tasks_duration_seconds">%1$d с</string>
+  <string name="background_tasks_duration_minutes">%1$d мин %2$d с</string>
+  <string name="background_tasks_duration_hours">%1$d ч %2$d мин</string>
+  <string name="tool_ui_shell_background_running">Работает в фоне · %1$s</string>
+  <string name="tool_ui_shell_background_stopped">Остановлено · %1$s</string>
+  <string name="tool_ui_shell_background">Фон · %1$s</string>
+  <string name="chat_page_notice_retry">Повторить</string>
+  <string name="notification_background_shell_running">Выполняются фоновые команды: %1$d</string>
+  <string name="background_shell_notice_exited">Фоновая команда завершилась с кодом %1$d: %2$s</string>
+  <string name="background_shell_notice_stopped">Фоновая команда остановлена вами: %1$s</string>
 </resources>

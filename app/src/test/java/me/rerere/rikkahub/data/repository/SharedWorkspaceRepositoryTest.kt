@@ -120,6 +120,11 @@ class SharedWorkspaceRepositoryTest {
         assertEquals(ssh, f.repository.getById(ssh.id))
         assertEquals(ssh, f.repository.listFlow().first().single { it.id == ssh.id })
         assertTrue(runCatching { f.repository.executeCommand(first.id, "echo local") }.exceptionOrNull()!!.message!!.contains("Linux 环境"))
+        listOf(first, second).forEach { workspace ->
+            assertTrue(runCatching {
+                f.repository.startBackgroundCommand(workspace.id, "echo local", "", "test")
+            }.exceptionOrNull()!!.message!!.contains("Linux 环境"))
+        }
         // SSH still follows its own backend instead of being rejected as a local installation.
         assertTrue(runCatching { f.repository.executeCommand(ssh.id, "echo remote") }.exceptionOrNull()!!.message!!.contains("SSH workspace config"))
         val duplicate = runCatching { f.repository.installRootfs(second.id, "unused", replaceExisting = true) }

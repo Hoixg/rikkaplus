@@ -22,6 +22,7 @@ import me.rerere.rikkahub.data.repository.MemoryRepository
 import me.rerere.rikkahub.data.repository.WorkspaceRepository
 import me.rerere.rikkahub.data.repository.memoryId
 import me.rerere.rikkahub.data.skills.SkillManager
+import me.rerere.rikkahub.service.BackgroundShellManager
 import me.rerere.workspace.WorkspaceShellStatus
 import java.io.File
 import kotlin.uuid.Uuid
@@ -53,6 +54,7 @@ class ChatToolFactory(
     private val chatMediaCreation: ChatMediaCreation,
     private val automationRepository: me.rerere.rikkahub.data.automation.AutomationRepository? = null,
     private val cancelAutomation: suspend (String) -> Unit = {},
+    private val backgroundShellManager: BackgroundShellManager,
 ) {
     suspend fun createTools(
         settings: Settings,
@@ -62,7 +64,8 @@ class ChatToolFactory(
         workspaceCwd: String? = null,
         getMessages: () -> List<UIMessage> = { emptyList() },
     ): List<Tool> {
-        val workspaceTools = createWorkspaceToolsIfReady(assistant.workspaceId?.toString(), workspaceCwd)
+        val workspaceTools =
+            createWorkspaceToolsIfReady(assistant.workspaceId?.toString(), workspaceCwd, conversationId)
         val tools = buildList {
             if (assistant.enableMemory) {
                 addAll(buildMemoryTools(memoryRepository, assistant.memoryId))
@@ -162,7 +165,11 @@ class ChatToolFactory(
         ) + output.filter { it !is UIMessagePart.Text }
     }
 
-    private suspend fun createWorkspaceToolsIfReady(workspaceId: String?, cwd: String?): List<Tool> {
+    private suspend fun createWorkspaceToolsIfReady(
+        workspaceId: String?,
+        cwd: String?,
+        conversationId: Uuid,
+    ): List<Tool> {
         if (workspaceId.isNullOrBlank()) return emptyList()
         val workspace = workspaceRepository.getById(workspaceId) ?: return emptyList()
         if (workspace.shellStatus != WorkspaceShellStatus.READY.name) {
@@ -172,6 +179,6 @@ class ChatToolFactory(
             )
             return emptyList()
         }
-        return createWorkspaceTools(workspaceId, workspaceRepository, cwd)
+        return createWorkspaceTools(workspaceId, workspaceRepository, cwd, conversationId, backgroundShellManager)
     }
 }

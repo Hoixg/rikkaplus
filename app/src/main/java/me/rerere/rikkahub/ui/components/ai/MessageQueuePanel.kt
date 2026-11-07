@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.input.TextFieldLineLimits
@@ -41,8 +42,9 @@ import kotlin.uuid.Uuid
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.MoreVertical
+import me.rerere.hugeicons.stroke.Notification01
 import me.rerere.rikkahub.R
-import me.rerere.rikkahub.service.MessageQueueState
+import me.rerere.rikkahub.service.InboxState
 import me.rerere.rikkahub.service.QueuedMessage
 import me.rerere.rikkahub.ui.components.ui.draggingScale
 import me.rerere.rikkahub.ui.hooks.ChatInputState
@@ -51,7 +53,7 @@ import sh.calvin.reorderable.rememberReorderableLazyListState
 
 @Composable
 internal fun MessageQueuePanel(
-    state: MessageQueueState,
+    state: InboxState,
     onSend: (Uuid) -> Unit,
     onRemove: (Uuid) -> Unit,
     onCancel: (Uuid) -> Unit,
@@ -82,7 +84,7 @@ internal fun MessageQueuePanel(
             }
         }
     }
-    if (state.messages.isNotEmpty()) {
+    if (state.items.isNotEmpty()) {
         Surface(
             shape = MaterialTheme.shapes.large,
             color = MaterialTheme.colorScheme.surfaceContainer,
@@ -96,7 +98,7 @@ internal fun MessageQueuePanel(
                         text = stringResource(
                             if (state.paused) R.string.chat_page_queue_paused_count
                             else R.string.chat_page_queue_pending_count,
-                            state.messages.size,
+                            state.items.size,
                         ),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -214,6 +216,29 @@ internal fun MessageQueuePanel(
                                         modifier = Modifier.size(20.dp),
                                     )
                                 }
+                            }
+                        }
+                    }
+                    items(state.notices, key = { it.id.toString() }) { item ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            Icon(
+                                imageVector = HugeIcons.Notification01,
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Text(
+                                text = item.notice.title,
+                                modifier = Modifier.weight(1f),
+                                style = MaterialTheme.typography.bodySmall,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            TextButton(onClick = { onRemove(item.id) }) {
+                                Text(stringResource(R.string.delete))
                             }
                         }
                     }

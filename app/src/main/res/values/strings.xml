@@ -1831,4 +1831,24 @@
   <string name="workspace_cleanup_cleaning">Cleaning old environment…</string>
   <string name="workspace_cleanup_confirm_title">Delete this old environment?</string>
   <string name="workspace_cleanup_confirm_description">This deletes the old system, installed tools, configuration, and files inside its /root directory. The workspace project files area and the current shared environment are kept. This cannot be undone.</string>
+  <string name="background_tasks_running">Background tasks: %1$d running</string>
+  <string name="background_tasks_title">Background tasks</string>
+  <string name="background_tasks_empty">No background tasks in this conversation</string>
+  <string name="background_tasks_stopping">Stopping…</string>
+  <string name="background_tasks_log_truncated">Showing the end of the log. Full log: %1$s</string>
+  <string name="background_tasks_no_output_yet">No output yet</string>
+  <string name="background_tasks_no_output">No output</string>
+  <string name="background_tasks_status_running">Running · %1$s</string>
+  <string name="background_tasks_status_exited">Exited with code %1$d · %2$s</string>
+  <string name="background_tasks_status_stopped">Stopped · %1$s</string>
+  <string name="background_tasks_duration_seconds">%1$ds</string>
+  <string name="background_tasks_duration_minutes">%1$dm %2$ds</string>
+  <string name="background_tasks_duration_hours">%1$dh %2$dm</string>
+  <string name="tool_ui_shell_background_running">Running in background · %1$s</string>
+  <string name="tool_ui_shell_background_stopped">Stopped · %1$s</string>
+  <string name="tool_ui_shell_background">Background · %1$s</string>
+  <string name="chat_page_notice_retry">Retry</string>
+  <string name="notification_background_shell_running">Background commands running: %1$d</string>
+  <string name="background_shell_notice_exited">Background command exited with code %1$d: %2$s</string>
+  <string name="background_shell_notice_stopped">Background command stopped by you: %1$s</string>
 </resources>

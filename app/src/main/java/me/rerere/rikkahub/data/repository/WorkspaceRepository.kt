@@ -27,6 +27,7 @@ import me.rerere.workspace.RootfsInstallProgress
 import me.rerere.workspace.RootfsInstaller
 import me.rerere.workspace.UnusedEnvironment
 import me.rerere.workspace.WorkspaceBackend
+import me.rerere.workspace.WorkspaceBackgroundCommand
 import me.rerere.workspace.WorkspaceCommandResult
 import me.rerere.workspace.WorkspaceFileEntry
 import me.rerere.workspace.WorkspaceLayout
@@ -432,6 +433,21 @@ class WorkspaceRepository(
         return runInterruptible(Dispatchers.IO) {
             backendOf(workspace).executeCommand(command, cwd, timeoutMillis, stdin)
         }
+    }
+
+    /** 在后台启动命令并立即返回, 进程的生命周期由调用方管理 */
+    suspend fun startBackgroundCommand(
+        id: String,
+        command: String,
+        cwd: String,
+        taskId: String,
+    ): WorkspaceBackgroundCommand {
+        val workspace = dao.getById(id) ?: error("Workspace not found: $id")
+        if (workspace.capabilities().rootfs) {
+            ensureEnvironment()
+            check(!isEnvironmentInstalling(workspace)) { "此 Linux 环境正在安装，暂时无法启动后台命令" }
+        }
+        return withContext(Dispatchers.IO) { backendOf(workspace).startBackgroundCommand(command, cwd, taskId) }
     }
 
     suspend fun delete(id: String): Boolean {

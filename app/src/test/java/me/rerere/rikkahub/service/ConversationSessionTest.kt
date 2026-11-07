@@ -739,9 +739,9 @@ class ConversationSessionTest {
         val id = Uuid.random()
         val session = ConversationSession(id, Conversation.ofId(id), scope, FakeConversationStore(), {})
         try {
-            session.messageQueue.enqueue(listOf(UIMessagePart.Text("first")))
-            session.messageQueue.enqueue(listOf(UIMessagePart.Text("second")))
-            val pending = session.messageQueue.state.value.messages
+            session.inbox.enqueue(listOf(UIMessagePart.Text("first")))
+            session.inbox.enqueue(listOf(UIMessagePart.Text("second")))
+            val pending = session.inbox.state.value.messages
             val releaseSave = CompletableDeferred<Unit>()
             val old = scope.launch(start = CoroutineStart.LAZY) {
                 try {
@@ -752,23 +752,23 @@ class ConversationSessionTest {
             }
             session.setJob(old)
             val first = scope.launch(start = CoroutineStart.LAZY) {
-                afterPreviousGeneration(old) { session.messageQueue.take(pending[0].id) }
+                afterPreviousGeneration(old) { session.inbox.take(pending[0].id) }
             }
             session.setJob(first)
             var sent: QueuedMessage? = null
             val predecessors = session.getActiveJobs()
             val second = scope.launch(start = CoroutineStart.LAZY) {
-                afterPreviousGenerations(predecessors) { sent = session.messageQueue.take(pending[1].id) }
+                afterPreviousGenerations(predecessors) { sent = session.inbox.take(pending[1].id) }
             }
             session.setJob(second)
 
-            assertEquals(pending, session.messageQueue.state.value.messages)
+            assertEquals(pending, session.inbox.state.value.messages)
             assertNull(sent)
             releaseSave.complete(Unit)
             second.join()
 
             assertEquals(pending[1], sent)
-            assertEquals(listOf(pending[0]), session.messageQueue.state.value.messages)
+            assertEquals(listOf(pending[0]), session.inbox.state.value.messages)
         } finally {
             session.cleanup()
             scope.cancel()
@@ -840,8 +840,8 @@ class ConversationSessionTest {
         val session = ConversationSession(id, Conversation.ofId(id), scope, FakeConversationStore(), {})
         try {
             assertFalse(session.isInUse)
-            session.messageQueue.enqueue(listOf(UIMessagePart.Text("next")))
-            session.messageQueue.pause()
+            session.inbox.enqueue(listOf(UIMessagePart.Text("next")))
+            session.inbox.pause()
             assertTrue(session.isInUse)
         } finally {
             session.cleanup()
