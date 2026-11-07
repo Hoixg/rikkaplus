@@ -24,21 +24,49 @@ data class TaskSchedule(
     val weekdays: Set<Int> = setOf(1, 2, 3, 4, 5),
     val startDate: String? = null,
     val endDate: String? = null,
+    val timesMinutes: List<Int> = emptyList(),
+    val atTimes: List<Long> = emptyList(),
 ) {
+    val recurringTimes: List<Int> get() = timesMinutes.ifEmpty { listOf(timeMinutes) }.distinct().sorted()
+    val onceTimes: List<Long> get() = atTimes.ifEmpty { listOf(at) }.distinct().sorted()
+
+    fun withRecurringTimes(times: List<Int>): TaskSchedule {
+        require(times.isNotEmpty()) { "请至少保留一个执行时间" }
+        val ordered = times.distinct().sorted()
+        return copy(timeMinutes = ordered.first(), timesMinutes = ordered)
+    }
+
+    fun withOnceTimes(times: List<Long>): TaskSchedule {
+        require(times.isNotEmpty()) { "请至少保留一个执行时间" }
+        val ordered = times.distinct().sorted()
+        return copy(at = ordered.first(), atTimes = ordered)
+    }
+
+    fun sameTimingAs(other: TaskSchedule): Boolean = kind == other.kind && when (kind) {
+        ScheduleKind.ONCE -> onceTimes == other.onceTimes
+        ScheduleKind.INTERVAL -> intervalMinutes == other.intervalMinutes
+        ScheduleKind.DAILY, ScheduleKind.WEEKLY -> recurringTimes == other.recurringTimes &&
+            startDate == other.startDate && endDate == other.endDate &&
+            (kind != ScheduleKind.WEEKLY || weekdays == other.weekdays)
+    }
+
     fun validate() {
-        require(kind !in setOf(ScheduleKind.DAILY, ScheduleKind.WEEKLY) || timeMinutes in 0..1439) { "执行时间无效" }
+        require(
+            kind !in setOf(ScheduleKind.DAILY, ScheduleKind.WEEKLY) || recurringTimes.all { it in 0..1439 }
+        ) { "执行时间无效" }
         require(kind != ScheduleKind.INTERVAL || intervalMinutes >= 15) { "执行间隔至少为 15 分钟" }
         require(kind != ScheduleKind.WEEKLY || (weekdays.all { it in 1..7 } && weekdays.isNotEmpty())) {
-            "请至少选择一个有效的星期" }
+            "请至少选择一个有效的星期"
+        }
         val start = startDate?.let(LocalDate::parse)
         val end = endDate?.let(LocalDate::parse)
         require(start == null || end == null || start <= end) { "结束日期不能早于开始日期" }
-        require(kind != ScheduleKind.ONCE || at > 0) { "请选择执行日期和时间" }
+        require(kind != ScheduleKind.ONCE || onceTimes.all { it > 0 }) { "请选择执行日期和时间" }
     }
 
     /** Local calendar schedules follow time-zone changes; intervals retain their original anchor. */
     fun next(now: Long, anchor: Long, zone: ZoneId = ZoneId.systemDefault()): Long? = when (kind) {
-        ScheduleKind.ONCE -> at.takeIf { it > now }
+        ScheduleKind.ONCE -> onceTimes.firstOrNull { it > now }
         ScheduleKind.INTERVAL -> {
             val period = intervalMinutes.toLong() * 60_000
             anchor + ((now - anchor).coerceAtLeast(0) / period + 1) * period
@@ -49,24 +77,49 @@ data class TaskSchedule(
             val end = endDate?.let(LocalDate::parse)
             (0L..7L).firstNotNullOfOrNull { offset ->
                 val day = first.plusDays(offset)
-                if ((end != null && day > end) || (kind == ScheduleKind.WEEKLY && day.dayOfWeek.value !in weekdays)) null
-                else day.atTime(LocalTime.of(timeMinutes / 60, timeMinutes % 60)).atZone(zone)
-                    .withEarlierOffsetAtOverlap().toInstant().toEpochMilli().takeIf { it > now }
+                if ((end != null && day > end) ||
+                    (kind == ScheduleKind.WEEKLY && day.dayOfWeek.value !in weekdays)) {
+                    null
+                } else {
+                    recurringTimes.map { minutes ->
+                        day.atTime(LocalTime.of(minutes / 60, minutes % 60)).atZone(zone)
+                            .withEarlierOffsetAtOverlap().toInstant().toEpochMilli()
+                    }.filter { it > now }.minOrNull()
+                }
             }
         }
     }
 
     fun describe(): String {
-        val time = "%02d:%02d".format(java.util.Locale.ROOT, timeMinutes / 60, timeMinutes % 60)
+        val time = recurringTimes.joinToString("、") { "%02d:%02d".format(java.util.Locale.ROOT, it / 60, it % 60) }
         val range = listOfNotNull(startDate?.let { "从 $it 起" }, endDate?.let { "至 $it 止" }).joinToString("，")
         val text = when (kind) {
-            ScheduleKind.ONCE -> Instant.ofEpochMilli(at).atZone(ZoneId.systemDefault())
-                .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
+            ScheduleKind.ONCE -> {
+                val dates = onceTimes.map { Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()) }
+                val date = dates.first().toLocalDate()
+                if (dates.all { it.toLocalDate() == date }) {
+                    "$date " + dates.joinToString("、") {
+                        it.format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))
+                    }
+                } else {
+                    dates.joinToString(
+                        "、"
+                    ) { it.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")) }
+                }
+            }
             ScheduleKind.DAILY -> "每天 $time"
-            ScheduleKind.WEEKLY -> weekdays.filter { it in 1..7 }.sorted().joinToString("、") { "周${"一二三四五六日"[it - 1]}" } + " $time"
+            ScheduleKind.WEEKLY -> weekdays.filter { it in 1..7 }.sorted().joinToString(
+                "、"
+            ) { "周${"一二三四五六日"[it - 1]}" } +
+                " $time"
             ScheduleKind.INTERVAL -> "每 $intervalMinutes 分钟"
         }
-        return if (range.isBlank() || kind !in setOf(ScheduleKind.DAILY, ScheduleKind.WEEKLY)) text else "$text · $range"
+        return if (range.isBlank() ||
+            kind !in setOf(ScheduleKind.DAILY, ScheduleKind.WEEKLY)) {
+            text
+        } else {
+            "$text · $range"
+        }
     }
 }
 
@@ -101,14 +154,21 @@ data class TaskDefinition(
         if (mode == TaskMode.FOLLOW_UP && resetContextBeforeRun) {
             // Compression checkpoints and alternative branches live in messageNodes.
             conversation.copy(messageNodes = emptyList(), chatSuggestions = emptyList())
-        } else conversation
+        } else {
+            conversation
+        }
 
     fun validateTarget(target: Conversation?) {
         if (mode == TaskMode.NEW_CHAT) return
-        require(target != null && target.id.toString() == conversationId && target.assistantId.toString() == assistantId) {
-            "目标聊天已删除或不属于所选助手" }
-        if (mode == TaskMode.REGENERATE) require(target.currentMessages.any {
-            it.role == MessageRole.USER && it.id.toString() == userMessageId
-        }) { "所选用户消息已删除或当前分支已改变" }
+        require(
+            target != null && target.id.toString() == conversationId && target.assistantId.toString() == assistantId
+        ) {
+            "目标聊天已删除或不属于所选助手"
+        }
+        if (mode == TaskMode.REGENERATE) {
+            require(target.currentMessages.any {
+                it.role == MessageRole.USER && it.id.toString() == userMessageId
+            }) { "所选用户消息已删除或当前分支已改变" }
+        }
     }
 }

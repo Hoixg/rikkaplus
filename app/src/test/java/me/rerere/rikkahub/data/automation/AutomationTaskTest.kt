@@ -13,7 +13,34 @@ class AutomationTaskTest {
         assistantId = "11111111-1111-4111-8111-111111111111",
         schedule = TaskSchedule(ScheduleKind.INTERVAL, intervalMinutes = 15),
     )
-    private val task = AutomationTask("task-id", definition.assistantId, definition, true, "old-revision", 1_801_000, 1000, 1000)
+    private val task =
+        AutomationTask("task-id", definition.assistantId, definition, true, "old-revision", 1_801_000, 1000, 1000)
+
+    @Test fun `reordering and deduplicating times preserves an unconsumed late alarm`() {
+        val before = definition.copy(schedule = TaskSchedule(timesMinutes = listOf(600, 1080)))
+        val calendar = task.copy(definition = before, nextRunAt = 1000)
+        val after = before.copy(
+            prompt = "new prompt",
+            schedule = before.schedule.copy(timesMinutes = listOf(1080, 600, 600))
+        )
+        val updated = calendar.reconfigure(after, null, 2000, "revision")
+        assertEquals(1000L, updated.nextRunAt)
+        assertTrue(updated.enabled)
+        assertTrue(TaskSchedule(timeMinutes = 600).sameTimingAs(TaskSchedule(timesMinutes = listOf(600))))
+    }
+
+    @Test fun `chosen date task stays enabled while later times remain and content editing retains them`() {
+        val before = definition.copy(schedule = TaskSchedule(ScheduleKind.ONCE, atTimes = listOf(1000, 3000)))
+        val calendar = task.copy(definition = before, nextRunAt = 3000)
+        val after = before.copy(
+            prompt = "new prompt",
+            schedule = before.schedule.copy(atTimes = listOf(3000, 1000, 1000))
+        )
+        val updated = calendar.reconfigure(after, null, 2000, "revision")
+        assertEquals(3000L, updated.nextRunAt)
+        assertTrue(updated.enabled)
+        assertNull(updated.definition.schedule.next(3000, 0))
+    }
 
     @Test
     fun `editing content keeps the unconsumed slot even when its alarm is late`() {
@@ -27,7 +54,11 @@ class AutomationTaskTest {
 
     @Test
     fun `editing a consumed one time task keeps the latest disabled state`() {
-        val consumed = task.copy(definition = definition.copy(schedule = TaskSchedule(ScheduleKind.ONCE, at = 1000)), enabled = false, nextRunAt = null)
+        val consumed = task.copy(
+            definition = definition.copy(schedule = TaskSchedule(ScheduleKind.ONCE, at = 1000)),
+            enabled = false,
+            nextRunAt = null
+        )
         val edited = consumed.reconfigure(consumed.definition.copy(prompt = "new prompt"), null, 2000, "new-revision")
         assertFalse(edited.enabled)
         assertNull(edited.nextRunAt)
@@ -36,7 +67,12 @@ class AutomationTaskTest {
 
     @Test
     fun `changing an interval keeps the original schedule anchor`() {
-        val edited = task.reconfigure(definition.copy(schedule = definition.schedule.copy(intervalMinutes = 30)), null, 2_000_000, "new-revision")
+        val edited = task.reconfigure(
+            definition.copy(schedule = definition.schedule.copy(intervalMinutes = 30)),
+            null,
+            2_000_000,
+            "new-revision"
+        )
         assertEquals(3_601_000L, edited.nextRunAt)
         assertEquals(1000L, edited.createdAt)
     }

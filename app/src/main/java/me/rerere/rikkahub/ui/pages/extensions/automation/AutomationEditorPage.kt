@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -24,9 +25,9 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.InputChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -61,6 +62,7 @@ import me.rerere.ai.core.MessageRole
 import me.rerere.ai.provider.ModelType
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.ArrowRight01
+import me.rerere.hugeicons.stroke.Add01
 import me.rerere.hugeicons.stroke.Cancel01
 import me.rerere.rikkahub.Screen
 import me.rerere.rikkahub.data.automation.AutomationAlarms
@@ -126,6 +128,7 @@ fun AutomationEditorPage(taskId: String?) {
     val definition = draft?.let { JsonInstant.decodeFromString<TaskDefinition>(it) }
     fun change(value: TaskDefinition) { draft = JsonInstant.encodeToString(value) }
     var picker by remember { mutableStateOf<String?>(null) }
+    var editingTime by rememberSaveable(taskId) { mutableStateOf<Long?>(null) }
     var target by remember { mutableStateOf<Conversation?>(null) }
     LaunchedEffect(definition?.conversationId) {
         target = definition?.conversationId?.let { conversations.getConversationById(Uuid.parse(it)) }
@@ -218,7 +221,12 @@ fun AutomationEditorPage(taskId: String?) {
                 CardGroup(title = { Text("时间安排") }) {
                     formItem {
                         ConnectedChoiceButtons(options = ScheduleKind.entries, selected = schedule.kind,
-                            onSelect = { change(definition.copy(schedule = schedule.copy(kind = it))) }) { kind, selected ->
+                            onSelect = { kind ->
+                                val updated = if (kind == ScheduleKind.ONCE && schedule.onceTimes.none { it > 0 }) {
+                                    schedule.copy(kind = kind, at = System.currentTimeMillis() + 3_600_000, atTimes = emptyList())
+                                } else schedule.copy(kind = kind)
+                                change(definition.copy(schedule = updated))
+                            }) { kind, selected ->
                             ConnectedChoiceLabel(scheduleLabel(kind), selected)
                         }
                         if (schedule.kind == ScheduleKind.INTERVAL) {
@@ -228,14 +236,32 @@ fun AutomationEditorPage(taskId: String?) {
                             }, label = { Text("间隔（分钟）") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                 isError = !intervalValid, singleLine = true, supportingText = { Text("至少 15 分钟") }, modifier = Modifier.fillMaxWidth())
                         } else {
-                            val minutes = if (schedule.kind == ScheduleKind.ONCE) Instant.ofEpochMilli(schedule.at).atZone(ZoneId.systemDefault()).let { it.hour * 60 + it.minute } else schedule.timeMinutes
-                            val time = "%02d:%02d".format(java.util.Locale.ROOT, minutes / 60, minutes % 60)
-                            if (schedule.kind == ScheduleKind.ONCE) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                FilledTonalButton(onClick = { picker = "onceDate" }, modifier = Modifier.weight(1f)) {
-                                    Text(Instant.ofEpochMilli(schedule.at).atZone(ZoneId.systemDefault()).toLocalDate().toString())
+                            val once = schedule.kind == ScheduleKind.ONCE
+                            val zone = ZoneId.systemDefault()
+                            val date = Instant.ofEpochMilli(schedule.onceTimes.first()).atZone(zone).toLocalDate()
+                            val times = if (once) schedule.onceTimes else schedule.recurringTimes.map(Int::toLong)
+                            if (once) TaskSettingRow("执行日期", date.toString(), { picker = "onceDate" })
+                            Text("执行时间", style = MaterialTheme.typography.labelLarge)
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                times.forEach { value ->
+                                    val local = if (once) Instant.ofEpochMilli(value).atZone(zone) else null
+                                    val minutes = local?.let { it.hour * 60 + it.minute } ?: value.toInt()
+                                    val time = "%02d:%02d".format(java.util.Locale.ROOT, minutes / 60, minutes % 60)
+                                    val label = if (local != null && local.toLocalDate() != date) "${local.toLocalDate()} $time" else time
+                                    InputChip(selected = false, onClick = { editingTime = value; picker = "time" }, label = { Text(label) },
+                                        trailingIcon = if (times.size > 1) { {
+                                            IconButton(onClick = {
+                                                val remaining = times.filterNot { it == value }
+                                                change(definition.copy(schedule = if (once) schedule.withOnceTimes(remaining)
+                                                    else schedule.withRecurringTimes(remaining.map(Long::toInt))))
+                                            }, modifier = Modifier.size(24.dp)) { Icon(HugeIcons.Cancel01, "删除执行时间 $label", modifier = Modifier.size(16.dp)) }
+                                        } } else null)
                                 }
-                                FilledTonalButton(onClick = { picker = "time" }, modifier = Modifier.weight(1f)) { Text(time) }
-                            } else TaskSettingRow("执行时间", time, { picker = "time" })
+                                TextButton(onClick = { editingTime = null; picker = "time" }) {
+                                    Icon(HugeIcons.Add01, null, modifier = Modifier.size(18.dp))
+                                    Text("添加时间", modifier = Modifier.padding(start = 4.dp))
+                                }
+                            }
                         }
                         if (schedule.kind == ScheduleKind.WEEKLY) ConnectedMultiChoiceButtons(options = (1..7).toList(), selected = schedule.weekdays,
                             onToggle = { day, checked -> change(definition.copy(schedule = schedule.copy(weekdays = if (checked) schedule.weekdays + day else schedule.weekdays - day))) },
@@ -272,7 +298,7 @@ fun AutomationEditorPage(taskId: String?) {
         if (picker in setOf("onceDate", "startDate", "endDate")) {
             val schedule = definition.schedule
             val initial = when (picker) {
-                "onceDate" -> Instant.ofEpochMilli(schedule.at).atZone(ZoneId.systemDefault()).toLocalDate()
+                "onceDate" -> Instant.ofEpochMilli(schedule.onceTimes.first()).atZone(ZoneId.systemDefault()).toLocalDate()
                 "startDate" -> schedule.startDate?.let(LocalDate::parse)
                 else -> schedule.endDate?.let(LocalDate::parse)
             } ?: LocalDate.now()
@@ -283,21 +309,39 @@ fun AutomationEditorPage(taskId: String?) {
                     change(definition.copy(schedule = when (picker) {
                         "startDate" -> schedule.copy(startDate = date.toString())
                         "endDate" -> schedule.copy(endDate = date.toString())
-                        else -> schedule.copy(at = date.atTime(Instant.ofEpochMilli(schedule.at).atZone(ZoneId.systemDefault()).toLocalTime()).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli())
+                        else -> schedule.withOnceTimes(schedule.onceTimes.map { value ->
+                            date.atTime(Instant.ofEpochMilli(value).atZone(ZoneId.systemDefault()).toLocalTime())
+                                .atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+                        })
                     }))
                 }; picker = null
             }) { Text("确定") } }, dismissButton = { TextButton(onClick = { picker = null }) { Text("取消") } }) { DatePicker(state) }
         }
         if (picker == "time") {
             val schedule = definition.schedule
-            val local = Instant.ofEpochMilli(schedule.at).atZone(ZoneId.systemDefault())
-            val minutes = if (schedule.kind == ScheduleKind.ONCE) local.hour * 60 + local.minute else schedule.timeMinutes
+            val once = schedule.kind == ScheduleKind.ONCE
+            val zone = ZoneId.systemDefault()
+            val local = Instant.ofEpochMilli(if (once) editingTime ?: schedule.onceTimes.first() else schedule.at).atZone(zone)
+            val last = if (once) Instant.ofEpochMilli(schedule.onceTimes.last()).atZone(zone).let { it.hour * 60 + it.minute }
+                else schedule.recurringTimes.last()
+            val minutes = editingTime?.let { if (once) local.hour * 60 + local.minute else it.toInt() } ?: (last + 60) % 1440
             val state = rememberTimePickerState(minutes / 60, minutes % 60, is24Hour = true)
-            AlertDialog(onDismissRequest = { picker = null }, confirmButton = { TextButton(onClick = {
-                change(definition.copy(schedule = if (schedule.kind == ScheduleKind.ONCE) schedule.copy(at = local.toLocalDate().atTime(state.hour, state.minute)
-                    .atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()) else schedule.copy(timeMinutes = state.hour * 60 + state.minute)))
+            val selectedMinutes = state.hour * 60 + state.minute
+            val selectedDateTime = local.toLocalDate().atTime(state.hour, state.minute).atZone(zone)
+            val duplicate = if (once) schedule.onceTimes.any { it != editingTime &&
+                Instant.ofEpochMilli(it).atZone(zone).toLocalDateTime().withSecond(0).withNano(0) == selectedDateTime.toLocalDateTime() }
+                else schedule.recurringTimes.any { it.toLong() != editingTime && it == selectedMinutes }
+            AlertDialog(onDismissRequest = { picker = null }, confirmButton = { TextButton(enabled = !duplicate, onClick = {
+                val updated = if (once) schedule.withOnceTimes(schedule.onceTimes.filterNot { it == editingTime } + selectedDateTime.toInstant().toEpochMilli())
+                    else schedule.withRecurringTimes(schedule.recurringTimes.filterNot { it.toLong() == editingTime } + selectedMinutes)
+                change(definition.copy(schedule = updated))
                 picker = null
-            }) { Text("确定") } }, dismissButton = { TextButton(onClick = { picker = null }) { Text("取消") } }, text = { TimePicker(state) })
+            }) { Text("确定") } }, dismissButton = { TextButton(onClick = { picker = null }) { Text("取消") } }, text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TimePicker(state)
+                    if (duplicate) Text("该时间已存在", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                }
+            })
         }
     }
     AutomationError(error) { error = null }
@@ -317,4 +361,4 @@ private fun TaskSettingRow(label: String, value: String, onClick: () -> Unit, on
 }
 
 internal fun modeLabel(mode: TaskMode) = when (mode) { TaskMode.NEW_CHAT -> "新建聊天"; TaskMode.FOLLOW_UP -> "继续聊天"; TaskMode.REGENERATE -> "重新生成" }
-internal fun scheduleLabel(kind: ScheduleKind) = when (kind) { ScheduleKind.ONCE -> "单次"; ScheduleKind.DAILY -> "每天"; ScheduleKind.WEEKLY -> "每周"; ScheduleKind.INTERVAL -> "间隔" }
+internal fun scheduleLabel(kind: ScheduleKind) = when (kind) { ScheduleKind.ONCE -> "指定日期"; ScheduleKind.DAILY -> "每天"; ScheduleKind.WEEKLY -> "每周"; ScheduleKind.INTERVAL -> "间隔" }

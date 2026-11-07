@@ -58,7 +58,8 @@ suspend fun createAutomationTools(
             definition fields: name, prompt, mode (NEW_CHAT/FOLLOW_UP/REGENERATE), conversationId, userMessageId, modelId, notify, resetContextBeforeRun, schedule.
             NEW_CHAT starts a chat; FOLLOW_UP appends to conversationId when idle; REGENERATE copies the selected user message and preceding context into a NEW chat (prompt can be empty).
             resetContextBeforeRun defaults false and is allowed only for FOLLOW_UP. When true, every run permanently deletes the target chat's previous messages, branches and compression summaries before sending the prompt, keeping chat settings and only the current run's records. Enable only when the human explicitly requests clearing previous chat records.
-            schedule fields: kind (ONCE/DAILY/WEEKLY/INTERVAL), at (ONCE Unix epoch milliseconds), timeMinutes (minutes after midnight), intervalMinutes (>=15), weekdays (1=Mon..7=Sun), startDate/endDate (inclusive yyyy-MM-dd, nullable).
+            schedule fields: kind (ONCE/DAILY/WEEKLY/INTERVAL), at (one ONCE Unix epoch millisecond instant), atTimes (optional ONCE array of Unix epoch millisecond instants), timeMinutes (one recurring time, minutes after midnight), timesMinutes (optional DAILY/WEEKLY array of minutes after midnight), intervalMinutes (>=15), weekdays (1=Mon..7=Sun), startDate/endDate (inclusive yyyy-MM-dd, nullable).
+            Multiple times belong to ONE task: DAILY at 10:00 and 18:00 uses timesMinutes=[600,1080]; WEEKLY also sets weekdays. For several runs on a chosen date, use ONCE with atTimes containing those absolute instants. Nonempty arrays take precedence over their scalar at/timeMinutes; repeated and unordered times are sorted and deduplicated for scheduling. ONCE stops after its last instant. Do not create separate tasks for each time unless requested.
             Defaults: DAILY at 09:00, interval 1440 minutes, weekdays Mon-Fri. Requires exact-alarm access to enable; enabled=false saves a draft. run does not change future scheduling.
             After denial, do not retry without a new human request. ${if (scheduled) "This is a scheduled execution: ONLY READ ACTIONS ARE AVAILABLE." else ""}
         """.trimIndent(),
@@ -99,7 +100,9 @@ suspend fun createAutomationTools(
                             put("properties", buildJsonObject {
                                 put("kind", field("string"))
                                 listOf("at", "timeMinutes", "intervalMinutes").forEach { put(it, field("integer")) }
-                                put("weekdays", buildJsonObject { put("type", "array"); put("items", field("integer")) })
+                                listOf("weekdays", "timesMinutes", "atTimes").forEach {
+                                    put(it, buildJsonObject { put("type", "array"); put("items", field("integer")) })
+                                }
                                 listOf("startDate", "endDate").forEach {
                                     put(it, buildJsonObject { put("type", buildJsonArray { add("string"); add("null") }) })
                                 }

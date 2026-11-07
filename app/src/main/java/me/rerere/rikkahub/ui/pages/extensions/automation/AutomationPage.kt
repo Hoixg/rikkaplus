@@ -98,7 +98,7 @@ fun AutomationPage() {
             if (tasks.isEmpty()) item {
                 Card { Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("让助手按时完成工作", style = MaterialTheme.typography.titleLarge)
-                    Text("按单次、每天、每周或固定间隔执行；结果保存在聊天中。", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("按指定日期、每天、每周或固定间隔执行，支持一天多个时间点；结果保存在聊天中。", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 } }
             }
             items(tasks, key = { it.id }) { task ->
