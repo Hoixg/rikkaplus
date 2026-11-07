@@ -49,7 +49,9 @@ internal fun Settings.withBuiltInDefaults(): Settings {
             )
         } else if (provider.id in REMOVED_RELAY_PRESETS) {
             provider.copyProvider(builtIn = false, description = {}, shortDescription = {})
-        } else provider
+        } else {
+            provider
+        }
     }.toMutableList()
     val assistants = this.assistants.ifEmpty { DEFAULT_ASSISTANTS }.toMutableList()
     DEFAULT_ASSISTANTS.forEach { defaultAssistant ->
@@ -70,7 +72,11 @@ internal fun Settings.withBuiltInDefaults(): Settings {
         ttsProviders = ttsProviders,
         selectedTTSProviderId = if (selectedTTSProviderId == REMOVED_RELAY_TTS_ID &&
             ttsProviders.none { it.id == selectedTTSProviderId }
-        ) DEFAULT_SYSTEM_TTS_ID else selectedTTSProviderId,
+        ) {
+            DEFAULT_SYSTEM_TTS_ID
+        } else {
+            selectedTTSProviderId
+        },
     )
 }
 
@@ -112,7 +118,7 @@ internal fun Settings.withoutInvalidReferences(): Settings {
         selectedASRProviderId = settings.selectedASRProviderId
             ?.takeIf { id -> asrProviders.any { provider -> provider.id == id } }
             ?: asrProviders.firstOrNull()?.id,
-        favoriteModels = settings.favoriteModels.filter { it in validModelIds },
+        favoriteModels = settings.favoriteModels.filter { it in validModelIds }.distinct(),
         modeInjections = settings.modeInjections.distinctBy { it.id },
         lorebooks = settings.lorebooks.distinctBy { it.id },
         quickMessages = settings.quickMessages.distinctBy { it.id },

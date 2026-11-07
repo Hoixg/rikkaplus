@@ -355,7 +355,6 @@
   <string name="favorite_page_title">Favorites</string>
   <string name="favorite_page_untitled_conversation">Untitled Conversation</string>
   <string name="history_page_cancel">Cancel</string>
-  <string name="history_page_conversation_deleted">Conversation deleted</string>
   <string name="history_page_delete">Delete</string>
   <string name="history_page_delete_all">Delete All</string>
   <string name="history_page_delete_all_confirmation">Are you sure you want to delete all conversations? This action cannot be undone.</string>
@@ -1703,6 +1702,14 @@
   <string name="workspace_ssh_editor_missing_fields">Enter the host, port and username</string>
   <string name="workspace_ssh_editor_missing_remote_dir">Enter the remote working directory</string>
   <string name="workspace_ssh_editor_save_failed">Failed to save</string>
+  <string name="workspace_ssh_editor_jump_host">Jump host</string>
+  <string name="workspace_ssh_editor_jump_host_enable">Connect through a jump host</string>
+  <string name="workspace_ssh_editor_jump_host_enable_desc">Connect to a jump host first and reach the server through it, like ProxyJump in OpenSSH. The host above is resolved from the jump host</string>
+  <string name="workspace_ssh_editor_jump_host_key">Jump host key</string>
+  <string name="workspace_ssh_editor_target_host_key">Server host key</string>
+  <string name="workspace_ssh_editor_jump_host_key_confirm">Confirm jump host key</string>
+  <string name="workspace_ssh_editor_jump_host_key_changed">Jump host key changed</string>
+  <string name="workspace_ssh_editor_missing_jump_fields">Enter the host, port and username of the jump host</string>
   <string name="skills_page_invalid_dirs_title">Unrecognized folders</string>
   <string name="skills_page_invalid_reason_missing_skill_md">Missing SKILL.md</string>
   <string name="skills_page_invalid_reason_missing_name">SKILL.md is missing the name field</string>
@@ -1851,4 +1858,14 @@
   <string name="notification_background_shell_running">Background commands running: %1$d</string>
   <string name="background_shell_notice_exited">Background command exited with code %1$d: %2$s</string>
   <string name="background_shell_notice_stopped">Background command stopped by you: %1$s</string>
+  <string name="history_page_select">Select</string>
+  <string name="history_page_selected_count">%1$d selected</string>
+  <string name="history_page_exit_selection">Exit selection</string>
+  <string name="history_page_delete_selected_text">The %1$d selected conversations will be deleted. This can\'t be undone.</string>
+  <string name="chat_page_conversation_map">Conversation map</string>
+  <string name="chat_page_delete_conversation_confirm">Delete this conversation? This cannot be undone.</string>
+  <string name="chat_page_export_failed">Export failed: %1$s</string>
+  <string name="chat_page_select_all">Select all</string>
+  <string name="chat_page_deselect_all">Deselect all</string>
+  <string name="chat_page_clear_selection">Clear selection</string>
 </resources>

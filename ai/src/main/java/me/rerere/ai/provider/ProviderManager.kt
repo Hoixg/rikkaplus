@@ -1,10 +1,12 @@
 package me.rerere.ai.provider
 
+import android.content.Context
 import me.rerere.ai.provider.providers.chatgpt.ChatGPTProvider
 import me.rerere.ai.provider.providers.claude.ClaudeProvider
 import me.rerere.ai.provider.providers.google.GoogleProvider
 import me.rerere.ai.provider.providers.grok.GrokProvider
 import me.rerere.ai.provider.providers.openai.OpenAIProvider
+import me.rerere.ai.util.ImageEncodeCache
 import okhttp3.OkHttpClient
 
 /**
@@ -12,12 +14,15 @@ import okhttp3.OkHttpClient
  */
 class ProviderManager(
     client: OkHttpClient,
+    context: Context,
     accountCredentials: AccountCredentialProvider,
 ) {
     // 存储已注册的Provider实例
     private val providers = mutableMapOf<String, Provider<*>>()
 
     init {
+        ImageEncodeCache.init(context.cacheDir)
+
         // 注册默认Provider
         registerProvider("openai", OpenAIProvider(client))
         registerProvider("google", GoogleProvider(client))
