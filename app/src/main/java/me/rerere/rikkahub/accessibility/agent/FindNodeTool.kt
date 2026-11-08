@@ -16,7 +16,6 @@ import kotlinx.serialization.json.put
 import me.rerere.ai.core.InputSchema
 import me.rerere.ai.core.Tool
 import me.rerere.ai.ui.UIMessagePart
-import me.rerere.rikkahub.accessibility.ActionLogEntry
 import me.rerere.rikkahub.accessibility.PhoneAccessibilityService
 
 private val ALLOWED_BY = setOf("text", "content_description", "view_id_resource_name")
@@ -151,14 +150,6 @@ fun findNodeTool(): Tool = Tool(
                 }
             }
             val (matches, truncated) = findMatchesUnified(svc, root, by, value)
-            svc.appendLog(
-                ActionLogEntry(
-                    type = "find_node",
-                    paramsSummary = "$by=\"${value.take(40)}\" -> ${matches.size}",
-                    success = true,
-                    timestampMs = System.currentTimeMillis(),
-                )
-            )
             buildJsonObject {
                 put("matches", buildJsonArray {
                     matches.forEach { m -> add(nodeToJson(m.node, root.windowId, m.traversalIndex)) }
@@ -280,15 +271,6 @@ fun clickNodeTool(): Tool = Tool(
                 val clickable = svc.resolveClickable(target)
                     ?: return@withActionEnvelope buildJsonObject { put("error", "no_clickable_ancestor") }
                 val ok = clickable.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                svc.appendLog(
-                    ActionLogEntry(
-                        type = "click_node",
-                        paramsSummary =
-                        (rawNodeId ?: "$by=\"${value?.take(40)}\" nth=$nth") + " -> " + if (ok) "ok" else "fail",
-                        success = ok,
-                        timestampMs = System.currentTimeMillis(),
-                    )
-                )
                 buildJsonObject {
                     put("success", ok)
                     put("clicked", buildJsonObject {
@@ -464,14 +446,6 @@ fun setTextTool(): Tool = Tool(
                     )
                 }
                 val ok = editable.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
-                svc.appendLog(
-                    ActionLogEntry(
-                        type = "set_text",
-                        paramsSummary = (rawNodeId ?: "$by=\"${value?.take(30)}\"") + " -> set_text",
-                        success = ok,
-                        timestampMs = System.currentTimeMillis(),
-                    )
-                )
                 buildJsonObject {
                     put("success", ok)
                     if (!ok) put("reason", "action_rejected")

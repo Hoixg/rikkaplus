@@ -830,8 +830,6 @@
   <string name="setting_page_preferences_network_proxy_invalid">Enter a valid proxy URL with a host and port.</string>
   <string name="setting_page_preferences_network_auto_retry">Automatic retry</string>
   <string name="setting_page_preferences_network_auto_retry_desc">Retry model requests up to 3 times when network errors occur.</string>
-  <string name="setting_page_documentation">Documentation</string>
-  <string name="setting_page_documentation_desc">View app usage instructions and help documentation</string>
   <string name="setting_page_dynamic_color">Dynamic Color</string>
   <string name="setting_page_dynamic_color_desc">Generate the app theme colors dynamically from your wallpaper</string>
   <string name="setting_page_extensions">Extensions</string>
@@ -1868,4 +1866,8 @@
   <string name="chat_page_select_all">Select all</string>
   <string name="chat_page_deselect_all">Deselect all</string>
   <string name="chat_page_clear_selection">Clear selection</string>
+  <string name="setting_page_preferences_notification_floating_style">Floating Window Style</string>
+  <string name="setting_page_preferences_notification_floating_style_original">Original</string>
+  <string name="setting_page_preferences_notification_floating_style_minimal">Minimal</string>
+  <string name="setting_page_preferences_notification_floating_style_pending">Minimal mode is still being designed and is not available yet.</string>
 </resources>

@@ -13,7 +13,6 @@ import kotlinx.serialization.json.put
 import me.rerere.ai.core.InputSchema
 import me.rerere.ai.core.Tool
 import me.rerere.ai.ui.UIMessagePart
-import me.rerere.rikkahub.accessibility.ActionLogEntry
 
 private const val DEFAULT_LONG_PRESS_MS = 600L
 
@@ -79,14 +78,6 @@ fun tapTool(): Tool = Tool(
                     .addStroke(GestureDescription.StrokeDescription(path, 0L, 50L))
                     .build()
                 val ok = svc.dispatchGestureAsync(gesture)
-                svc.appendLog(
-                    ActionLogEntry(
-                        type = "tap",
-                        paramsSummary = "(${x.toInt()}, ${y.toInt()})",
-                        success = ok,
-                        timestampMs = System.currentTimeMillis(),
-                    )
-                )
                 buildJsonObject {
                     put("success", ok)
                     if (!ok) put("reason", "gesture_cancelled_or_timeout")
@@ -165,14 +156,6 @@ fun longPressTool(): Tool = Tool(
                     .addStroke(GestureDescription.StrokeDescription(path, 0L, durationRaw))
                     .build()
                 val ok = svc.dispatchGestureAsync(gesture)
-                svc.appendLog(
-                    ActionLogEntry(
-                        type = "long_press",
-                        paramsSummary = "(${x.toInt()}, ${y.toInt()}) ${durationRaw}ms",
-                        success = ok,
-                        timestampMs = System.currentTimeMillis(),
-                    )
-                )
                 buildJsonObject {
                     put("success", ok)
                     if (!ok) put("reason", "gesture_cancelled_or_timeout")

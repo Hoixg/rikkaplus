@@ -13,7 +13,6 @@ import kotlinx.serialization.json.put
 import me.rerere.ai.core.InputSchema
 import me.rerere.ai.core.Tool
 import me.rerere.ai.ui.UIMessagePart
-import me.rerere.rikkahub.accessibility.ActionLogEntry
 
 private const val DEFAULT_SWIPE_MS = 300L
 
@@ -100,14 +99,6 @@ fun swipeTool(): Tool = Tool(
                     .addStroke(GestureDescription.StrokeDescription(path, 0L, duration))
                     .build()
                 val ok = svc.dispatchGestureAsync(gesture)
-                svc.appendLog(
-                    ActionLogEntry(
-                        type = "swipe",
-                        paramsSummary = "(${sx.toInt()},${sy.toInt()})->(${ex.toInt()},${ey.toInt()}) ${duration}ms",
-                        success = ok,
-                        timestampMs = System.currentTimeMillis(),
-                    )
-                )
                 buildJsonObject {
                     put("success", ok)
                     if (!ok) put("reason", "gesture_cancelled_or_timeout")

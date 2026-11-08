@@ -21,7 +21,6 @@ import kotlinx.serialization.json.put
 import me.rerere.ai.core.InputSchema
 import me.rerere.ai.core.Tool
 import me.rerere.ai.ui.UIMessagePart
-import me.rerere.rikkahub.accessibility.ActionLogEntry
 import me.rerere.rikkahub.accessibility.PhoneAccessibilityService
 
 private val ALLOWED_DIRECTIONS = setOf("up", "down", "left", "right")
@@ -107,7 +106,6 @@ fun scrollTool(
                     findFirstScrollable(root)
                 }
 
-                var usedFallback = false
                 val ok = if (target != null) {
                     val action = when (direction) {
                         "down" -> AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
@@ -120,21 +118,11 @@ fun scrollTool(
                         target.performAction(action)
                     } else {
                         // Container does not support this axis; fall back to a direction-true swipe.
-                        usedFallback = true
                         dispatchFallbackSwipe(svc, root, direction)
                     }
                 } else {
-                    usedFallback = true
                     dispatchFallbackSwipe(svc, root, direction)
                 }
-                svc.appendLog(
-                    ActionLogEntry(
-                        type = "scroll",
-                        paramsSummary = "$direction" + (if (!usedFallback) " (node)" else " (fallback swipe)"),
-                        success = ok,
-                        timestampMs = System.currentTimeMillis(),
-                    )
-                )
                 buildJsonObject {
                     put("success", ok)
                     if (!ok) put("reason", "no_scroll_action_accepted")

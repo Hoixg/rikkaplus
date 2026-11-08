@@ -1,5 +1,13 @@
 package me.rerere.rikkahub.ui.components.ai
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -32,12 +40,15 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import kotlin.uuid.Uuid
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.hugeicons.HugeIcons
@@ -76,6 +87,9 @@ internal fun MessageQueuePanel(
         if (fromMessage != null && toMessage != null) move(fromMessage.id, toMessage.id)
     }
     val haptic = LocalHapticFeedback.current
+    val actionsSpatialSpec = MaterialTheme.motionScheme.fastSpatialSpec<IntOffset>()
+    val actionsEffectsSpec = MaterialTheme.motionScheme.fastEffectsSpec<Float>()
+    val actionsSizeSpec = MaterialTheme.motionScheme.fastSpatialSpec<IntSize>()
     DisposableEffect(Unit) {
         onDispose {
             if (draggingId != null) {
@@ -115,6 +129,11 @@ internal fun MessageQueuePanel(
                         state.messages,
                         key = { _, message -> message.id.toString() }) { index, message ->
                         var showActions by remember(message.id) { mutableStateOf(false) }
+                        val actionsRotation by animateFloatAsState(
+                            targetValue = if (showActions) 90f else 0f,
+                            animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
+                            label = "queueActionsRotation",
+                        )
                         val interactionSource = remember(message.id) { MutableInteractionSource() }
                         DisposableEffect(message.id) {
                             onDispose {
@@ -162,29 +181,46 @@ internal fun MessageQueuePanel(
                                     maxLines = 2,
                                     overflow = TextOverflow.Ellipsis,
                                 )
-                                if (showActions) {
-                                    TextButton(
-                                        enabled = !message.isEditing && draggingId == null,
-                                        onClick = { editing = onBeginEdit(message.id) },
+                                AnimatedContent(
+                                    targetState = showActions,
+                                    contentAlignment = Alignment.CenterEnd,
+                                    transitionSpec = {
+                                        val direction = if (targetState) 1 else -1
+                                        (fadeIn(actionsEffectsSpec) + slideInHorizontally(actionsSpatialSpec) { it * direction / 6 }) togetherWith
+                                            (fadeOut(actionsEffectsSpec) + slideOutHorizontally(actionsSpatialSpec) { -it * direction / 6 }) using
+                                            SizeTransform(sizeAnimationSpec = { _, _ -> actionsSizeSpec })
+                                    },
+                                    label = "queueActions",
+                                ) { expanded ->
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
                                     ) {
-                                        Text(stringResource(
-                                            if (message.isEditing) R.string.chat_page_queue_editing else R.string.edit,
-                                        ))
+                                        if (expanded) {
+                                            TextButton(
+                                                enabled = showActions && !message.isEditing && draggingId == null,
+                                                onClick = { editing = onBeginEdit(message.id) },
+                                            ) {
+                                                Text(stringResource(
+                                                    if (message.isEditing) R.string.chat_page_queue_editing else R.string.edit,
+                                                ))
+                                            }
+                                            TextButton(
+                                                enabled = showActions && !message.isEditing && draggingId == null,
+                                                onClick = { onRemove(message.id) },
+                                            ) { Text(stringResource(R.string.delete)) }
+                                            TextButton(
+                                                enabled = showActions && !message.isEditing && draggingId == null && canRestoreDraft,
+                                                onClick = { onCancel(message.id) },
+                                                modifier = Modifier.testTag("chat_queue_cancel_${message.id}"),
+                                            ) { Text(stringResource(R.string.cancel)) }
+                                        } else {
+                                            FilledTonalButton(
+                                                enabled = !showActions && !message.isEditing && draggingId == null,
+                                                onClick = { onSend(message.id) },
+                                            ) { Text(stringResource(R.string.send)) }
+                                        }
                                     }
-                                    TextButton(
-                                        enabled = !message.isEditing && draggingId == null,
-                                        onClick = { onRemove(message.id) },
-                                    ) { Text(stringResource(R.string.delete)) }
-                                    TextButton(
-                                        enabled = !message.isEditing && draggingId == null && canRestoreDraft,
-                                        onClick = { onCancel(message.id) },
-                                        modifier = Modifier.testTag("chat_queue_cancel_${message.id}"),
-                                    ) { Text(stringResource(R.string.cancel)) }
-                                } else {
-                                    FilledTonalButton(
-                                        enabled = !message.isEditing && draggingId == null,
-                                        onClick = { onSend(message.id) },
-                                    ) { Text(stringResource(R.string.send)) }
                                 }
                                 IconToggleButton(
                                     checked = showActions,
@@ -213,7 +249,7 @@ internal fun MessageQueuePanel(
                                             if (state.messages.size > 1) R.string.chat_page_queue_more_and_reorder
                                             else R.string.more_options,
                                         ),
-                                        modifier = Modifier.size(20.dp),
+                                        modifier = Modifier.size(20.dp).rotate(actionsRotation),
                                     )
                                 }
                             }

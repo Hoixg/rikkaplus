@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.offset
@@ -41,6 +42,8 @@ import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.ToggleButton
+import androidx.compose.material3.ToggleButtonDefaults
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -51,6 +54,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import me.rerere.hugeicons.HugeIcons
@@ -103,18 +109,40 @@ internal fun <T> CardGroupScope.backupContentItem(
     headlineContent = { Text(stringResource(R.string.backup_page_backup_items)) },
     supportingContent = { Text(stringResource(R.string.backup_page_workspace_files_desc)) },
 ) {
-    ConnectedMultiChoiceButtons(
-        options = options,
-        selected = selected,
-        onToggle = { option, checked ->
-            onChange(if (checked) selected + option else selected - option)
-        },
-    ) { option, isSelected ->
-        ConnectedChoiceLabel(
-            text = label(option),
-            selected = isSelected,
-            icon = HugeIcons.Tick01,
-        )
+    val toggle = { option: T, checked: Boolean ->
+        onChange(if (checked) selected + option else selected - option)
+    }
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        ConnectedMultiChoiceButtons(
+            options = options.take(2),
+            selected = selected,
+            onToggle = toggle,
+        ) { option, isSelected ->
+            ConnectedChoiceLabel(
+                text = label(option),
+                selected = isSelected,
+                icon = HugeIcons.Tick01,
+            )
+        }
+        options.drop(2).forEach { option ->
+            val isSelected = option in selected
+            ToggleButton(
+                checked = isSelected,
+                onCheckedChange = { toggle(option, it) },
+                modifier = Modifier.heightIn(min = 48.dp).semantics { role = Role.Checkbox },
+                colors = ToggleButtonDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+            ) {
+                if (isSelected) {
+                    Icon(HugeIcons.Tick01, contentDescription = null, modifier = Modifier.size(ToggleButtonDefaults.IconSize))
+                    Spacer(Modifier.width(ToggleButtonDefaults.IconSpacing))
+                }
+                Text(text = label(option), textAlign = TextAlign.Center)
+            }
+        }
     }
 }
 

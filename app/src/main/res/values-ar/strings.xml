@@ -922,8 +922,6 @@
   <string name="setting_page_default_model_desc">تعيين النماذج الافتراضية لكل ميزة</string>
   <string name="setting_page_display_setting">إعدادات العرض</string>
   <string name="setting_page_display_setting_desc">إدارة إعدادات العرض</string>
-  <string name="setting_page_documentation">التوثيق</string>
-  <string name="setting_page_documentation_desc">عرض إرشادات استخدام التطبيق ووثائق المساعدة</string>
   <string name="setting_page_dynamic_color">الألوان الديناميكية</string>
   <string name="setting_page_dynamic_color_desc">توليد ألوان سمة التطبيق ديناميكيًا من خلفية الشاشة</string>
   <string name="setting_page_extensions">الإضافات</string>

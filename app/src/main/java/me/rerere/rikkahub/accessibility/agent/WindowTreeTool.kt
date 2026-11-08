@@ -18,7 +18,6 @@ import kotlinx.serialization.json.put
 import me.rerere.ai.core.InputSchema
 import me.rerere.ai.core.Tool
 import me.rerere.ai.ui.UIMessagePart
-import me.rerere.rikkahub.accessibility.ActionLogEntry
 
 private const val DEFAULT_MAX_NODES = 500
 private const val MAX_NODES_HARD_CEILING = 2000
@@ -89,14 +88,6 @@ fun readWindowTreeTool(
         val payload = AccessibilityServiceHandle.withService { svc ->
             val root = svc.rootInActiveWindow
             if (root == null) {
-                svc.appendLog(
-                    ActionLogEntry(
-                        type = "read_window_tree",
-                        paramsSummary = "no_active_window",
-                        success = false,
-                        timestampMs = System.currentTimeMillis(),
-                    )
-                )
                 return@withService buildJsonObject {
                     put("error", "no_active_window")
                     put("nodes", buildJsonArray { })
@@ -104,14 +95,6 @@ fun readWindowTreeTool(
             }
             val pkg = root.packageName?.toString().orEmpty()
             if (pkgFilter != null && pkgFilter != pkg) {
-                svc.appendLog(
-                    ActionLogEntry(
-                        type = "read_window_tree",
-                        paramsSummary = "wrong_pkg current=$pkg",
-                        success = false,
-                        timestampMs = System.currentTimeMillis(),
-                    )
-                )
                 return@withService buildJsonObject {
                     put("error", "wrong_foreground_app")
                     put("current", pkg)
@@ -119,21 +102,13 @@ fun readWindowTreeTool(
                 }
             }
             val nodes = mutableListOf<JsonObject>()
-            val (emitted, seen, truncated) = svc.traverseTree(
+            val (_, seen, truncated) = svc.traverseTree(
                 root = root,
                 filter = if (verbose) ({ _, _ -> true }) else (::defaultFilter),
                 cap = maxNodes,
                 emit = { n, _, idx ->
                     nodes.add(nodeToJson(n, root.windowId, idx))
                 }
-            )
-            svc.appendLog(
-                ActionLogEntry(
-                    type = "read_window_tree",
-                    paramsSummary = "$emitted/$seen nodes, pkg=$pkg" + if (verbose) ", verbose" else "",
-                    success = true,
-                    timestampMs = System.currentTimeMillis(),
-                )
             )
             buildJsonObject {
                 put("nodes", buildJsonArray { nodes.forEach { add(it) } })

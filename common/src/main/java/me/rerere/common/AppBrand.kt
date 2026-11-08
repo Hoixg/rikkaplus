@@ -9,8 +9,6 @@ object AppBrand {
     const val UPDATE_API_URL = "https://api.github.com/repos/$REPOSITORY/releases?per_page=100"
     const val SOURCE_URL = "$PROJECT_URL/tree/1.0"
     const val LICENSE_URL = "$PROJECT_URL/blob/1.0/LICENSE"
-    const val DOCUMENTATION_URL = "$PROJECT_URL/blob/1.0/README.md"
-    const val DOCUMENTATION_ZH_URL = "$PROJECT_URL/blob/1.0/README_ZH_CN.md"
 
     fun defaultUserAgent(version: String): String = "$NAME-Android/$version"
 }

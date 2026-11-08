@@ -13,6 +13,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.MaterialTheme
@@ -37,6 +38,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Add01
 import me.rerere.hugeicons.stroke.CloudServer
+import me.rerere.hugeicons.stroke.Clean
 import me.rerere.hugeicons.stroke.Delete01
 import me.rerere.hugeicons.stroke.FolderCode
 import me.rerere.hugeicons.stroke.PencilEdit01
@@ -58,9 +60,13 @@ import me.rerere.ui.components.RikkaConfirmDialog
 import org.koin.androidx.compose.koinViewModel
 
 @Composable
-fun WorkspacePage(vm: WorkspaceVM = koinViewModel()) {
+fun WorkspacePage(
+    vm: WorkspaceVM = koinViewModel(),
+    environmentCleanupVM: EnvironmentCleanupVM = koinViewModel(),
+) {
     val navController = LocalNavController.current
     val workspaces by vm.workspaces.collectAsStateWithLifecycle()
+    val environmentCleanup by environmentCleanupVM.state.collectAsStateWithLifecycle()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     var showTypeSheet by rememberSaveable { mutableStateOf(false) }
     var showAddDialog by rememberSaveable { mutableStateOf(false) }
@@ -72,6 +78,11 @@ fun WorkspacePage(vm: WorkspaceVM = koinViewModel()) {
             LargeFlexibleTopAppBar(
                 title = { Text(stringResource(R.string.workspace_page_title)) },
                 navigationIcon = { BackButton() },
+                actions = {
+                    IconButton(onClick = environmentCleanupVM::open) {
+                        Icon(HugeIcons.Clean, contentDescription = stringResource(R.string.workspace_cleanup_title))
+                    }
+                },
                 scrollBehavior = scrollBehavior,
                 colors = CustomColors.topBarColors,
             )
@@ -108,6 +119,15 @@ fun WorkspacePage(vm: WorkspaceVM = koinViewModel()) {
                 )
             }
         }
+    }
+
+    if (environmentCleanup.visible) {
+        EnvironmentCleanupSheet(
+            state = environmentCleanup,
+            onScan = environmentCleanupVM::open,
+            onClean = environmentCleanupVM::clean,
+            onDismiss = environmentCleanupVM::close,
+        )
     }
 
     if (showTypeSheet) {

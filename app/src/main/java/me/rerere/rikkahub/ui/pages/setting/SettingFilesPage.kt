@@ -54,7 +54,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -84,12 +83,10 @@ import me.rerere.rikkahub.data.files.FilesManager
 import me.rerere.rikkahub.ui.components.ai.ExtensionEmptyState
 import me.rerere.rikkahub.ui.components.nav.BackButton
 import me.rerere.rikkahub.ui.components.ui.CardGroup
-import me.rerere.rikkahub.ui.components.ui.CardGroupIcon
 import me.rerere.rikkahub.ui.context.LocalToaster
 import me.rerere.rikkahub.ui.theme.CustomColors
 import me.rerere.rikkahub.utils.fileSizeToString
 import org.koin.compose.koinInject
-import org.koin.androidx.compose.koinViewModel
 import java.io.File
 import java.util.concurrent.TimeUnit
 
@@ -97,17 +94,7 @@ import java.util.concurrent.TimeUnit
 @Composable
 fun SettingFilesPage(
     filesManager: FilesManager = koinInject(),
-    environmentCleanupVM: EnvironmentCleanupVM = koinViewModel(),
 ) {
-    val environmentCleanup by environmentCleanupVM.state.collectAsStateWithLifecycle()
-    if (environmentCleanup.visible) {
-        EnvironmentCleanupSheet(
-            state = environmentCleanup,
-            onScan = environmentCleanupVM::open,
-            onClean = environmentCleanupVM::clean,
-            onDismiss = environmentCleanupVM::close,
-        )
-    }
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     val gridState = rememberLazyStaggeredGridState()
     val scope = rememberCoroutineScope()
@@ -218,14 +205,6 @@ fun SettingFilesPage(
                     end = innerPadding.calculateEndPadding(layoutDirection),
                 )
         ) {
-            CardGroup(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                item(
-                    onClick = environmentCleanupVM::open,
-                    leadingContent = { CardGroupIcon(HugeIcons.Clean) },
-                    headlineContent = { Text(stringResource(R.string.workspace_cleanup_title)) },
-                    supportingContent = { Text(stringResource(R.string.workspace_cleanup_entry_description)) },
-                )
-            }
             FolderRow(
                 folders = folders,
                 selectedFolder = selectedFolder,

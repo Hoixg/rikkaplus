@@ -24,28 +24,13 @@ import kotlin.coroutines.resume
 
 private const val TAG = "RikkaAccService"
 private const val GESTURE_TIMEOUT_MS = 5_000L
-private const val LOG_RING_SIZE = 50
-
-data class ActionLogEntry(
-    val type: String,
-    val paramsSummary: String,
-    val success: Boolean,
-    val timestampMs: Long,
-)
-
 class PhoneAccessibilityService : AccessibilityService() {
 
-    private val gestureExecutor = Executors.newSingleThreadExecutor { r ->
-        Thread(r, "RikkaAcc-Gesture").apply { isDaemon = true }
+    private val screenshotExecutor = Executors.newSingleThreadExecutor { r ->
+        Thread(r, "RikkaAcc-Screenshot").apply { isDaemon = true }
     }
     private val gestureHandlerThread = HandlerThread("RikkaAcc-Callback").apply { start() }
     private val gestureHandler = Handler(gestureHandlerThread.looper)
-
-    private val _running = MutableStateFlow(false)
-    val running = _running.asStateFlow()
-
-    private val _lastActions = MutableStateFlow<List<ActionLogEntry>>(emptyList())
-    val lastActions = _lastActions.asStateFlow()
 
     // Uptime of the last window state/content change event. ScreenState.awaitQuiet polls
     // this to detect UI settle after an action.
@@ -61,32 +46,27 @@ class PhoneAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
-        _running.value = true
         mutableConnected.value = true
         Log.i(TAG, "AccessibilityService connected")
     }
 
     override fun onUnbind(intent: android.content.Intent?): Boolean {
         instance = null
-        _running.value = false
         mutableConnected.value = false
-        _lastActions.value = emptyList()
         Log.i(TAG, "AccessibilityService unbound")
         return super.onUnbind(intent)
     }
 
     override fun onDestroy() {
         instance = null
-        _running.value = false
         mutableConnected.value = false
         gestureHandlerThread.quitSafely()
-        gestureExecutor.shutdownNow()
+        screenshotExecutor.shutdownNow()
         super.onDestroy()
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        // The service config only subscribes to typeWindowStateChanged|typeWindowContentChanged,
-        // so any event delivery means the UI moved.
+        // Window, content, text and scroll events all restart the post-action quiet period.
         if (event != null) {
             lastWindowEventUptime = android.os.SystemClock.uptimeMillis()
         }
@@ -94,12 +74,6 @@ class PhoneAccessibilityService : AccessibilityService() {
 
     override fun onInterrupt() {
         // Required override; no-op.
-    }
-
-    fun appendLog(entry: ActionLogEntry) {
-        val current = _lastActions.value
-        val next = (current + entry).takeLast(LOG_RING_SIZE)
-        _lastActions.value = next
     }
 
     /**
@@ -219,7 +193,7 @@ class PhoneAccessibilityService : AccessibilityService() {
         return suspendCancellableCoroutine { cont ->
             takeScreenshot(
                 displayId,
-                gestureExecutor,
+                screenshotExecutor,
                 object : TakeScreenshotCallback {
                     override fun onSuccess(result: ScreenshotResult) {
                         try {

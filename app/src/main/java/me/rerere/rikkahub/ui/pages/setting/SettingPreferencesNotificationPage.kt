@@ -6,16 +6,22 @@ import android.provider.Settings
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.ToggleButton
+import androidx.compose.material3.ToggleButtonDefaults
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -26,6 +32,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import androidx.lifecycle.compose.LifecycleResumeEffect
@@ -174,6 +183,37 @@ fun SettingPreferencesNotificationPage(vm: SettingVM = koinViewModel()) {
                         },
                         headlineContent = { Text(stringResource(R.string.setting_page_preferences_notification_floating_window)) },
                     )
+                    formItem(
+                        headlineContent = { Text(stringResource(R.string.setting_page_preferences_notification_floating_style)) },
+                        supportingContent = { Text(stringResource(R.string.setting_page_preferences_notification_floating_style_pending)) },
+                    ) {
+                        val colors = ToggleButtonDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)
+                        Row(
+                            modifier = Modifier.fillMaxWidth().selectableGroup(),
+                            horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
+                        ) {
+                            ToggleButton(
+                                checked = true,
+                                onCheckedChange = {},
+                                modifier = Modifier.weight(1f).heightIn(min = 48.dp).semantics { role = Role.RadioButton },
+                                shapes = ButtonGroupDefaults.connectedLeadingButtonShapes(),
+                                colors = colors,
+                            ) {
+                                Text(stringResource(R.string.setting_page_preferences_notification_floating_style_original))
+                            }
+                            // 极简只预留入口，等待设计完成后再接入真实样式切换。
+                            ToggleButton(
+                                checked = false,
+                                onCheckedChange = {},
+                                enabled = false,
+                                modifier = Modifier.weight(1f).heightIn(min = 48.dp).semantics { role = Role.RadioButton },
+                                shapes = ButtonGroupDefaults.connectedTrailingButtonShapes(),
+                                colors = colors,
+                            ) {
+                                Text(stringResource(R.string.setting_page_preferences_notification_floating_style_minimal))
+                            }
+                        }
+                    }
                     if (displaySetting.enableFloatingChatWindow && !canDrawOverlays) {
                         item(
                             onClick = ::requestOverlayPermission,

@@ -800,8 +800,6 @@
   <string name="setting_page_default_model_desc">设置各个功能的默认模型</string>
   <string name="setting_page_display_setting">显示设置</string>
   <string name="setting_page_display_setting_desc">管理显示设置</string>
-  <string name="setting_page_documentation">使用文档</string>
-  <string name="setting_page_documentation_desc">查看应用使用说明和帮助文档</string>
   <string name="setting_page_dynamic_color">动态颜色</string>
   <string name="setting_page_dynamic_color_desc">是否基于壁纸动态生成 app 主题配色</string>
   <string name="setting_page_extensions">扩展管理</string>
@@ -1868,4 +1866,8 @@
   <string name="chat_page_select_all">全选</string>
   <string name="chat_page_deselect_all">取消全选</string>
   <string name="chat_page_clear_selection">清除选择</string>
+  <string name="setting_page_preferences_notification_floating_style">悬浮窗样式</string>
+  <string name="setting_page_preferences_notification_floating_style_original">原版</string>
+  <string name="setting_page_preferences_notification_floating_style_minimal">极简</string>
+  <string name="setting_page_preferences_notification_floating_style_pending">极简样式构思中，暂未开放。</string>
 </resources>

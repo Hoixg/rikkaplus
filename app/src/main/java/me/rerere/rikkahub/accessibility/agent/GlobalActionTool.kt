@@ -14,7 +14,6 @@ import kotlinx.serialization.json.put
 import me.rerere.ai.core.InputSchema
 import me.rerere.ai.core.Tool
 import me.rerere.ai.ui.UIMessagePart
-import me.rerere.rikkahub.accessibility.ActionLogEntry
 
 private val ACTION_MAP: Map<String, Int> = mapOf(
     "back" to AccessibilityService.GLOBAL_ACTION_BACK,
@@ -62,14 +61,6 @@ fun globalActionTool(): Tool = Tool(
         val payload = AccessibilityServiceHandle.withService { svc ->
             withActionEnvelope(svc) { _ ->
                 val ok = svc.performGlobalAction(code)
-                svc.appendLog(
-                    ActionLogEntry(
-                        type = "global_action",
-                        paramsSummary = action,
-                        success = ok,
-                        timestampMs = System.currentTimeMillis(),
-                    )
-                )
                 buildJsonObject {
                     put("success", ok)
                     if (!ok) put("reason", "rejected_by_os")
