@@ -15,6 +15,36 @@ import org.junit.Test
 class TermuxToolTest {
 
     @Test
+    fun stoppedTimeoutRetainsBothOutputStreamsWithoutMarkers() {
+        val result = parseCapturedResult("partial\n\nM1\n", "partial stderr", 137, "M1") as CaptureResult.Timeout
+        assertTrue(result.commandStopped)
+        assertEquals("partial\n", result.stdout)
+        assertEquals("partial stderr", result.stderr)
+    }
+
+    @Test
+    fun completionFooterPreservesActualExitCodesAndWhitespace() {
+        listOf(0, 17, 124, 137).forEach { code ->
+            val result = parseCapturedResult(
+                "hi  \n\nM1_exit:$code\nM1\n",
+                "stderr\n",
+                code,
+                "M1"
+            ) as CaptureResult.Success
+            assertEquals(code, result.exitCode)
+            assertEquals("hi  \n", result.stdout)
+            assertEquals("stderr\n", result.stderr)
+        }
+    }
+
+    @Test
+    fun missingCompletionDoesNotClaimThatRemoteProcessesHaveStopped() {
+        assertFalse(CaptureResult.Timeout().commandStopped)
+        val result = parseCapturedResult("partial", "", 137, "M1")
+        assertTrue(result is CaptureResult.Success)
+    }
+
+    @Test
     fun isTerminalResult_populatedAckWithoutMarker_isNotTerminal() {
         // err=-1, exitCode=0, empty stdout: exactly Termux's start-ACK shape.
         assertFalse(isTerminalResult(err = -1, exitCode = 0, stdout = "", marker = "M1"))
@@ -94,7 +124,7 @@ class TermuxToolTest {
         // args[0] = "-c", args[1] = script, args[2] = original executable ($0), rest = original args ($@).
         assertEquals("-c", args[0])
         assertTrue(args[1].contains("\"\$0\" \"\$@\""))
-        assertFalse(args[1].contains("--"))
+        assertFalse(args[2] == "--")
         assertEquals("/data/data/com.termux/files/usr/bin/echo", args[2])
         assertEquals("hi", args[3])
     }

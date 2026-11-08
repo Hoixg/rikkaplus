@@ -202,8 +202,7 @@ private suspend fun ensureTmux(context: Context): String? {
     if (check is CaptureResult.Success && check.stdout.isNotBlank()) return null
     // The install can run for the full INSTALL_TIMEOUT_MS (~180s). Keep the bound but surface
     // each outcome distinctly instead of silently blocking ~3 min and then reporting a generic
-    // failure: a Denied means the permission path, a Timeout means the install is still going
-    // (network / large download) so the caller can tell the user to retry shortly.
+    // failure: a Denied means the permission path; distinguish a stopped install from a missing result.
     val install =
         runCommandCapture(
             context,
@@ -213,7 +212,7 @@ private suspend fun ensureTmux(context: Context): String? {
             INSTALL_TIMEOUT_MS
         )
     if (install is CaptureResult.Denied) return "termux_permission_denied"
-    if (install is CaptureResult.Timeout) return "tmux_installing"
+    if (install is CaptureResult.Timeout) return if (install.commandStopped) "tmux_install_timeout" else "tmux_installing"
     val recheck =
         runCommandCapture(context, "$TERMUX_BIN/sh", arrayOf("-c", "command -v tmux"), TERMUX_HOME, TMUX_OP_TIMEOUT_MS)
     return if (recheck is CaptureResult.Success && recheck.stdout.isNotBlank()) null else "tmux_install_failed"
@@ -393,7 +392,7 @@ private fun readFailure(result: CaptureResult): List<UIMessagePart> =
         sessionErrorEnvelope(
             "termux_operation_failed",
             when (result) {
-                CaptureResult.Timeout -> "Termux did not respond; the operation may still be running. Retry reading the same session."
+                is CaptureResult.Timeout -> "Termux control command timed out. Read the session to confirm its task status."
                 CaptureResult.Denied -> "Grant Termux access and enable allow-external-apps=true."
                 is CaptureResult.OtherError -> result.message
                 else -> "Check the Termux connection."
@@ -493,10 +492,16 @@ internal suspend fun startTermuxBackgroundTask(
     workingDir: String,
     stdin: String?,
 ): List<UIMessagePart> {
+    val input = stdin?.takeIf { it.isNotEmpty() }
     val created = createManagedSession(
-        context, null, DEFAULT_COLS, DEFAULT_ROWS, workingDir,
-        command = { id -> termuxBackgroundScript(executable, arguments, id.takeIf { stdin != null }) },
-        kind = "task", stdin = stdin,
+        context,
+        null,
+        DEFAULT_COLS,
+        DEFAULT_ROWS,
+        workingDir,
+        command = { id -> termuxBackgroundScript(executable, arguments, id.takeIf { input != null }) },
+        kind = "task",
+        stdin = input,
     )
     return if (created.read is CaptureResult.Success) {
         val snapshot = tmux(context, TmuxOps.snapshotArgv(created.id, DEFAULT_READ_LINES))
@@ -528,7 +533,10 @@ private fun createdSessionEnvelope(
 
 private fun sessionIdSchema() = buildJsonObject {
     put("type", "string")
-    put("description", "Managed session/task id returned by termux_session_list/start. Sessions are shared across chats.")
+    put(
+        "description",
+        "Managed session/task id returned by termux_session_list/start. Sessions are shared across chats."
+    )
 }
 
 private fun cursorSchema() = buildJsonObject {
@@ -676,7 +684,10 @@ internal fun termuxSessionSendTool(
     needsApproval = { getConfig().approvalRequired },
     execute = { input ->
         val session = input.jsonObject["session_id"]?.jsonPrimitive?.contentOrNull?.takeIf(::isManagedTermuxSession)
-            ?: return@Tool sessionErrorEnvelope("invalid_session_id", "Use a managed session_id returned by termux_session_list/start.")
+            ?: return@Tool sessionErrorEnvelope(
+                "invalid_session_id",
+                "Use a managed session_id returned by termux_session_list/start."
+            )
         preflight(context)?.let { return@Tool it }
         val keys = input.jsonObject["keys"]?.jsonArray?.mapNotNull { it.jsonPrimitive.contentOrNull } ?: emptyList()
         require(keys.none { it.startsWith("-") || it.contains(';') }) { "Invalid tmux key name" }
@@ -737,7 +748,10 @@ internal fun termuxSessionReadTool(
     },
     execute = { input ->
         val session = input.jsonObject["session_id"]?.jsonPrimitive?.contentOrNull?.takeIf(::isManagedTermuxSession)
-            ?: return@Tool sessionErrorEnvelope("invalid_session_id", "Use a managed session_id returned by termux_session_list/start.")
+            ?: return@Tool sessionErrorEnvelope(
+                "invalid_session_id",
+                "Use a managed session_id returned by termux_session_list/start."
+            )
         preflight(context)?.let { return@Tool it }
         val waitFor = input.jsonObject["wait_for"]?.jsonPrimitive?.contentOrNull
         val waitForCompletion = input.jsonObject["wait_for_completion"]?.jsonPrimitive?.booleanOrNull ?: false
@@ -773,11 +787,13 @@ internal fun termuxSessionKillTool(
     needsApproval = { getConfig().approvalRequired },
     execute = { input ->
         val session = input.jsonObject["session_id"]?.jsonPrimitive?.contentOrNull?.takeIf(::isManagedTermuxSession)
-            ?: return@Tool sessionErrorEnvelope("invalid_session_id", "Use a managed session_id returned by termux_session_list/start.")
+            ?: return@Tool sessionErrorEnvelope(
+                "invalid_session_id",
+                "Use a managed session_id returned by termux_session_list/start."
+            )
         preflight(context)?.let { return@Tool it }
         val killed = tmux(context, TmuxOps.killArgv("=$session"))
-        if (killed !is CaptureResult.Success &&
-            !(killed is CaptureResult.OtherError && isSessionNotFound(killed.message))) {
+        if (killed !is CaptureResult.Success) {
             return@Tool readFailure(killed)
         }
         tmux(context, arrayOf("delete-buffer", "-b", session))

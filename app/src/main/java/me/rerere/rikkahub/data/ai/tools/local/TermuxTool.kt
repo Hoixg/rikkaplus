@@ -26,6 +26,7 @@ import me.rerere.ai.core.Tool
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.rikkahub.data.model.TermuxConfig
 import me.rerere.rikkahub.data.model.TermuxDefaults
+import java.util.Base64
 import java.util.UUID
 
 private const val TERMUX_PACKAGE = "com.termux"
@@ -33,6 +34,7 @@ private const val TERMUX_RUN_COMMAND_SERVICE = "com.termux.app.RunCommandService
 private const val TERMUX_RUN_COMMAND_ACTION = "com.termux.RUN_COMMAND"
 private const val TERMUX_BIN_DIR = "/data/data/com.termux/files/usr/bin"
 private const val TERMUX_HOME_DIR = "/data/data/com.termux/files/home"
+private const val CAPTURE_CALLBACK_GRACE_MS = 2_000L
 
 internal fun shellSingleQuote(value: String): String =
     "'" + value.replace("'", "'\"'\"'") + "'"
@@ -85,7 +87,7 @@ internal object TermuxIntegration {
             } else {
                 VerifyResult.UnexpectedOutput(result.stderr.ifBlank { result.stdout })
             }
-            CaptureResult.Timeout -> VerifyResult.TimedOut
+            is CaptureResult.Timeout -> VerifyResult.TimedOut
             CaptureResult.Denied -> VerifyResult.NoPermission
             is CaptureResult.OtherError -> VerifyResult.OtherError(result.message)
         }
@@ -109,14 +111,21 @@ internal sealed class CaptureResult {
         val stdoutTruncated: Boolean = false,
         val stderrTruncated: Boolean = false,
     ) : CaptureResult()
-    data object Timeout : CaptureResult()
+    data class Timeout(
+        val stdout: String = "",
+        val stderr: String = "",
+        val commandStopped: Boolean = false,
+        val stdoutTruncated: Boolean = false,
+        val stderrTruncated: Boolean = false,
+    ) : CaptureResult()
     data object Denied : CaptureResult()
     data class OtherError(val message: String) : CaptureResult()
 }
 
 /**
- * Wrap [executable]/[arguments] so the real command runs through `bash -c` and prints a
- * per-call [marker] right after it exits, whatever its exit status. `bash -c <script> <name>
+ * Wrap [executable]/[arguments] with a Termux-side timeout and per-call completion footers.
+ * An exit footer distinguishes a real command exit from timeout stopping the process group.
+ * `bash -c <script> <name>
  * <args...>` binds `$0` to `<name>` and `$@` to the rest, so the original executable goes in
  * the `$0` slot with no `--` separator (a `--` there would land the executable in `$1` and run
  * the wrong thing). Arguments stay literal argv entries, never interpolated into the script
@@ -127,8 +136,23 @@ internal fun buildMarkerWrappedArgv(
     executable: String,
     arguments: Array<String>,
     marker: String,
+    timeoutMs: Long = TermuxDefaults.DEFAULT_COMMAND_TIMEOUT_MS,
+    stdin: String? = null,
 ): Pair<String, Array<String>> {
-    val script = "\"\$0\" \"\$@\"; ec=\$?; printf '\\n%s' '$marker'; exit \$ec"
+    val binDir = bashPath.substringBeforeLast('/')
+    val duration = "${timeoutMs / 1000}.${(timeoutMs % 1000).toString().padStart(3, '0')}s"
+    // This footer distinguishes a real exit 124/137 from timeout killing the command group.
+    val command = "\"\$0\" \"\$@\"; ec=\$?; printf '\\n%s:%s' '${marker}_exit' \"\$ec\"; exit \"\$ec\""
+    // RUN_COMMAND_STDIN adds a newline and leaves empty input open in Termux beta.3.
+    val input = if (stdin.isNullOrEmpty()) {
+        "</dev/null"
+    } else {
+        "< <(${shellSingleQuote("$binDir/base64")} -d)"
+    }
+    val script = "${shellSingleQuote("$binDir/timeout")} -s KILL $duration ${shellSingleQuote(bashPath)} -c " +
+        "${shellSingleQuote(command)} \"\$0\" \"\$@\" $input & job=\$!; wait \"\$job\" 2>/dev/null; ec=\$?; " +
+        "case \$ec in 124|137) kill -KILL -- \"-\$job\" 2>/dev/null || :;; esac; " +
+        "printf '\\n%s' '$marker'; exit \$ec"
     return bashPath to (arrayOf("-c", script, executable, *arguments))
 }
 
@@ -149,8 +173,8 @@ internal fun isTerminalResult(err: Int, exitCode: Int, stdout: String, marker: S
 }
 
 /**
- * Remove the trailing `"\n" + marker` appended by [buildMarkerWrappedArgv]'s script, restoring
- * the command's real stdout. Leaves [stdout] untouched when the marker isn't present (e.g. an
+ * Remove the trailing transport marker; [parseCapturedResult] also removes the command exit footer.
+ * Leaves [stdout] untouched when the marker isn't present (e.g. an
  * error bundle whose script never reached the `printf`). Termux's StreamGobbler appends a
  * trailing `"\n"` after the marker line that the script itself never printed, so trim it before
  * matching the suffix - everything before `"\n" + marker` is the command's real stdout, trailing
@@ -160,6 +184,34 @@ internal fun stripTerminationMarker(stdout: String, marker: String): String {
     val trimmed = stdout.trimEnd()
     val suffix = "\n$marker"
     return if (trimmed.endsWith(suffix)) trimmed.removeSuffix(suffix) else stdout
+}
+
+internal fun parseCapturedResult(
+    stdout: String,
+    stderr: String,
+    exitCode: Int,
+    marker: String,
+    stdoutTruncated: Boolean = false,
+    stderrTruncated: Boolean = false,
+): CaptureResult {
+    val output = stripTerminationMarker(stdout, marker)
+    val statusMarker = "\n${marker}_exit:"
+    val statusIndex = output.lastIndexOf(statusMarker)
+    val commandExit = if (statusIndex >= 0) output.substring(statusIndex + statusMarker.length).toIntOrNull() else null
+    if (commandExit != null) {
+        return CaptureResult.Success(
+            output.substring(0, statusIndex),
+            stderr,
+            commandExit,
+            stdoutTruncated,
+            stderrTruncated
+        )
+    }
+    return if (stdout.trimEnd().endsWith(marker) && exitCode in setOf(124, 137)) {
+        CaptureResult.Timeout(output, stderr, true, stdoutTruncated, stderrTruncated)
+    } else {
+        CaptureResult.Success(output, stderr, exitCode, stdoutTruncated, stderrTruncated)
+    }
 }
 
 /**
@@ -251,6 +303,8 @@ internal suspend fun runCommandCapture(
         executable = executable,
         arguments = arguments,
         marker = marker,
+        timeoutMs = timeoutMs,
+        stdin = stdin,
     )
     val intent = Intent().apply {
         setClassName(TERMUX_PACKAGE, TERMUX_RUN_COMMAND_SERVICE)
@@ -259,15 +313,17 @@ internal suspend fun runCommandCapture(
         putExtra("com.termux.RUN_COMMAND_ARGUMENTS", wrappedArguments)
         putExtra("com.termux.RUN_COMMAND_WORKDIR", workingDir)
         putExtra("com.termux.RUN_COMMAND_BACKGROUND", true)
-        stdin?.let { putExtra("com.termux.RUN_COMMAND_STDIN", it) }
+        stdin?.takeIf { it.isNotEmpty() }?.let {
+            putExtra("com.termux.RUN_COMMAND_STDIN", Base64.getEncoder().encodeToString(it.toByteArray(Charsets.UTF_8)))
+        }
         putExtra(EXTRA_PENDING_INTENT, pi)
     }
 
     return try {
         ctx.startService(intent)
-        val bundle = withTimeoutOrNull(timeoutMs) { resultDeferred.await() }
+        val bundle = withTimeoutOrNull(timeoutMs + CAPTURE_CALLBACK_GRACE_MS) { resultDeferred.await() }
         if (bundle == null) {
-            CaptureResult.Timeout
+            CaptureResult.Timeout()
         } else {
             // Per the Termux RUN_COMMAND wiki: `err = -1` (= Activity.RESULT_OK) means
             // "no internal error" — i.e. the success sentinel. Any value other than -1
@@ -285,10 +341,11 @@ internal suspend fun runCommandCapture(
                     CaptureResult.OtherError("err=$errCode: $errMsg")
                 }
             } else {
-                CaptureResult.Success(
-                    stdout = stripTerminationMarker(bundle.getString(RESULT_KEY_STDOUT).orEmpty(), marker),
+                parseCapturedResult(
+                    stdout = bundle.getString(RESULT_KEY_STDOUT).orEmpty(),
                     stderr = bundle.getString(RESULT_KEY_STDERR).orEmpty(),
                     exitCode = bundle.getInt(RESULT_KEY_EXIT_CODE, -1),
+                    marker = marker,
                     stdoutTruncated = (bundle.getString("stdout_original_length")?.toLongOrNull() ?: 0) >
                         bundle.getString(RESULT_KEY_STDOUT).orEmpty().length,
                     stderrTruncated = (bundle.getString("stderr_original_length")?.toLongOrNull() ?: 0) >
@@ -374,7 +431,7 @@ internal fun termuxRunCommandTool(
                     put("type", "string")
                     put(
                         "description",
-                        "Standard input passed literally via Termux RUN_COMMAND_STDIN, e.g. a script for bash -s or data for python. Capture/background modes only."
+                        "Exact UTF-8 standard input, e.g. a script for bash -s or data for python. Empty or omitted input provides immediate EOF. Capture/background modes only."
                     )
                 })
                 put("background", buildJsonObject {
@@ -388,7 +445,7 @@ internal fun termuxRunCommandTool(
                     put("type", "integer")
                     put(
                         "description",
-                        "Capture-mode timeout in seconds. Omit or pass 0 to use the user-configured default (Extensions > Termux). Max ${TermuxDefaults.MAX_COMMAND_TIMEOUT_SECONDS} s."
+                        "Capture-mode command timeout in seconds; the command process group is stopped at the deadline, followed by a short result-delivery wait. Omit or pass 0 for the configured default. Max ${TermuxDefaults.MAX_COMMAND_TIMEOUT_SECONDS} s."
                     )
                 })
             }
@@ -614,9 +671,24 @@ internal fun termuxRunCommandTool(
             }
             is CaptureResult.Timeout -> buildJsonObject {
                 put("error", "timeout")
+                put("execution_status", if (res.commandStopped) "stopped" else "unknown")
+                put("stdout", takeFirstUtf8Bytes(res.stdout, getConfig().maxStdoutBytes))
+                if (res.stderr.isNotEmpty()) put("stderr", takeFirstUtf8Bytes(res.stderr, getConfig().maxStderrBytes))
+                put(
+                    "stdout_truncated",
+                    res.stdoutTruncated || res.stdout.toByteArray(Charsets.UTF_8).size > getConfig().maxStdoutBytes
+                )
+                put(
+                    "stderr_truncated",
+                    res.stderrTruncated || res.stderr.toByteArray(Charsets.UTF_8).size > getConfig().maxStderrBytes
+                )
                 put(
                     "recovery",
-                    "Command did not return within ${timeoutMs / 1000}s. Either bump timeout_seconds or, if Termux gave no result at all, the user likely has not set allow-external-apps=true in ~/.termux/termux.properties (or did not restart Termux after editing it)."
+                    if (res.commandStopped) {
+                        "Command exceeded ${timeoutMs / 1000}s and was stopped. Output collected before termination is included."
+                    } else {
+                        "No completion result arrived from Termux. Command termination could not be confirmed. Check Termux before retrying."
+                    }
                 )
             }
             is CaptureResult.Denied -> buildJsonObject {
