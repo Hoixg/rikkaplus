@@ -63,13 +63,13 @@ fun tapTool(): Tool = Tool(
         }
         val payload = AccessibilityServiceHandle.withService { svc ->
             withActionEnvelope(svc) { _ ->
-                val dm = svc.resources.displayMetrics
-                if (coordsOutOfBounds(x, y, dm.widthPixels, dm.heightPixels)) {
+                val display = defaultDisplaySize(svc)
+                if (coordsOutOfBounds(x, y, display.x, display.y)) {
                     return@withActionEnvelope buildJsonObject {
                         put("error", "out_of_bounds")
                         put("display", buildJsonObject {
-                            put("w", dm.widthPixels)
-                            put("h", dm.heightPixels)
+                            put("w", display.x)
+                            put("h", display.y)
                         })
                     }
                 }
@@ -141,13 +141,13 @@ fun longPressTool(): Tool = Tool(
         }
         val payload = AccessibilityServiceHandle.withService { svc ->
             withActionEnvelope(svc) { _ ->
-                val dm = svc.resources.displayMetrics
-                if (coordsOutOfBounds(x, y, dm.widthPixels, dm.heightPixels)) {
+                val display = defaultDisplaySize(svc)
+                if (coordsOutOfBounds(x, y, display.x, display.y)) {
                     return@withActionEnvelope buildJsonObject {
                         put("error", "out_of_bounds")
                         put("display", buildJsonObject {
-                            put("w", dm.widthPixels)
-                            put("h", dm.heightPixels)
+                            put("w", display.x)
+                            put("h", display.y)
                         })
                     }
                 }

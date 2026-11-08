@@ -5,10 +5,13 @@ package me.rerere.rikkahub.accessibility.agent
 
 import android.app.KeyguardManager
 import android.content.Context
+import android.graphics.Point
 import android.graphics.Rect
+import android.hardware.display.DisplayManager
 import android.os.PowerManager
 import android.os.SystemClock
 import android.util.Log
+import android.view.Display
 import android.view.accessibility.AccessibilityWindowInfo
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
@@ -101,6 +104,13 @@ private const val SETTLE_QUIET_MS = 300L
 private const val SETTLE_TIMEOUT_MS = 2_000L
 private const val HASH_NODE_CAP = 500
 
+// Gesture coordinates use the full display, including system bars, rather than app content metrics.
+@Suppress("DEPRECATION")
+internal fun defaultDisplaySize(context: Context): Point {
+    val display = checkNotNull(context.getSystemService(DisplayManager::class.java).getDisplay(Display.DEFAULT_DISPLAY))
+    return Point().also(display::getRealSize)
+}
+
 internal fun surfaceFactsOf(svc: PhoneAccessibilityService): List<SurfaceFacts> =
     try {
         svc.windows.orEmpty().map { w ->
@@ -151,7 +161,7 @@ internal fun screenStateJson(
 ): JsonObject {
     val root = try { svc.rootInActiveWindow } catch (t: Throwable) { null }
     val windows = surfaceFactsOf(svc)
-    val dm = svc.resources.displayMetrics
+    val display = defaultDisplaySize(svc)
     val pm = svc.getSystemService(Context.POWER_SERVICE) as? PowerManager
     val km = svc.getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager
     return buildJsonObject {
@@ -159,13 +169,13 @@ internal fun screenStateJson(
         root?.window?.title?.toString()?.takeIf { it.isNotEmpty() }?.let {
             put("window", JsonPrimitive(it))
         }
-        if (shadeOpen(windows, dm.heightPixels)) put("shade_open", JsonPrimitive(true))
+        if (shadeOpen(windows, display.y)) put("shade_open", JsonPrimitive(true))
         if (imeVisible(windows)) put("ime_visible", JsonPrimitive(true))
         if (pm?.isInteractive == false) put("screen_on", JsonPrimitive(false))
         if (km?.isKeyguardLocked == true) put("keyguard_locked", JsonPrimitive(true))
         put("display", buildJsonObject {
-            put("w", JsonPrimitive(dm.widthPixels))
-            put("h", JsonPrimitive(dm.heightPixels))
+            put("w", JsonPrimitive(display.x))
+            put("h", JsonPrimitive(display.y))
         })
         if (screenChanged != null) put("screen_changed", JsonPrimitive(screenChanged))
         if (settleTimedOut) put("settle", JsonPrimitive("timeout"))

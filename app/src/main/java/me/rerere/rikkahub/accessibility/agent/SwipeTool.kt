@@ -82,15 +82,15 @@ fun swipeTool(): Tool = Tool(
         }
         val payload = AccessibilityServiceHandle.withService { svc ->
             withActionEnvelope(svc) { _ ->
-                val dm = svc.resources.displayMetrics
-                if (coordsOutOfBounds(sx, sy, dm.widthPixels, dm.heightPixels) ||
-                    coordsOutOfBounds(ex, ey, dm.widthPixels, dm.heightPixels)
+                val display = defaultDisplaySize(svc)
+                if (coordsOutOfBounds(sx, sy, display.x, display.y) ||
+                    coordsOutOfBounds(ex, ey, display.x, display.y)
                 ) {
                     return@withActionEnvelope buildJsonObject {
                         put("error", "out_of_bounds")
                         put("display", buildJsonObject {
-                            put("w", dm.widthPixels)
-                            put("h", dm.heightPixels)
+                            put("w", display.x)
+                            put("h", display.y)
                         })
                     }
                 }
