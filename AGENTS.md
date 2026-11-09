@@ -17,6 +17,7 @@ Material 3 look (cards with dividers, plain forms).
 - Settings-style and form pages use segmented groups via `CardGroup` (
   app/src/main/java/me/rerere/rikkahub/ui/components/ui/CardGroup.kt) instead of a card with dividers.
 - Favor larger corner radii, filled/tonal containers, and whole-row click targets.
+- Assistant local tools keep the Phone Control and Media Creation switches without duplicate shortcuts to their global settings pages.
 
 ## Build, Test, and Development Commands
 

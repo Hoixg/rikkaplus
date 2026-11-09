@@ -1817,7 +1817,6 @@
   <string name="phone_control_screen_tool">Read Phone Screen</string>
   <string name="phone_control_action_tool">Operate Phone</string>
   <string name="phone_control_apps_tool">Phone Applications</string>
-  <string name="phone_control_settings">Phone Control Settings</string>
   <string name="permission_local_network">Local Network</string>
   <string name="permission_local_network_desc">Required to connect to self-hosted services on your local network.</string>
   <string name="workspace_cleanup_title">Clean up old environments</string>
