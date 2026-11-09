@@ -114,7 +114,7 @@ internal fun <T> CardGroupScope.backupContentItem(
     }
     Column(
         modifier = Modifier.fillMaxWidth(),
-        horizontalAlignment = Alignment.CenterHorizontally,
+        horizontalAlignment = Alignment.Start,
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         ConnectedMultiChoiceButtons(

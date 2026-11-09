@@ -190,13 +190,8 @@
   <string name="backup_page_export_desc">تصدير بيانات التطبيق إلى ملف</string>
   <string name="backup_page_exporting">جارٍ التصدير...</string>
   <string name="backup_page_files">الملفات</string>
-  <string name="backup_page_import_chatbox_desc">استيراد إعدادات مزوّدي ChatBox وسجل المحادثة الكامل</string>
-  <string name="backup_page_import_cherry_studio_desc">استيراد إعدادات مزوّدي Cherry Studio</string>
   <string name="backup_page_import_desc">استيراد ملف نسخ احتياطي محلي</string>
   <string name="backup_page_import_export">محلي</string>
-  <string name="backup_page_import_from_chatbox">استيراد من ChatBox</string>
-  <string name="backup_page_import_from_cherry_studio">استيراد من Cherry Studio</string>
-  <string name="backup_page_import_from_other_app">استيراد من تطبيق آخر</string>
   <string name="backup_page_import_overwrite_confirm">سيؤدي استيراد نسخة احتياطية إلى الكتابة فوق بيانات التطبيق. هل تريد المتابعة؟</string>
   <string name="backup_page_importing">جارٍ الاستيراد...</string>
   <string name="backup_page_loading_failed">فشل تحميل ملفات النسخ الاحتياطي: %s</string>

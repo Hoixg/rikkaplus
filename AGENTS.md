@@ -77,6 +77,13 @@ discard newly added server files even when Git reports no conflict. Check newly 
 server strings. Keep WebView/HTML/Markdown previews, web search, WebDAV, MCP, SSH and their client networking support.
 Run the documented removal checks before committing an upstream merge.
 
+## Backup and restore
+
+Keep local ZIP, WebDAV and S3 backup/restore. Backup content shows chat records and files in the first row,
+with workspace files on a separate row aligned to the start; allow the full workspace label to wrap.
+Imports from other apps (ChatBox and Cherry Studio), their dedicated parsers, UI and strings are removed;
+do not restore them during upstream merges.
+
 ## Scheduled tasks
 
 The `1.0` scheduled-task feature is an independent implementation in `data/automation` and

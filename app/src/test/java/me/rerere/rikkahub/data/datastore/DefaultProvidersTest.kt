@@ -2,7 +2,6 @@ package me.rerere.rikkahub.data.datastore
 
 import me.rerere.ai.provider.ProviderSetting
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -17,7 +16,7 @@ class DefaultProvidersTest {
 
         val provider = vercelProviders.single()
         assertEquals("https://ai-gateway.vercel.sh/v1", provider.baseUrl)
-        assertFalse(provider.enabled)
+        assertTrue(provider.enabled)
         assertTrue(provider.builtIn)
         assertTrue(provider.quotaQuery.enabled)
         assertEquals("{{baseUrl}}/credits", provider.quotaQuery.url)

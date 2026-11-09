@@ -108,8 +108,6 @@
   <string name="backup_page_export_desc">App-Daten in eine Datei exportieren</string>
   <string name="backup_page_exporting">Exportieren...</string>
   <string name="backup_page_files">Dateien</string>
-  <string name="backup_page_import_chatbox_desc">ChatBox-Anbieterkonfigurationen und vollständigen Chatverlauf importieren</string>
-  <string name="backup_page_import_cherry_studio_desc">Cherry Studio-Anbieterkonfigurationen importieren</string>
   <string name="assistant_page_recent_chats">Letzte Chats referenzieren</string>
   <string name="assistant_page_recent_chats_desc">Wenn aktiviert, kann der Assistent frühere Unterhaltungen nach relevanten Informationen durchsuchen</string>
   <string name="assistant_page_regex_affecting_scopes">Betroffene Bereiche:</string>
@@ -162,9 +160,6 @@
   <string name="backup_page_s3_backup">S3-Backup</string>
   <string name="backup_page_import_desc">Lokale Backup-Datei importieren</string>
   <string name="backup_page_import_export">Lokal</string>
-  <string name="backup_page_import_from_chatbox">Aus ChatBox importieren</string>
-  <string name="backup_page_import_from_cherry_studio">Aus Cherry Studio importieren</string>
-  <string name="backup_page_import_from_other_app">Aus anderer App importieren</string>
   <string name="backup_page_importing">Wird importiert...</string>
   <string name="backup_page_loading_failed">Backup-Dateien konnten nicht geladen werden: %s</string>
   <string name="backup_page_local_backup_export">In Datei exportieren</string>

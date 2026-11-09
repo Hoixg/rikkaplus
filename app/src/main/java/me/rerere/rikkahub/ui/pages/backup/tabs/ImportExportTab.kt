@@ -54,9 +54,6 @@ fun ImportExportTab(
     var isRestoring by remember { mutableStateOf(false) }
     var showImportConfirmDialog by remember { mutableStateOf(false) }
 
-    // 导入类型：local 为本地备份，chatbox 为 Chatbox 导入，cherry 为 Cherry Studio 导入
-    var importType by remember { mutableStateOf("local") }
-
     // 创建文件保存的launcher
     val createDocumentLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/zip")
@@ -102,61 +99,15 @@ fun ImportExportTab(
             scope.launch {
                 isRestoring = true
                 runCatching {
-                    when (importType) {
-                        "local" -> {
-                            // 本地备份导入：处理zip文件
-                            val tempFile =
-                                File(context.cacheDir, "temp_restore_${System.currentTimeMillis()}.zip")
-
-                            context.contentResolver.openInputStream(sourceUri)?.use { inputStream ->
-                                FileOutputStream(tempFile).use { outputStream ->
-                                    inputStream.copyTo(outputStream)
-                                }
-                            }
-
-                            // 从临时文件恢复
-                            vm.restoreFromLocalFile(tempFile)
-
-                            // 清理临时文件
-                            tempFile.delete()
-                        }
-
-                        "chatbox" -> {
-                            // Chatbox Backup v2：处理 ZIP 文件
-                            val tempFile =
-                                File(context.cacheDir, "temp_chatbox_${System.currentTimeMillis()}.zip")
-
-                            try {
-                                context.contentResolver.openInputStream(sourceUri)?.use { inputStream ->
-                                    FileOutputStream(tempFile).use { outputStream ->
-                                        inputStream.copyTo(outputStream)
-                                    }
-                                }
-
-                                vm.restoreFromChatBox(tempFile)
-                            } finally {
-                                tempFile.delete()
-                            }
-                        }
-
-                        "cherry" -> {
-                            // Cherry Studio导入：处理zip文件
-                            val tempFile =
-                                File(context.cacheDir, "temp_cherry_${System.currentTimeMillis()}.zip")
-
-                            context.contentResolver.openInputStream(sourceUri)?.use { inputStream ->
-                                FileOutputStream(tempFile).use { outputStream ->
-                                    inputStream.copyTo(outputStream)
-                                }
-                            }
-
-                            // 从Cherry Studio备份恢复
-                            vm.restoreFromCherryStudio(tempFile)
-
-                            // 清理临时文件
-                            tempFile.delete()
+                    // 本地备份导入
+                    val tempFile = File(context.cacheDir, "temp_restore_${System.currentTimeMillis()}.zip")
+                    context.contentResolver.openInputStream(sourceUri)?.use { inputStream ->
+                        FileOutputStream(tempFile).use { outputStream ->
+                            inputStream.copyTo(outputStream)
                         }
                     }
+                    vm.restoreFromLocalFile(tempFile)
+                    tempFile.delete()
 
                     toaster.show(
                         context.getString(R.string.backup_page_restore_success),
@@ -226,7 +177,7 @@ fun ImportExportTab(
                 headlineContent = { Text(stringResource(R.string.backup_page_local_backup_import)) },
                 supportingContent = {
                     Text(
-                        if (isRestoring && importType == "local") {
+                        if (isRestoring) {
                             stringResource(R.string.backup_page_importing)
                         } else {
                             stringResource(R.string.backup_page_import_desc)
@@ -234,39 +185,7 @@ fun ImportExportTab(
                     )
                 },
                 leadingContent = {
-                    BackupActionIcon(HugeIcons.FileImport, loading = isRestoring && importType == "local")
-                },
-            )
-        }
-
-        CardGroup(
-            title = { Text(stringResource(R.string.backup_page_import_from_other_app)) },
-        ) {
-            item(
-                onClick = if (!isRestoring) {
-                    {
-                        importType = "chatbox"
-                        openDocumentLauncher.launch(arrayOf("application/zip"))
-                    }
-                } else null,
-                headlineContent = { Text(stringResource(R.string.backup_page_import_from_chatbox)) },
-                supportingContent = { Text(stringResource(R.string.backup_page_import_chatbox_desc)) },
-                leadingContent = {
-                    BackupActionIcon(HugeIcons.FileImport, loading = isRestoring && importType == "chatbox")
-                },
-            )
-
-            item(
-                onClick = if (!isRestoring) {
-                    {
-                        importType = "cherry"
-                        openDocumentLauncher.launch(arrayOf("application/zip"))
-                    }
-                } else null,
-                headlineContent = { Text(stringResource(R.string.backup_page_import_from_cherry_studio)) },
-                supportingContent = { Text(stringResource(R.string.backup_page_import_cherry_studio_desc)) },
-                leadingContent = {
-                    BackupActionIcon(HugeIcons.FileImport, loading = isRestoring && importType == "cherry")
+                    BackupActionIcon(HugeIcons.FileImport, loading = isRestoring)
                 },
             )
         }
@@ -281,7 +200,6 @@ fun ImportExportTab(
                 TextButton(
                     onClick = {
                         showImportConfirmDialog = false
-                        importType = "local"
                         openDocumentLauncher.launch(arrayOf("application/zip"))
                     }
                 ) {
