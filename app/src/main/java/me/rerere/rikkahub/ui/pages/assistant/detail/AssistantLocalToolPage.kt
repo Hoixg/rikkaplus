@@ -36,11 +36,16 @@ import me.rerere.hugeicons.stroke.JavaScript
 import me.rerere.hugeicons.stroke.MessageQuestion
 import me.rerere.hugeicons.stroke.ImageToVideo
 import me.rerere.hugeicons.stroke.SmartPhone01
+import me.rerere.hugeicons.stroke.Tap01
 import me.rerere.hugeicons.stroke.VolumeHigh
 import me.rerere.rikkahub.R
+import me.rerere.rikkahub.Screen
 import me.rerere.rikkahub.data.ai.tools.local.LocalToolOption
 import me.rerere.rikkahub.data.ai.tools.local.TermuxIntegration
+import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.model.Assistant
+import me.rerere.rikkahub.phoneuse.PhoneUseManager
+import me.rerere.rikkahub.phoneuse.isFloatingChatWindowOn
 import me.rerere.rikkahub.shizuku.ShizukuManager
 import me.rerere.rikkahub.ui.components.nav.BackButton
 import me.rerere.rikkahub.ui.components.ui.CardGroup
@@ -52,10 +57,13 @@ import me.rerere.rikkahub.ui.components.ui.permission.PermissionTermux
 import me.rerere.rikkahub.ui.components.ui.permission.rememberPermissionState
 import me.rerere.rikkahub.ui.components.ui.switchItem
 import me.rerere.rikkahub.ui.context.LocalToaster
+import me.rerere.rikkahub.ui.context.LocalNavController
 import me.rerere.rikkahub.ui.theme.CustomColors
 import me.rerere.rikkahub.utils.hasUsageStatsPermission
 import me.rerere.rikkahub.utils.openUsageAccessSettings
+import me.rerere.rikkahub.utils.openAccessibilitySettings
 import org.koin.androidx.compose.koinViewModel
+import org.koin.compose.koinInject
 import org.koin.core.parameter.parametersOf
 import rikka.shizuku.Shizuku
 
@@ -101,8 +109,15 @@ private fun AssistantLocalToolContent(
 ) {
     val context = LocalContext.current
     val toaster = LocalToaster.current
+    val navController = LocalNavController.current
+    val settingsStore: SettingsStore = koinInject()
+    val phoneUseManager: PhoneUseManager = koinInject()
+    val phoneUseServiceOn = phoneUseManager.controller.collectAsStateWithLifecycle().value != null
     val permissionRequiredText =
         stringResource(R.string.assistant_page_local_tools_screen_time_permission_required)
+    val floatingWindowRequiredText =
+        stringResource(R.string.assistant_page_local_tools_phone_use_floating_window_required)
+    val enableServiceText = stringResource(R.string.assistant_page_local_tools_phone_use_enable_service)
 
     val calendarPermissionState = rememberPermissionState(
         permissions = setOf(
@@ -136,6 +151,17 @@ private fun AssistantLocalToolContent(
     }
 
     fun toggleLocalTool(option: LocalToolOption, enabled: Boolean) {
+        if (enabled && option == LocalToolOption.PhoneUse &&
+            !isFloatingChatWindowOn(context, settingsStore.settingsFlow.value)
+        ) {
+            toaster.show(message = floatingWindowRequiredText, type = ToastType.Warning)
+            navController.navigate(Screen.SettingPreferencesNotification)
+            return
+        }
+        if (enabled && option == LocalToolOption.PhoneUse && !phoneUseServiceOn) {
+            toaster.show(message = enableServiceText, type = ToastType.Warning)
+            context.openAccessibilitySettings()
+        }
         if (enabled && option == LocalToolOption.Termux) {
             if (TermuxIntegration.state(context) == TermuxIntegration.State.NOT_INSTALLED) {
                 toaster.show(message = "请先安装并打开 Termux", type = ToastType.Warning)
@@ -168,8 +194,8 @@ private fun AssistantLocalToolContent(
     fun CardGroupScope.toolItem(
         option: LocalToolOption,
         icon: ImageVector,
-        @StringRes title: Int,
-        @StringRes description: Int,
+        title: @Composable () -> Unit,
+        description: @Composable () -> Unit,
     ) {
         val checked = assistant.localTools.contains(option)
         switchItem(
@@ -191,10 +217,22 @@ private fun AssistantLocalToolContent(
                     },
                 )
             },
-            supportingContent = { Text(stringResource(description)) },
-            headlineContent = { Text(stringResource(title)) },
+            supportingContent = description,
+            headlineContent = title,
         )
     }
+
+    fun CardGroupScope.toolItem(
+        option: LocalToolOption,
+        icon: ImageVector,
+        @StringRes title: Int,
+        @StringRes description: Int,
+    ) = toolItem(
+        option = option,
+        icon = icon,
+        title = { Text(stringResource(title)) },
+        description = { Text(stringResource(description)) },
+    )
 
     Column(
         modifier = Modifier
@@ -267,12 +305,24 @@ private fun AssistantLocalToolContent(
                 title = R.string.assistant_page_local_tools_termux_title,
                 description = R.string.assistant_page_local_tools_termux_desc,
             )
-            toolItem(
-                option = LocalToolOption.PhoneControl,
-                icon = HugeIcons.SmartPhone01,
-                title = R.string.phone_control_title,
-                description = R.string.phone_control_short_desc,
-            )
+            if (PhoneUseManager.isSupported) {
+                toolItem(
+                    option = LocalToolOption.PhoneUse,
+                    icon = HugeIcons.Tap01,
+                    title = { Text(stringResource(R.string.assistant_page_local_tools_phone_use_title)) },
+                    description = {
+                        Column {
+                            Text(stringResource(R.string.assistant_page_local_tools_phone_use_desc))
+                            if (LocalToolOption.PhoneUse in assistant.localTools && !phoneUseServiceOn) {
+                                Text(
+                                    text = stringResource(R.string.assistant_page_local_tools_phone_use_service_off),
+                                    color = MaterialTheme.colorScheme.error,
+                                )
+                            }
+                        }
+                    },
+                )
+            }
             toolItem(
                 option = LocalToolOption.Shizuku,
                 icon = HugeIcons.ComputerTerminal01,

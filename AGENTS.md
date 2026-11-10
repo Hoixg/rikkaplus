@@ -17,7 +17,7 @@ Material 3 look (cards with dividers, plain forms).
 - Settings-style and form pages use segmented groups via `CardGroup` (
   app/src/main/java/me/rerere/rikkahub/ui/components/ui/CardGroup.kt) instead of a card with dividers.
 - Favor larger corner radii, filled/tonal containers, and whole-row click targets.
-- Assistant local tools keep the Phone Control and Media Creation switches without duplicate shortcuts to their global settings pages.
+- Assistant local tools use upstream Phone Use and retain the Media Creation switch without duplicate global settings shortcuts. Phone Use follows upstream setup through Android accessibility and the existing floating-window preference; do not restore the old Phone Control settings page.
 - The chat input shows a terminal shortcut immediately before the plus button when its bound workspace supports a terminal; reuse the workspace shortcut style and the existing workspace terminal route.
 
 ## Build, Test, and Development Commands
@@ -76,7 +76,7 @@ App 有一个 `distribution` 维度的 product flavor：`github`（默认）和 
 ## Upstream merge boundaries
 
 Read `docs/upstream-sync.md` before syncing upstream. The built-in Web server is intentionally removed from `1.0`.
-Upstream Phone Use (`25b70392`) is deferred pending user review; keep the existing Phone Control implementation and do not add upstream Phone Use services, tools, floating-window hooks, resources or restrictions until explicitly requested.
+Phone control now uses upstream Phone Use (`25b70392`), including its GitHub-only Android 11+ service, single `phone_use` tool, floating-window integration and restrictions; see `docs/phone-control-sources.md`. Do not restore the removed ExTV-based framework, old tools, global AI/approval settings or dedicated settings page. Preserve the existing assistant selection's `phone_control` serialization identifier on `LocalToolOption.PhoneUse` so stored assistant data is not reset; no new database or parallel legacy execution path is needed.
 Never restore `web/`, `web-ui/`, the app's `web` source/test packages, server settings/routes/startup hooks, or direct
 Web-server-only JWT / JmDNS dependencies. Keep the OAuth loopback callback receiver and its Ktor Core/CIO dependencies
 required for subscription sign-in. Resolve upstream modify/delete conflicts by keeping these deletions, and

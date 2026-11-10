@@ -2,10 +2,11 @@ package me.rerere.rikkahub.data.ai.tools.local
 
 import android.content.Context
 import me.rerere.ai.core.Tool
-import me.rerere.rikkahub.accessibility.AndroidPhoneControlBackend
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.event.AppEventBus
 import me.rerere.rikkahub.data.files.FilesManager
+import me.rerere.rikkahub.phoneuse.PhoneUseManager
+import me.rerere.rikkahub.phoneuse.isFloatingChatWindowOn
 import me.rerere.tts.provider.TTSManager
 
 class LocalTools(
@@ -13,14 +14,9 @@ class LocalTools(
     private val eventBus: AppEventBus,
     private val ttsManager: TTSManager,
     private val settingsStore: SettingsStore,
+    private val phoneUseManager: PhoneUseManager,
     private val filesManager: FilesManager,
 ) {
-    private val phoneBackend by lazy {
-        AndroidPhoneControlBackend(
-            context,
-            filesManager
-        ) { settingsStore.settingsFlow.value.phoneControlConfig.enabled }
-    }
     private val termuxOutputCache = TermuxOutputCache()
     val javascriptTool by lazy { buildJavascriptTool() }
 
@@ -39,6 +35,21 @@ class LocalTools(
     val calendarCreateTool by lazy { buildCalendarCreateTool(context) }
 
     val chartDisplayTool by lazy { buildChartDisplayTool() }
+
+    val phoneUseTool by lazy {
+        buildPhoneUseTool(
+            ownPackageName = context.packageName,
+            manager = phoneUseManager,
+            isFloatingWindowOn = { isFloatingChatWindowOn(context, settingsStore.settingsFlow.value) },
+            saveScreenshot = { bytes ->
+                filesManager.createChatFilesByByteArrays(
+                    byteArrays = listOf(bytes),
+                    displayName = "screenshot.jpg",
+                    mimeType = "image/jpeg",
+                ).first().toString()
+            },
+        )
+    }
 
     fun getTools(options: List<LocalToolOption>, conversationId: String): List<Tool> {
         val tools = mutableListOf<Tool>()
@@ -80,12 +91,8 @@ class LocalTools(
             tools.add(shizukuExecTool(context) { settingsStore.settingsFlow.value.shizukuApprovalRequired })
             tools.addAll(shizukuTaskTools(context) { settingsStore.settingsFlow.value.shizukuApprovalRequired })
         }
-        if (LocalToolOption.PhoneControl in options) {
-            tools.addAll(
-                createPhoneControlTools(
-                    phoneBackend
-                ) { settingsStore.settingsFlow.value.phoneControlConfig }
-            )
+        if (options.contains(LocalToolOption.PhoneUse) && PhoneUseManager.isSupported) {
+            tools.add(phoneUseTool)
         }
         return tools
     }

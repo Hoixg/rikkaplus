@@ -9,7 +9,6 @@ import android.content.ContextWrapper
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
-
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
@@ -23,7 +22,6 @@ import androidx.browser.customtabs.CustomTabsIntent
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
-
 import me.rerere.common.AppBrand
 import java.io.File
 import java.io.FileOutputStream
@@ -78,6 +76,14 @@ fun Context.hasUsageStatsPermission(): Boolean {
         )
     }
     return mode == AppOpsManager.MODE_ALLOWED
+}
+
+fun Context.openAccessibilitySettings() {
+    runCatching {
+        startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    }.onFailure {
+        Log.e(TAG, "openAccessibilitySettings failed", it)
+    }
 }
 
 /**

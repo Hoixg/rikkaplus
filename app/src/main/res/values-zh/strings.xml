@@ -1801,23 +1801,6 @@
   <string name="setting_mcp_management_operation_create">新增 MCP 服务</string>
   <string name="setting_mcp_management_operation_edit">编辑 MCP 服务</string>
   <string name="setting_mcp_management_operation_delete">删除 MCP 服务</string>
-  <string name="phone_control_title">手机操作</string>
-  <string name="phone_control_short_desc">通过无障碍读取界面、截图、点击、输入和滑动</string>
-  <string name="phone_control_service_label">RikkaPlus 手机操作</string>
-  <string name="phone_control_service_desc">开启 AI 手机操作后，RikkaPlus 可读取当前界面，并执行聊天中请求的操作。界面内容和截图会发送给你选择的 AI 模型。可在扩展管理的手机操作页关闭 AI 访问，或在系统无障碍设置中停用此服务。</string>
-  <string name="phone_control_connected">已连接 · 点击管理系统无障碍权限</string>
-  <string name="phone_control_waiting">系统已开启，等待服务连接</string>
-  <string name="phone_control_not_enabled">未启用 · 点击进入系统无障碍设置</string>
-  <string name="phone_control_ai_enabled">允许 AI 操作手机</string>
-  <string name="phone_control_ai_enabled_desc">允许已启用此工具的助手读取当前界面并操作应用。界面内容和截图会交给当前 AI 模型处理。</string>
-  <string name="phone_control_approval_title">操作前审批</string>
-  <string name="phone_control_approval_desc">打开应用、点击、输入、滑动和导航前需你批准。读取界面、截图和查询应用列表无需逐次审批。</string>
-  <string name="phone_control_setup">先在系统无障碍中启用 RikkaPlus，再打开本页 AI 开关，并在助手的本地工具中启用手机操作。关闭 AI 开关后，后续操作将停止。</string>
-  <string name="phone_control_capabilities">无需 Shizuku 或 Root。支持可见界面节点、手势、文字输入、系统导航和启动应用。截图需要 Android 11 及以上。使用前需解锁手机；部分应用不提供可用节点，安全窗口无法截图。</string>
-  <string name="phone_control_status_tool">检查手机操作状态</string>
-  <string name="phone_control_screen_tool">读取手机界面</string>
-  <string name="phone_control_action_tool">操作手机界面</string>
-  <string name="phone_control_apps_tool">查询或打开手机应用</string>
   <string name="permission_local_network">本地网络</string>
   <string name="permission_local_network_desc">连接局域网内的自建服务时需要此权限。</string>
   <string name="workspace_cleanup_title">旧环境清理</string>
@@ -1870,4 +1853,10 @@
   <string name="setting_display_page_auto_compress_threshold_title">触发比例</string>
   <string name="setting_display_page_auto_compress_threshold_desc">相对于聊天模型的上下文窗口</string>
   <string name="error_title_auto_compress">自动压缩失败</string>
+  <string name="assistant_page_local_tools_phone_use_title">Phone Use</string>
+  <string name="assistant_page_local_tools_phone_use_desc">允许 AI 读取屏幕并操作此手机上的其他应用</string>
+  <string name="assistant_page_local_tools_phone_use_service_off">无障碍服务已关闭。请将此开关关闭再打开，以进入设置。若该选项在系统中呈灰色不可用，请先在\"应用信息\"中为此应用允许受限设置。</string>
+  <string name="assistant_page_local_tools_phone_use_enable_service">在无障碍设置中开启 \"RikkaPlus Phone Use\"</string>
+  <string name="assistant_page_local_tools_phone_use_floating_window_required">请先开启后台悬浮窗</string>
+  <string name="phone_use_accessibility_description">启用 Phone Use 工具后，允许 AI 助手读取屏幕并为您执行点按、滑动和文本输入。除非助手正在运行您请求的任务，否则不会执行任何操作。</string>
 </resources>

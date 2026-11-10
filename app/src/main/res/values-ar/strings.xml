@@ -1788,4 +1788,10 @@
   <string name="setting_display_page_auto_compress_threshold_title">نسبة التفعيل</string>
   <string name="setting_display_page_auto_compress_threshold_desc">بالنسبة إلى نافذة سياق نموذج الدردشة</string>
   <string name="error_title_auto_compress">فشل الضغط التلقائي</string>
+  <string name="assistant_page_local_tools_phone_use_title">استخدام الهاتف</string>
+  <string name="assistant_page_local_tools_phone_use_desc">اسمح للذكاء الاصطناعي بقراءة الشاشة والتحكم في التطبيقات الأخرى على هذا الهاتف</string>
+  <string name="assistant_page_local_tools_phone_use_service_off">خدمة إمكانية الوصول متوقفة. أطفئ هذا المفتاح ثم أعد تشغيله لفتح الإعدادات. إذا جعل النظام هذا الخيار باهتًا، فاسمح بالإعدادات المقيّدة لهذا التطبيق من معلومات التطبيق أولًا.</string>
+  <string name="assistant_page_local_tools_phone_use_enable_service">فعّل \"RikkaPlus Phone Use\" في إعدادات إمكانية الوصول</string>
+  <string name="assistant_page_local_tools_phone_use_floating_window_required">فعّل النافذة العائمة في الخلفية أولًا</string>
+  <string name="phone_use_accessibility_description">يتيح مساعد الذكاء الاصطناعي قراءة الشاشة وتنفيذ النقرات والسحب وإدخال النص نيابةً عنك عند تمكين أداة استخدام الهاتف. لن يُنفَّذ أي شيء ما لم يكن المساعد ينفّذ مهمة طلبتها.</string>
 </resources>

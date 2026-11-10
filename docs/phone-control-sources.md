@@ -1,43 +1,30 @@
-# 无障碍实现来源
+# Phone Use 实现来源
 
-## 来源版本与许可
+## 来源与许可
 
-- 项目：[ExTV/rikkahub-agent](https://github.com/ExTV/rikkahub-agent)。
-- 固定提交：`a88f5854b4d2e2706ea2ae8304a7d66a3f9f2bbc`。
-- 许可：[GNU AGPL v3](https://github.com/ExTV/rikkahub-agent/blob/a88f5854b4d2e2706ea2ae8304a7d66a3f9f2bbc/LICENSE)，本仓库的 [LICENSE](../LICENSE) 继续适用。
-- 移植文件均保留来源提交和许可标记；这是现有实现的接入适配，不是另写一套快照或风控框架。
+- 项目：[rikkahub/rikkahub](https://github.com/rikkahub/rikkahub)。
+- 功能提交：[25b70392adf7abd1c7742d46fd63c22f22a712ce](https://github.com/rikkahub/rikkahub/commit/25b70392adf7abd1c7742d46fd63c22f22a712ce)。
+- 接入时的上游版本：`5b7ca774be05ea788ae59664bcff0f5486c6f39a`。
+- 许可：GNU AGPL v3，本仓库 [LICENSE](../LICENSE) 继续适用。
 
-## 复用文件
+## 直接采用的实现
 
-上游工具目录为 `app/src/main/java/me/rerere/rikkahub/data/ai/tools/local/`，在本仓库放入 `app/src/main/java/me/rerere/rikkahub/accessibility/agent/`。
-
-| 上游文件 | 接入范围 |
+| 文件 | 作用 |
 | --- | --- |
-| `service/RikkaAccessibilityService.kt` | 改为原有 Android 组件名 `accessibility/PhoneAccessibilityService.kt`，复用手势分发、节点遍历、祖先定位和截图回调。 |
-| `AccessibilityServiceHandle.kt` | 服务连接检查与离线错误。 |
-| `WindowTreeTool.kt` | `read_window_tree`、节点编号及输出格式。 |
-| `FindNodeTool.kt` | `find_node`、`click_node`、`set_text` 的实时选择器与节点解析。 |
-| `TapTool.kt` / `SwipeTool.kt` | 坐标点击、长按与滑动。 |
-| `ScrollTool.kt` | 容器滚动和方向正确的滑动方式。 |
-| `GlobalActionTool.kt` | Android 原生系统导航。 |
-| `ScreenState.kt` | 动作后的状态提示、安静等待和变化检测；变化检测不阻断动作。 |
-| `ScreenshotTool.kt` | 保留 `take_screenshot` 的独立截图接口，文件保存适配现有 FilesManager。 |
-| `AppLauncherTool.kt` | 仅接入 `launch_app` 与 `list_installed_apps`。 |
+| `app/src/github/java/me/rerere/rikkahub/phoneuse/PhoneUseAccessibilityService.kt` | 元素读取、截图、手势、输入及应用操作。 |
+| 同目录 `GestureIndicator.kt` | 无障碍覆盖层中的手势可视化。 |
+| `app/src/main/java/me/rerere/rikkahub/phoneuse/PhoneController.kt` | 服务接口、连接状态及运行状态。 |
+| `app/src/main/java/me/rerere/rikkahub/data/ai/tools/local/PhoneUseTool.kt` | 单一工具、元素列表、坐标换算和上游操作限制。 |
+| `ChatFloatingTracker.kt`、`ChatFloatingContent.kt`、`ChatFloatingWindows.kt` | 显示当前动作、截图/手势时让位及任务结束展开。 |
+| `app/src/github/AndroidManifest.xml` 和该渠道资源 | GitHub 专用服务声明及 Android 11+ 启用条件。 |
 
-上游同目录对应的 `TapToolTest`、`SwipeToolTest`、`FindNodeToolTest`、`ScrollToolTest`、`GlobalActionToolTest`、`ScreenStateTest` 也一同移植；测试辅助只保留执行工具所需的函数。
+助手本地工具页沿用上游的悬浮窗要求、无障碍授权引导和离线说明，与本分支的 Termux、Shizuku、媒体创作等工具共同接入。采用上游 `PhoneUseToolTest` 与 `ChatFloatingTrackerTest` 验证工具和悬浮窗逻辑。
 
 ## 必要适配
 
-1. 保留已授权的无障碍组件名称和当前设置入口，复用 DataStore 中现有 AI 开关、审批设置及现有 Agent 审批。
-2. 去掉原项目的工作流事件派发、AgentTurnTracker、无头会话截图推送和自动唤醒依赖。
-3. 截图复用 FilesManager 的聊天附件存储，不另建相册、缓存目录或数据库。
-4. 原生截图增加有界等待与取消后的图片释放；关闭硬件缓冲区及临时硬件位图。
-5. 密码节点输出不回显密码，文字写入结果不回显输入内容；对外说明使用 RikkaPlus。
-6. 新工具名接入现有工具卡片及结构化结果输出规则；审批返回后恢复原目标应用。
-7. 移除本 App 未接入读取端的内存操作日志、重复连接状态及未调用的查询接口；工具结果和图片继续保存在现有聊天中。
+1. 用户可见服务名称和启用提示改为 **RikkaPlus Phone Use**。
+2. 工具通过现有依赖注入注册，截图使用现有 FilesManager 聊天附件；Phone Use 文本沿用原手机工具的输出保留策略。
+3. `LocalToolOption.PhoneUse` 保留已有助手选择的 `phone_control` 序列化标识，避免解码旧助手配置时丢失其他工具、名称或提示词；运行时仅注册上游 `phone_use`，没有旧工具分支。
+4. 删除 ExTV-based 旧框架、旧服务、13 个工具、专用设置字段、设置页、路由、扩展入口、渲染器、17 个文案键和配套测试。助手选择、聊天与附件沿用原存储，不新建数据库或数据表。
 
-没有导入上游的数据库、工作流、定时任务、Web 服务、其他系统工具或外部辅助 APK。
-
-## 其他调研
-
-对照过 [Operit 的 AccessibilityUITools](https://github.com/AAswordman/Operit/blob/dbf71916fae9750cfdc9f9a774f5a0fee56633fb/app/src/main/java/com/ai/assistance/operit/core/tools/defaultTool/accessbility/AccessibilityUITools.kt) 与 [DSH Go 手机操作模块](https://github.com/ccch1mneyyy/dsh-Go/tree/d5ad25c5bc4c66ecacee76b3c5378db45e1db3fa/app/android/app/src/main/kotlin/io/github/ccch1mneyyy/dsh_app/phone/a11y)。本次实际移植来源为上述 RikkaHub Agent 文件；不将 DSH Go 标注为经第三方作者许可的模块复制进来。
+底层服务、截图和手势处理直接使用上游实现；没有额外添加快照 TTL、整页一致性校验、第三方辅助 APK、自动唤醒或新的操作限制。

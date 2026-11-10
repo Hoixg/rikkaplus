@@ -50,6 +50,7 @@ sealed class LocalToolOption {
     data object Shizuku : LocalToolOption()
 
     @Serializable
+    // Keep the persisted assistant selection; execution now uses upstream Phone Use.
     @SerialName("phone_control")
-    data object PhoneControl : LocalToolOption()
+    data object PhoneUse : LocalToolOption()
 }

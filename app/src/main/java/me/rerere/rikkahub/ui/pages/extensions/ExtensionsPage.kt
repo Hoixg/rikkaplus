@@ -24,7 +24,6 @@ import me.rerere.hugeicons.stroke.Folder01
 import me.rerere.hugeicons.stroke.McpServer
 import me.rerere.hugeicons.stroke.Puzzle
 import me.rerere.hugeicons.stroke.Zap
-import me.rerere.hugeicons.stroke.SmartPhone01
 import me.rerere.rikkahub.Screen
 import me.rerere.rikkahub.ui.components.nav.BackButton
 import me.rerere.rikkahub.ui.components.ui.CardGroup
@@ -106,12 +105,6 @@ fun ExtensionsPage() {
                         },
                         headlineContent = { Text("Termux") },
                         supportingContent = { Text("连接手机终端，配置命令审批、超时和输出限制") },
-                    )
-                    item(
-                        onClick = { navController.navigate(Screen.SettingPhoneControl) },
-                        leadingContent = { CardGroupIcon(HugeIcons.SmartPhone01, containerColor = containerColor, contentColor = contentColor) },
-                        headlineContent = { Text(stringResource(R.string.phone_control_title)) },
-                        supportingContent = { Text(stringResource(R.string.phone_control_short_desc)) },
                     )
                     item(
                         onClick = { navController.navigate(Screen.SettingShizuku) },
