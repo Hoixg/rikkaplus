@@ -18,6 +18,7 @@ Material 3 look (cards with dividers, plain forms).
   app/src/main/java/me/rerere/rikkahub/ui/components/ui/CardGroup.kt) instead of a card with dividers.
 - Favor larger corner radii, filled/tonal containers, and whole-row click targets.
 - Assistant local tools use upstream Phone Use and retain the Media Creation switch without duplicate global settings shortcuts. Phone Use follows upstream setup through Android accessibility and the existing floating-window preference; do not restore the old Phone Control settings page.
+- Phone Use tool cards display upstream action-specific titles and icons; retain MCP and Termux renderer registrations when merging the shared tool registry.
 - The chat input shows a terminal shortcut immediately before the plus button when its bound workspace supports a terminal; reuse the workspace shortcut style and the existing workspace terminal route.
 
 ## Build, Test, and Development Commands

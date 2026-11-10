@@ -5,6 +5,7 @@
 - 项目：[rikkahub/rikkahub](https://github.com/rikkahub/rikkahub)。
 - 功能提交：[25b70392adf7abd1c7742d46fd63c22f22a712ce](https://github.com/rikkahub/rikkahub/commit/25b70392adf7abd1c7742d46fd63c22f22a712ce)。
 - 接入时的上游版本：`5b7ca774be05ea788ae59664bcff0f5486c6f39a`。
+- 工具卡片显示更新来自 `ffb1c79e1f551d81a11319fa572207b221f46c95`，最近同步版本为 `8a837b27eda1f24d23b948f33fab6bc93f2ab7d3`；底层服务与截图实现未变。
 - 许可：GNU AGPL v3，本仓库 [LICENSE](../LICENSE) 继续适用。
 
 ## 直接采用的实现
@@ -16,6 +17,7 @@
 | `app/src/main/java/me/rerere/rikkahub/phoneuse/PhoneController.kt` | 服务接口、连接状态及运行状态。 |
 | `app/src/main/java/me/rerere/rikkahub/data/ai/tools/local/PhoneUseTool.kt` | 单一工具、元素列表、坐标换算和上游操作限制。 |
 | `ChatFloatingTracker.kt`、`ChatFloatingContent.kt`、`ChatFloatingWindows.kt` | 显示当前动作、截图/手势时让位及任务结束展开。 |
+| `ui/components/message/tools/PhoneUseToolUI.kt` | 聊天步骤按动作显示标题、图标与关键参数，复用现有详情展示。 |
 | `app/src/github/AndroidManifest.xml` 和该渠道资源 | GitHub 专用服务声明及 Android 11+ 启用条件。 |
 
 助手本地工具页沿用上游的悬浮窗要求、无障碍授权引导和离线说明，与本分支的 Termux、Shizuku、媒体创作等工具共同接入。采用上游 `PhoneUseToolTest` 与 `ChatFloatingTrackerTest` 验证工具和悬浮窗逻辑。

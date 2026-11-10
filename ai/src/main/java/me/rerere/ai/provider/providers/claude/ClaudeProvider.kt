@@ -46,6 +46,7 @@ import me.rerere.ai.provider.TextGenerationResult
 import me.rerere.ai.provider.providers.PartGroup
 import me.rerere.ai.provider.providers.groupPartsByToolBoundary
 import me.rerere.ai.provider.runQuotaQuery
+import me.rerere.ai.provider.selectedApiKey
 import me.rerere.ai.provider.stream.SseEvent
 import me.rerere.ai.ui.ClaudeReasoningMetadata
 import me.rerere.ai.ui.ImageGenerationItem
@@ -59,7 +60,6 @@ import me.rerere.ai.ui.UIMessagePart
 import me.rerere.ai.ui.handleTextGenerationResult
 import me.rerere.ai.ui.metadataAs
 import me.rerere.ai.ui.toMetadata
-import me.rerere.ai.provider.selectedApiKey
 import me.rerere.ai.util.configureReferHeaders
 import me.rerere.ai.util.configureSessionHeaders
 import me.rerere.ai.util.encodeBase64
@@ -753,9 +753,16 @@ class ClaudeProvider(private val client: OkHttpClient) : Provider<ProviderSettin
         }
 
         is UIMessagePart.Reasoning -> buildJsonObject {
-            put("type", "thinking")
-            put("thinking", reasoning)
-            metadataAs<ClaudeReasoningMetadata>()?.signature?.let { put("signature", it) }
+            val claudeMetadata = metadataAs<ClaudeReasoningMetadata>()
+            val redactedData = claudeMetadata?.redactedData
+            if (redactedData != null) {
+                put("type", "redacted_thinking")
+                put("data", redactedData)
+            } else {
+                put("type", "thinking")
+                put("thinking", reasoning)
+                claudeMetadata?.signature?.let { put("signature", it) }
+            }
         }
 
         else -> null
@@ -809,8 +816,16 @@ class ClaudeProvider(private val client: OkHttpClient) : Provider<ProviderSettin
                 }
 
                 "redacted_thinking" -> {
-                    val data = block["data"]?.jsonPrimitiveOrNull?.contentOrNull
-                    println(data)
+                    block["data"]?.jsonPrimitiveOrNull?.contentOrNull?.let { data ->
+                        parts.add(
+                            UIMessagePart.Reasoning(
+                                reasoning = "",
+                                createdAt = Clock.System.now(),
+                                finishedAt = null,
+                                metadata = ClaudeReasoningMetadata(redactedData = data).toMetadata(),
+                            )
+                        )
+                    }
                 }
 
                 "tool_use" -> {
