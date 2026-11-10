@@ -427,6 +427,11 @@ private fun ChatPageContent(
                             navController.navigate(Screen.WorkspaceDetail(id = workspace.id, openFiles = true))
                         }
                     },
+                    onTerminalClick = {
+                        boundWorkspace?.let { workspace ->
+                            navController.navigate(Screen.WorkspaceTerminal(workspace.id))
+                        }
+                    },
                     onCancelClick = {
                         vm.stopGeneration()
                     },

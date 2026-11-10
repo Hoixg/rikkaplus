@@ -156,6 +156,7 @@ fun ChatInput(
     onStartVoiceMode: (() -> Unit)? = null,
     workspace: WorkspaceEntity? = null,
     onWorkspaceClick: () -> Unit = {},
+    onTerminalClick: () -> Unit = {},
     voiceState: VoiceSessionState = VoiceSessionState(),
     onStopVoiceMode: () -> Unit = {},
 ) {
@@ -351,6 +352,10 @@ fun ChatInput(
                             }
                         }
 
+                        if (workspace?.supportsTerminal() == true) {
+                            TerminalButton(onClick = onTerminalClick)
+                        }
+
                         ActionIconButton(
                             onClick = onMoreClick
                         ) {
@@ -424,6 +429,21 @@ private fun WorkspaceButton(onClick: () -> Unit) {
         Icon(
             imageVector = HugeIcons.Codesandbox,
             contentDescription = stringResource(R.string.workspace_open_files),
+            modifier = Modifier.padding(8.dp),
+        )
+    }
+}
+
+@Composable
+private fun TerminalButton(onClick: () -> Unit) {
+    ToggleSurface(
+        checked = true,
+        onClick = onClick,
+        modifier = Modifier.testTag("terminal_button"),
+    ) {
+        Icon(
+            imageVector = HugeIcons.ComputerTerminal01,
+            contentDescription = stringResource(R.string.workspace_terminal),
             modifier = Modifier.padding(8.dp),
         )
     }

@@ -18,6 +18,7 @@ Material 3 look (cards with dividers, plain forms).
   app/src/main/java/me/rerere/rikkahub/ui/components/ui/CardGroup.kt) instead of a card with dividers.
 - Favor larger corner radii, filled/tonal containers, and whole-row click targets.
 - Assistant local tools keep the Phone Control and Media Creation switches without duplicate shortcuts to their global settings pages.
+- The chat input shows a terminal shortcut immediately before the plus button when its bound workspace supports a terminal; reuse the workspace shortcut style and the existing workspace terminal route.
 
 ## Build, Test, and Development Commands
 
@@ -43,6 +44,10 @@ only the GitHub Release universal APK. Cloud uploads must use the exact verified
 must contain exactly one APK. Daily builds remove obsolete APK attachments from `1.0-nightly`; keep historical
 versioned releases unchanged. Release signing uses ignored `signing-1.0.properties`; cloud builds use dedicated
 `KEY_BASE64_1_0` / `SIGNING_CONFIG_1_0` secrets. Never fall back to the historical custom signing configuration.
+
+Locally keep only the latest verified installer in `../artifacts/`. After verifying a replacement, remove older
+installers, downloaded build-artifact ZIPs and extracted APK duplicates. Keep the current verified installer
+until its replacement passes verification; do not accumulate historical APK copies by commit or variant.
 
 Use Chinese commit subjects in the form `type(scope): 改动摘要`. Explain the changes and their reason in the body
 when needed. After pushing, report the changes, verification result and commit hash in Chinese. Do not rewrite
