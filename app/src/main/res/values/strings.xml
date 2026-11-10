@@ -428,6 +428,7 @@
   <string name="permission_microphone_desc">Microphone permission is required for speech recognition</string>
   <string name="permission_notification">Notification</string>
   <string name="permission_notification_desc">Send notifications</string>
+  <string name="permission_notification_card_desc">Allow notifications to see the progress of AI generation and background commands</string>
   <string name="permission_calendar_read">Read Calendar</string>
   <string name="permission_calendar_read_desc">Read calendar events to answer your schedule-related questions</string>
   <string name="permission_calendar_write">Write Calendar</string>
@@ -1864,4 +1865,9 @@
   <string name="setting_page_preferences_notification_floating_style_original">Original</string>
   <string name="setting_page_preferences_notification_floating_style_minimal">Minimal</string>
   <string name="setting_page_preferences_notification_floating_style_pending">Minimal mode is still being designed and is not available yet.</string>
+  <string name="setting_display_page_auto_compress_title">Auto-compress Context</string>
+  <string name="setting_display_page_auto_compress_desc">After a reply, automatically compress the history into a summary when context usage exceeds the set ratio</string>
+  <string name="setting_display_page_auto_compress_threshold_title">Trigger Ratio</string>
+  <string name="setting_display_page_auto_compress_threshold_desc">Relative to the chat model\'s context window</string>
+  <string name="error_title_auto_compress">Auto-compression failed</string>
 </resources>

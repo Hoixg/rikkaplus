@@ -1771,4 +1771,21 @@
   <string name="chat_page_select_all">全選</string>
   <string name="chat_page_deselect_all">取消全選</string>
   <string name="chat_page_clear_selection">清除選取</string>
+  <string name="permission_notification_card_desc">允許通知，以便在通知欄查看 AI 生成和背景命令的進度</string>
+  <string name="workspace_ssh_editor_missing_jump_fields">請輸入跳板主機的主機、連接埠及使用者名稱</string>
+  <string name="chat_page_compress_keep_recent">保留最近訊息</string>
+  <string name="chat_page_compress_keep_recent_desc">這些訊息不會被壓縮，並保留在摘要之後。設為 0 會壓縮全部內容，最能有效重用提示詞快取；如果對話太長而無法壓縮，請保留更多訊息。</string>
+  <string name="chat_page_compress_not_enough_messages">訊息不足，無法壓縮。請減少要保留的訊息數量。</string>
+  <string name="workspace_ssh_editor_jump_host">跳板主機</string>
+  <string name="workspace_ssh_editor_jump_host_enable">透過跳板主機連線</string>
+  <string name="workspace_ssh_editor_jump_host_enable_desc">先連線至跳板主機，再透過它連到伺服器，就像 OpenSSH 的 ProxyJump。上方的主機會由跳板主機解析</string>
+  <string name="workspace_ssh_editor_jump_host_key">跳板主機金鑰</string>
+  <string name="workspace_ssh_editor_target_host_key">伺服器主機金鑰</string>
+  <string name="workspace_ssh_editor_jump_host_key_confirm">確認跳板主機金鑰</string>
+  <string name="workspace_ssh_editor_jump_host_key_changed">跳板主機金鑰已變更</string>
+  <string name="setting_display_page_auto_compress_title">自動壓縮上下文</string>
+  <string name="setting_display_page_auto_compress_desc">回覆後，當上下文使用量超過設定比例時，自動將歷史記錄壓縮為摘要</string>
+  <string name="setting_display_page_auto_compress_threshold_title">觸發比例</string>
+  <string name="setting_display_page_auto_compress_threshold_desc">相對於聊天模型的上下文視窗</string>
+  <string name="error_title_auto_compress">自動壓縮失敗</string>
 </resources>

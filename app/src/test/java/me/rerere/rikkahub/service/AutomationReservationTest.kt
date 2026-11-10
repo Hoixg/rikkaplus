@@ -12,6 +12,7 @@ import me.rerere.ai.ui.UIMessagePart
 import me.rerere.rikkahub.data.model.Conversation
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -27,13 +28,21 @@ class AutomationReservationTest {
         assertFalse(session.tryStartAutomation(blocked))
         blocked.cancel()
         session.inbox.takeNotices()
-        session.isCompressing = true
+        val compression = launch(start = CoroutineStart.LAZY) { awaitCancellation() }
+        session.setJob(compression, activity = SessionActivity.Compressing)
         val compressing = launch(start = CoroutineStart.LAZY) { error("Must not start") }
         assertFalse(session.tryStartAutomation(compressing))
+        assertSame(compression, session.getJob())
+        assertEquals(SessionActivity.Compressing, session.activity.value)
+        assertFalse(session.canStartNextTurn)
         compressing.cancel()
-        session.isCompressing = false
+        compression.cancel()
+        runCurrent()
+        assertTrue(session.canStartNextTurn)
+        assertNull(session.activity.value)
         val available = launch(start = CoroutineStart.LAZY) { awaitCancellation() }
         assertTrue(session.tryStartAutomation(available))
+        assertEquals(SessionActivity.Generating, session.activity.value)
         session.cleanup()
     }
 

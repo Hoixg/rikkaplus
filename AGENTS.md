@@ -76,6 +76,7 @@ App 有一个 `distribution` 维度的 product flavor：`github`（默认）和 
 ## Upstream merge boundaries
 
 Read `docs/upstream-sync.md` before syncing upstream. The built-in Web server is intentionally removed from `1.0`.
+Upstream Phone Use (`25b70392`) is deferred pending user review; keep the existing Phone Control implementation and do not add upstream Phone Use services, tools, floating-window hooks, resources or restrictions until explicitly requested.
 Never restore `web/`, `web-ui/`, the app's `web` source/test packages, server settings/routes/startup hooks, or direct
 Web-server-only JWT / JmDNS dependencies. Keep the OAuth loopback callback receiver and its Ktor Core/CIO dependencies
 required for subscription sign-in. Resolve upstream modify/delete conflicts by keeping these deletions, and
@@ -98,6 +99,7 @@ The `1.0` scheduled-task feature is an independent implementation in `data/autom
 Worker shims, migration chains, timed approvals, or old-prompt comparison metadata. Reuse ChatService,
 ConversationSession, existing model/assistant pickers, and the normal agent tool approvals. Scheduled executions
 must keep task management read-only, and model overrides must not change the assistant or conversation default.
+Compression shares the session job slot with generation; queued messages and scheduled executions must wait for it to finish.
 
 ## Module Structure
 
