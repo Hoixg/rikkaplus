@@ -43,11 +43,10 @@ private const val SWIPE_MS = 350L
 private const val SCREENSHOT_MAX_SIDE = 1568
 
 /**
- * 不允许 AI 操作的应用：支付和银行类
+ * 不允许 AI 操作的应用：支付和银行类（支付宝除外）
  * 不能打开，从别的应用跳转进去后也不能读屏和操作，只能返回或回到桌面
  */
 internal val PHONE_USE_BLOCKED_APPS = setOf(
-    "com.eg.android.AlipayGphone", // 支付宝
     "com.unionpay", // 云闪付
     "com.paypal.android.p2pmobile", // PayPal
     "com.google.android.apps.walletnfcrel", // Google Wallet
@@ -92,7 +91,7 @@ internal fun buildPhoneUseTool(
             in both the element list and screenshots.
             Use screenshot only when the element list is not enough (images, canvas, games, custom views).
             This app itself cannot be operated; leave it with open_app or press home before acting.
-            Payment and banking apps are blocked: you cannot open, read or operate them. If a task ends up in one,
+            Payment and banking apps other than Alipay are blocked: you cannot open, read or operate them. If a task ends up in one,
             press back or home and tell the user to finish that step themselves.
             Stop and ask the user before irreversible steps such as paying, sending messages or deleting data,
             unless they already told you to do exactly that.

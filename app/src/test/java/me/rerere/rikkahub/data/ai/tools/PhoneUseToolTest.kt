@@ -150,25 +150,40 @@ class PhoneUseToolTest {
     }
 
     @Test
-    fun `blocked apps cannot be listed or opened`() = runTest {
+    fun `Alipay can be listed opened read and operated while other blocked apps remain unavailable`() = runTest {
         manager.attach(controller)
-        assertFalse(call { put("action", "list_apps") }.contains("Alipay"))
+        val apps = call { put("action", "list_apps") }
+        assertTrue(apps.contains("Alipay"))
+        assertFalse(apps.contains("UnionPay"))
+        call {
+            put("action", "open_app")
+            put("app", "Alipay")
+        }
+        assertEquals(listOf("com.eg.android.AlipayGphone"), controller.opened)
+        controller.visible = listOf("com.eg.android.AlipayGphone")
+        assertTrue(call { put("action", "observe") }.contains("Send"))
+        assertTrue(tool.execute(buildJsonObject { put("action", "screenshot") }).any { it is UIMessagePart.Image })
+        call {
+            put("action", "tap")
+            put("element", 0)
+        }
+        assertEquals(1, controller.gestures.size)
         val error = runCatching {
             call {
                 put("action", "open_app")
-                put("app", "Alipay")
+                put("app", "UnionPay")
             }
         }.exceptionOrNull()
         assertTrue(error!!.message!!.contains("blocked"))
-        assertTrue(controller.opened.isEmpty())
+        assertEquals(listOf("com.eg.android.AlipayGphone"), controller.opened)
     }
 
     @Test
     fun `inside a blocked app nothing is read or operated but leaving works`() = runTest {
         manager.attach(controller)
         call { put("action", "observe") }
-        // 从别的应用跳转进了支付宝
-        controller.visible = listOf("com.eg.android.AlipayGphone")
+        // 从别的应用跳转进了云闪付
+        controller.visible = listOf("com.unionpay")
         listOf("observe", "screenshot", "tap").forEach { action ->
             val error = runCatching {
                 call {
@@ -180,7 +195,7 @@ class PhoneUseToolTest {
         }
         assertTrue(controller.gestures.isEmpty())
 
-        // 返回可以用，但结果里不带支付宝界面的内容
+        // 返回可以用，但结果里不带云闪付界面的内容
         val output = call {
             put("action", "press")
             put("key", "back")
@@ -193,8 +208,8 @@ class PhoneUseToolTest {
     @Test
     fun `a blocked app that is visible but not on top still blocks everything`() = runTest {
         manager.attach(controller)
-        // 分屏或下拉通知栏：最上层是别的应用，支付宝的界面还在屏幕上
-        controller.visible = listOf("com.android.systemui", "com.eg.android.AlipayGphone")
+        // 分屏或下拉通知栏：最上层是别的应用，云闪付的界面还在屏幕上
+        controller.visible = listOf("com.android.systemui", "com.unionpay")
         listOf("observe", "screenshot", "tap").forEach { action ->
             val error = runCatching {
                 call {
@@ -209,7 +224,7 @@ class PhoneUseToolTest {
 
         // 操作之后才出现的也不把界面交给模型
         controller.visible = listOf("com.demo")
-        controller.afterGesture = { controller.visible = listOf("com.demo", "com.eg.android.AlipayGphone") }
+        controller.afterGesture = { controller.visible = listOf("com.demo", "com.unionpay") }
         val output = call {
             put("action", "tap")
             put("x", 500)
@@ -290,6 +305,7 @@ class PhoneUseToolTest {
         override fun listApps() = listOf(
             PhoneApp("com.demo", "Demo App"),
             PhoneApp("com.eg.android.AlipayGphone", "Alipay"),
+            PhoneApp("com.unionpay", "UnionPay"),
         )
 
         override fun openApp(packageName: String): Boolean {
