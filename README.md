@@ -31,8 +31,12 @@ The branch focuses on clear code structure, maintainable implementations, and co
 
 [Releases](https://github.com/Hoixg/rikkaplus/releases) · [Daily build](https://github.com/Hoixg/rikkaplus/releases/tag/1.0-nightly) · [Issues](https://github.com/Hoixg/rikkaplus/issues)
 
+Debug APKs are built locally; Release APKs are built through GitHub Actions. Ordinary build requests do not publish a versioned release.
+
 ## Credits and license
 
 Based on [RikkaHub](https://github.com/rikkahub/rikkahub), created by [re-ovo](https://github.com/re-ovo) and its contributors. Component attribution is documented in the [Shizuku notes](docs/shizuku.md) and [terminal module notes](terminal/README.md).
+
+The in-app browser adapts DOM automation from Kelivo and references Operit's native WebView architecture; see the [browser notes and source attribution](docs/browser.md).
 
 Licensed under [GNU Affero General Public License v3.0](LICENSE), with upstream copyright notices retained.

@@ -6,6 +6,10 @@ import kotlinx.serialization.Serializable
 @Serializable
 sealed class LocalToolOption {
     @Serializable
+    @SerialName("browser")
+    data object Browser : LocalToolOption()
+
+    @Serializable
     @SerialName("media_creation")
     data object MediaCreation : LocalToolOption()
 

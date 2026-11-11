@@ -74,7 +74,9 @@ class ChatToolFactory(
             if (shouldUseExternalWebSearch(assistant, model)) {
                 addAll(createSearchTools(settings))
             }
-            addAll(localTools.getTools(assistant.localTools, conversationId.toString()))
+            addAll(
+                localTools.getTools(assistant.localTools, conversationId.toString(), assistant.workspaceId?.toString())
+            )
             if (LocalToolOption.MediaCreation in assistant.localTools && ModelAbility.TOOL in model.abilities) {
                 addAll(chatMediaCreation.tools(conversationId, getMessages))
             }

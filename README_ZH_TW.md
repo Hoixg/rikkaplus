@@ -31,8 +31,12 @@
 
 [發佈版本](https://github.com/Hoixg/rikkaplus/releases) · [每日建構](https://github.com/Hoixg/rikkaplus/releases/tag/1.0-nightly) · [問題回報](https://github.com/Hoixg/rikkaplus/issues)
 
+安裝套件建構約定：Debug 在本機建構，Release 透過 GitHub Actions 雲端建構；一般建構不自動發佈版本。
+
 ## 致謝與授權條款
 
 專案基於 [re-ovo](https://github.com/re-ovo) 與貢獻者開發的 [RikkaHub](https://github.com/rikkahub/rikkahub)。元件來源說明見 [Shizuku 文件](docs/shizuku.md)與[終端模組說明](terminal/README.md)。
+
+內建瀏覽器改編 Kelivo 的 DOM 自動化腳本，並參考 Operit 的原生 WebView 架構，詳見[瀏覽器功能與來源說明](docs/browser.md)。
 
 專案採用 [GNU Affero General Public License v3.0](LICENSE)，保留上游著作權聲明。

@@ -28,6 +28,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import me.rerere.ui.toast.ToastType
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Calendar03
+import me.rerere.hugeicons.stroke.Earth
 import me.rerere.hugeicons.stroke.ChartLineData01
 import me.rerere.hugeicons.stroke.ClipboardPaste
 import me.rerere.hugeicons.stroke.Clock01
@@ -245,6 +246,12 @@ private fun AssistantLocalToolContent(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         CardGroup {
+            toolItem(
+                option = LocalToolOption.Browser,
+                icon = HugeIcons.Earth,
+                title = { Text("浏览器") },
+                description = { Text("在聊天的浏览器中访问网页、读取内容和操作页面，共用已有登录状态") },
+            )
             toolItem(
                 option = LocalToolOption.MediaCreation,
                 icon = HugeIcons.ImageToVideo,

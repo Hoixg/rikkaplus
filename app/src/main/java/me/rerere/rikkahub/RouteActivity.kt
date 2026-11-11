@@ -450,6 +450,10 @@ class RouteActivity : ComponentActivity() {
                                 WebViewPage(key.url, key.contentId)
                             }
 
+                            entry<Screen.Browser> { key ->
+                                me.rerere.rikkahub.ui.pages.browser.BrowserPage(key.conversationId, key.workspaceId, key.tabId, key.url)
+                            }
+
                             entry<Screen.SettingTheme> {
                                 SettingThemePage()
                             }
@@ -727,6 +731,9 @@ sealed interface Screen : NavKey {
 
     @Serializable
     data class WebView(val url: String = "", val contentId: String = "") : Screen
+
+    @Serializable
+    data class Browser(val conversationId: String, val workspaceId: String? = null, val tabId: String? = null, val url: String = "") : Screen
 
     @Serializable
     data object SettingTheme : Screen

@@ -58,6 +58,7 @@ import me.rerere.hugeicons.stroke.ArrowRight01
 import me.rerere.hugeicons.stroke.Camera01
 import me.rerere.hugeicons.stroke.Codesandbox
 import me.rerere.hugeicons.stroke.ComputerTerminal01
+import me.rerere.hugeicons.stroke.Earth
 import me.rerere.hugeicons.stroke.Files02
 import me.rerere.hugeicons.stroke.Folder01
 import me.rerere.hugeicons.stroke.Image02
@@ -221,11 +222,21 @@ internal fun FilesPicker(
                 val showMcp = settings.mcpServers.isNotEmpty()
                 // 限制了上下文消息数就是滚动上下文，旧消息会自动移出，不需要压缩
                 val showCompress = assistant.contextMessageLimit <= 0
-                val itemCount = 2 + listOf(showWorkspace, showWorkspace && showCwd, showMcp, showCompress).count { it }
+                val itemCount = 3 + listOf(showWorkspace, showWorkspace && showCwd, showMcp, showCompress).count { it }
                 var itemIndex = 0
                 Column(
                     verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap),
                 ) {
+                    SegmentedListItem(
+                        onClick = {
+                            onDismiss()
+                            navController.navigate(Screen.Browser(conversation.id.toString(), assistant.workspaceId?.toString()))
+                        },
+                        shapes = ListItemDefaults.segmentedShapes(index = itemIndex++, count = itemCount),
+                        leadingContent = { Icon(HugeIcons.Earth, contentDescription = null) },
+                        trailingContent = { Icon(HugeIcons.ArrowRight01, contentDescription = null) },
+                    ) { Text("浏览器") }
+
                     SearchPickerListItem(
                         enableSearch = assistant.enableWebSearch,
                         settings = settings,

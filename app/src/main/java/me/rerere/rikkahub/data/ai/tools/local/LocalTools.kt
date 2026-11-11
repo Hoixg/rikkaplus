@@ -2,6 +2,7 @@ package me.rerere.rikkahub.data.ai.tools.local
 
 import android.content.Context
 import me.rerere.ai.core.Tool
+import me.rerere.rikkahub.browser.BrowserManager
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.event.AppEventBus
 import me.rerere.rikkahub.data.files.FilesManager
@@ -16,6 +17,7 @@ class LocalTools(
     private val settingsStore: SettingsStore,
     private val phoneUseManager: PhoneUseManager,
     private val filesManager: FilesManager,
+    private val browserManager: BrowserManager,
 ) {
     private val termuxOutputCache = TermuxOutputCache()
     val javascriptTool by lazy { buildJavascriptTool() }
@@ -51,8 +53,11 @@ class LocalTools(
         )
     }
 
-    fun getTools(options: List<LocalToolOption>, conversationId: String): List<Tool> {
+    fun getTools(options: List<LocalToolOption>, conversationId: String, workspaceId: String? = null): List<Tool> {
         val tools = mutableListOf<Tool>()
+        if (LocalToolOption.Browser in options) {
+            tools.add(buildBrowserTool(browserManager, conversationId, workspaceId))
+        }
         if (options.contains(LocalToolOption.JavascriptEngine)) {
             tools.add(javascriptTool)
         }

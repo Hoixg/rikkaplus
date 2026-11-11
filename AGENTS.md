@@ -26,8 +26,8 @@ Material 3 look (cards with dividers, plain forms).
 
 ```bash
 ./gradlew assembleGithubDebug    # 构建 GitHub 渠道的 Debug APK
-./gradlew assembleGithubRelease  # 构建 GitHub Release / 每日构建用的 APK
-./gradlew buildAll               # 仅构建一个 GitHub Release 通用 APK
+./gradlew assembleGithubRelease  # 仅供云端工作流构建 GitHub Release APK
+./gradlew buildAll               # 云端仅构建一个 GitHub Release 通用 APK
 ./gradlew test                   # 运行所有模块的 JVM 单元测试
 ./gradlew lint                   # 运行 Android Lint
 ./gradlew spotlessApply          # 用 ktlint 格式化相对 origin/master 改动过的 Kotlin 文件
@@ -35,6 +35,11 @@ Material 3 look (cards with dividers, plain forms).
 ```
 
 ## Branch, commits and releases
+
+Build Debug APKs locally when explicitly requested. Build Release APKs through GitHub Actions
+`release.yml` on branch `1.0` with `variant=release`; do not run Release packaging locally unless the user
+explicitly changes this preference. Local compilation, resource checks and JVM tests remain allowed.
+Ordinary commit-and-build requests keep the version unchanged and use workflow_dispatch without publishing a tag.
 
 The active development branch is `1.0`. Keep the historical `custom` branch on GitHub; do not recreate a local
 `custom` checkout unless the user requests it. Preserve the removal of the Web server when syncing upstream.
@@ -92,6 +97,17 @@ Keep local ZIP, WebDAV and S3 backup/restore. Backup content shows chat records 
 with workspace files on a separate row aligned to the start; allow the full workspace label to wrap.
 Imports from other apps (ChatBox and Cherry Studio), their dedicated parsers, UI and strings are removed;
 do not restore them during upstream merges.
+
+## In-app browser
+
+Read `docs/browser.md` before changing the browser. The chat plus menu opens a standalone full-screen browser;
+assistant local tools independently enable its single `browser` tool. Reuse Android WebView, DownloadManager,
+WorkspaceRepository, FilesManager and existing assistant settings. Tabs belong to conversations while website
+cookies are shared; tool calls must never target another conversation's tabs or dialogs. Retain the limit of
+three live native views and three AI-created tabs per chat, with idle views released independently of saved tabs.
+Browser metadata uses `filesDir/browser/state.json` through AtomicFile; do not add a database, server, external
+browser APK or parallel browser framework. Retain Kelivo DOM attribution and the existing workspace previews.
+Browser screenshots use CSS viewport coordinates and do not change Phone Use screenshots or gestures.
 
 ## Scheduled tasks
 
