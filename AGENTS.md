@@ -20,6 +20,7 @@ Material 3 look (cards with dividers, plain forms).
 - Assistant local tools use upstream Phone Use and retain the Media Creation switch without duplicate global settings shortcuts. Phone Use follows upstream setup through Android accessibility and the existing floating-window preference; do not restore the old Phone Control settings page.
 - Phone Use tool cards display upstream action-specific titles and icons; retain MCP and Termux renderer registrations when merging the shared tool registry.
 - The chat input shows a terminal shortcut immediately before the plus button when its bound workspace supports a terminal; reuse the workspace shortcut style and the existing workspace terminal route.
+- Quick messages follow upstream behavior: a tap appends with a separating newline when needed; a long press replaces the input text. Preserve queued-message draft restoration and attachment protection when merging `ChatInputState`.
 
 ## Build, Test, and Development Commands
 
