@@ -8,6 +8,12 @@ if (!state || state.document !== document) {
 }
 const fail = (message) => { throw new Error(message); };
 const clean = (value, limit=200) => String(value || '').replace(/\s+/g, ' ').trim().slice(0, limit);
+// Presentation only: this callback cannot execute device or filesystem operations.
+const showGesture = (kind, fromX, fromY, toX=fromX, toY=fromY) => {
+  try { window.__rikkaBrowserFeedback?.showGesture(JSON.stringify({
+    kind,from_x:fromX,from_y:fromY,to_x:toX,to_y:toY,width:innerWidth,height:innerHeight
+  })); } catch (_) {}
+};
 const roots = [];
 const visitRoot = (root) => {
   roots.push(root);
@@ -231,6 +237,7 @@ try {
       result = (async () => {
         const {el,x,y} = await prepareTarget();
         if (el.disabled) fail('element_disabled');
+        showGesture('tap',x,y);
         el.focus({preventScroll:true});
         if (args.button === 'right') el.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,button:2,clientX:x,clientY:y}));
         else { el.click(); if (args.click_count === 2) { el.click(); el.dispatchEvent(new MouseEvent('dblclick',{bubbles:true,cancelable:true,detail:2})); } }
@@ -239,8 +246,9 @@ try {
     }
     case 'type': {
       result = (async () => {
-        const {el} = await prepareTarget();
+        const {el,x,y} = await prepareTarget();
         if (!editable(el) || el.disabled || el.readOnly) fail('element_not_editable');
+        showGesture('tap',x,y);
         el.focus({preventScroll:true});
         const desired = args.clear_first === false ? inputValue(el) + args.text : args.text;
         setText(el, desired);
@@ -252,11 +260,12 @@ try {
     }
     case 'select_option': {
       result = (async () => {
-        const {el} = await prepareTarget();
+        const {el,x,y} = await prepareTarget();
         if (el.tagName !== 'SELECT' || el.disabled) fail('element_not_selectable');
         const matches = Array.from(el.options).filter(o => args.option_value !== undefined ? o.value === args.option_value : o.label === args.option_label);
         if (matches.length !== 1) fail(matches.length ? 'ambiguous_option' : 'option_not_found');
         if (matches[0].disabled || matches[0].parentElement.disabled) fail('option_disabled');
+        showGesture('tap',x,y);
         for (const option of el.options) option.selected = option === matches[0];
         const view = el.ownerDocument.defaultView;
         el.dispatchEvent(new view.Event('input',{bubbles:true}));
@@ -299,7 +308,21 @@ try {
       const amount = args.amount || 400, direction = args.direction || 'down';
       const left = direction === 'left' ? -amount : direction === 'right' ? amount : 0;
       const top = direction === 'up' ? -amount : direction === 'down' ? amount : 0;
+      const beforeX = scroller ? scroller.scrollLeft : scrollX, beforeY = scroller ? scroller.scrollTop : scrollY;
       (scroller || window).scrollBy({left,top,behavior:'instant'});
+      const dx = (scroller ? scroller.scrollLeft : scrollX) - beforeX;
+      const dy = (scroller ? scroller.scrollTop : scrollY) - beforeY;
+      if (dx || dy) {
+        const box = scroller ? rect(scroller) : {x:0,y:0,width:innerWidth,height:innerHeight};
+        const x1 = Math.max(0,box.x), y1 = Math.max(0,box.y);
+        const x2 = Math.min(innerWidth,box.x+box.width), y2 = Math.min(innerHeight,box.y+box.height);
+        if (x2 > x1 && y2 > y1) {
+          const x = (x1+x2)/2, y = (y1+y2)/2;
+          const travelX = Math.sign(dx)*Math.min(Math.abs(dx),(x2-x1)*0.55);
+          const travelY = Math.sign(dy)*Math.min(Math.abs(dy),(y2-y1)*0.55);
+          showGesture('scroll',x+travelX/2,y+travelY/2,x-travelX/2,y-travelY/2);
+        }
+      }
       result = {...page(),scrolled:true}; break;
     }
     case 'wait': result = {...page(),ready:args.wait_for ? Boolean(query(args.wait_for)) : document.readyState !== 'loading'}; break;

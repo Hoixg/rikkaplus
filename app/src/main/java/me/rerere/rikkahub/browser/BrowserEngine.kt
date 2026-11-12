@@ -66,9 +66,10 @@ internal interface BrowserEngineEvents {
     fun popup(message: Message): Boolean
     fun close()
     fun resource(request: WebResourceRequest): WebResourceResponse?
+    fun gesture(value: JsonObject)
 }
 
-/** Native Android WebView, following Operit's host/controller separation. No native page bridge. */
+/** Native Android WebView. The page callback only reports visual pointer positions. */
 @SuppressLint("SetJavaScriptEnabled")
 internal class BrowserEngine(
     context: Context,
@@ -86,6 +87,15 @@ internal class BrowserEngine(
     private val defaultUserAgent = webView.settings.userAgentString
 
     init {
+        webView.addJavascriptInterface(object {
+            @androidx.annotation.Keep
+            @android.webkit.JavascriptInterface
+            fun showGesture(encoded: String) {
+                if (encoded.length > 2048) return
+                val value = runCatching { JsonInstant.parseToJsonElement(encoded) as? JsonObject }.getOrNull() ?: return
+                webView.post { if (!disposed) events.gesture(value) }
+            }
+        }, "__rikkaBrowserFeedback")
         webView.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
@@ -260,6 +270,7 @@ internal class BrowserEngine(
         disposed = true
         (webView.parent as? android.view.ViewGroup)?.removeView(webView)
         webView.stopLoading()
+        webView.removeJavascriptInterface("__rikkaBrowserFeedback")
         webView.webChromeClient = null
         webView.destroy()
         contextWrapper.baseContext = contextWrapper.applicationContext

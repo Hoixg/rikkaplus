@@ -108,6 +108,14 @@ three live native views and three AI-created tabs per chat, with idle views rele
 Browser metadata uses `filesDir/browser/state.json` through AtomicFile; do not add a database, server, external
 browser APK or parallel browser framework. Retain Kelivo DOM attribution and the existing workspace previews.
 Browser screenshots use CSS viewport coordinates and do not change Phone Use screenshots or gestures.
+The browser home contains only a centered web-search field. Never place bookmarks, history, introductory text
+or library filters on the home page. Keep its existing top address bar and bottom toolbar layout. Bookmarks,
+history and downloads stay in their own panels. Browser settings use grouped search/browsing/advanced/site-data
+sections with a fixed save button; website data cleanup belongs there and retains its existing confirmation.
+AI status is a compact overlay inside the browser viewport; never resize the page when it appears. Gesture
+feedback stays inside the current WebView's UI container, uses CSS viewport coordinates and exposes only a
+visual callback. Keep it independent of Phone Use and out of browser screenshots. Chat summaries show one
+clickable page card for navigation actions; do not repeat raw URLs and open buttons for every browser step.
 
 ## Scheduled tasks
 

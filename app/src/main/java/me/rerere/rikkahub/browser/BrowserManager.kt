@@ -14,11 +14,14 @@ import android.webkit.WebStorage
 import android.webkit.WebView
 import androidx.core.content.FileProvider
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -67,6 +70,11 @@ class BrowserManager(
     val permission = mutablePermission.asStateFlow()
     private val mutableRunning = MutableStateFlow<String?>(null)
     val running = mutableRunning.asStateFlow()
+    private val mutableActivity = MutableStateFlow<BrowserActivity?>(null)
+    val activity = mutableActivity.asStateFlow()
+    private val mutableGestures = MutableSharedFlow<BrowserGesture>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+    val gestures = mutableGestures.asSharedFlow()
+    private var gestureSequence = 0L
     private val mutablePaused = MutableStateFlow<Set<String>>(emptySet())
     val paused = mutablePaused.asStateFlow()
     private val mutableError = MutableStateFlow<String?>(null)
@@ -233,6 +241,10 @@ class BrowserManager(
             override fun close() { scope.launch { runCatching { close(tab.conversationId, tab.id) } } }
             override fun resource(request: WebResourceRequest): WebResourceResponse? =
                 state.value.tabs.find { it.id == tab.id }?.let { workspaceResource(it, request) }
+            override fun gesture(value: JsonObject) {
+                if (running.value != tab.conversationId || busyTab != tab.id) return
+                decodeBrowserGesture(++gestureSequence, tab.id, value)?.let { mutableGestures.tryEmit(it) }
+            }
         })
         engines[tab.id] = result
         mutableViews.value = views.value + (tab.id to result.viewState)
@@ -386,6 +398,7 @@ class BrowserManager(
                 }
                 val current = tab ?: error("no_tab: open a URL first")
                 busyTab = current.id
+                mutableActivity.value = BrowserActivity(conversationId, current.id, action)
                 if (action == "close_tab") {
                     busyTab = null
                     close(conversationId, current.id)
@@ -476,6 +489,7 @@ class BrowserManager(
                 }
                 listOf(UIMessagePart.Text(result.toString()))
             } finally {
+                mutableActivity.value = null
                 busyTab = null
                 mutableRunning.value = null
                 engines.filterKeys { it !in visible }.values.filterNot { it.disposed }.forEach { it.webView.onPause() }

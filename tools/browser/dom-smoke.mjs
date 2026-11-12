@@ -72,6 +72,32 @@ try {
   const shadow = top.elements.find(e => e.name === 'Shadow button');
   check((await action('click', { ref: shadow.ref })).clicked, 'shadow-root reference remains usable');
   check(await page.locator('#shadow').getByRole('button').innerText() === 'Shadow clicked', 'shadow-root mutation succeeds');
+
+  await page.setContent(`<!doctype html><button id="feedback-button" onclick="this.dataset.count=String(Number(this.dataset.count||0)+1)">Feedback</button>
+    <input id="feedback-input"><div id="feedback-scroll" style="overflow:auto;width:240px;height:140px"><div style="height:1600px">Scrollable</div></div>`);
+  await page.evaluate(() => {
+    window.feedbackTrace = [];
+    window.__rikkaBrowserFeedback = {showGesture(encoded) { window.feedbackTrace.push(JSON.parse(encoded)); }};
+  });
+  check((await action('click', {selector:'#feedback-button'})).clicked, 'click remains functional with feedback enabled');
+  const tapFeedback = await page.evaluate(() => window.feedbackTrace.at(-1));
+  const buttonBounds = await page.locator('#feedback-button').boundingBox();
+  check(tapFeedback.kind === 'tap' && tapFeedback.from_x >= buttonBounds.x && tapFeedback.from_x <= buttonBounds.x+buttonBounds.width &&
+    tapFeedback.from_y >= buttonBounds.y && tapFeedback.from_y <= buttonBounds.y+buttonBounds.height, 'tap feedback reports the resolved target position');
+  check(tapFeedback.width === 640 && tapFeedback.height === 900, 'feedback carries CSS viewport dimensions');
+  check((await action('type', {selector:'#feedback-input',text:'Feedback input'})).verified, 'input verification remains unchanged with feedback');
+  check(await page.evaluate(() => window.feedbackTrace.at(-1).kind === 'tap'), 'input target receives visual feedback');
+  await action('scroll', {selector:'#feedback-scroll',direction:'down',amount:300});
+  const scrollFeedback = await page.evaluate(() => window.feedbackTrace.at(-1));
+  check(scrollFeedback.kind === 'scroll' && scrollFeedback.from_y > scrollFeedback.to_y, 'scroll-down feedback moves the finger upward');
+  check(await page.locator('#feedback-scroll').evaluate(el => el.scrollTop) === 300, 'feedback preserves actual scrolling');
+  await action('scroll', {selector:'#feedback-scroll',direction:'down',amount:9000});
+  const feedbackCount = await page.evaluate(() => window.feedbackTrace.length);
+  await action('scroll', {selector:'#feedback-scroll',direction:'down',amount:9000});
+  check(await page.evaluate(() => window.feedbackTrace.length) === feedbackCount, 'scroll boundaries do not draw fictitious movement');
+  await page.evaluate(() => { window.__rikkaBrowserFeedback.showGesture = () => { throw new Error('visual failure'); }; });
+  check((await action('click', {selector:'#feedback-button'})).clicked && await page.locator('#feedback-button').getAttribute('data-count') === '2',
+    'a failed visual callback does not prevent or duplicate the action');
   console.log(JSON.stringify({ checks, failures: 0 }));
 } finally {
   await browser.close();

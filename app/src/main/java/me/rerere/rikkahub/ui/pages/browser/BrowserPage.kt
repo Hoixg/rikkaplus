@@ -1,7 +1,6 @@
 package me.rerere.rikkahub.ui.pages.browser
 
 import android.Manifest
-import android.app.DownloadManager
 import android.content.Intent
 import android.view.ViewGroup
 import android.webkit.PermissionRequest
@@ -11,14 +10,11 @@ import android.widget.FrameLayout
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -28,12 +24,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Add01
@@ -46,8 +40,6 @@ import me.rerere.rikkahub.Screen
 import me.rerere.rikkahub.browser.*
 import me.rerere.rikkahub.browser.BrowserPage as SavedPage
 import me.rerere.rikkahub.ui.components.nav.BackButton
-import me.rerere.rikkahub.ui.components.ui.CardGroup
-import me.rerere.rikkahub.ui.components.ui.switchItem
 import me.rerere.rikkahub.ui.context.LocalNavController
 import me.rerere.rikkahub.ui.context.LocalToaster
 import me.rerere.rikkahub.ui.theme.CustomColors
@@ -59,6 +51,7 @@ fun BrowserPage(conversationId: String, workspaceId: String? = null, tabId: Stri
     val state by manager.state.collectAsStateWithLifecycle()
     val views by manager.views.collectAsStateWithLifecycle()
     val running by manager.running.collectAsStateWithLifecycle()
+    val activity by manager.activity.collectAsStateWithLifecycle()
     val paused by manager.paused.collectAsStateWithLifecycle()
     val storageError by manager.error.collectAsStateWithLifecycle()
     val chooser by manager.chooser.collectAsStateWithLifecycle()
@@ -161,7 +154,6 @@ fun BrowserPage(conversationId: String, workspaceId: String? = null, tabId: Stri
                             menu = false
                             run { context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(tab?.url))) }
                         })
-                        DropdownMenuItem(text = { Text("清理网站数据") }, onClick = { menu = false; clearData = true })
                     }
                 },
                 colors = CustomColors.topBarColors,
@@ -185,16 +177,6 @@ fun BrowserPage(conversationId: String, workspaceId: String? = null, tabId: Stri
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).imePadding()) {
             if (view.loading) LinearWavyProgressIndicator(progress = { view.progress / 100f }, modifier = Modifier.fillMaxWidth())
-            if (running == conversationId || conversationId in paused) {
-                Surface(color = MaterialTheme.colorScheme.secondaryContainer) {
-                    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(if (conversationId in paused) "你正在接管浏览器" else "AI 正在操作网页", Modifier.weight(1f))
-                        TextButton(onClick = { manager.pause(conversationId, conversationId !in paused) }) {
-                            Text(if (conversationId in paused) "继续" else "接管")
-                        }
-                    }
-                }
-            }
             (initializationError ?: storageError ?: view.error)?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(12.dp)) }
             chooser?.takeIf { it.tabId == tab?.id && it.fromAgent }?.let { request ->
                 TextButton(onClick = {
@@ -211,14 +193,23 @@ fun BrowserPage(conversationId: String, workspaceId: String? = null, tabId: Stri
                     IconButton(onClick = { showFind = false; run { manager.find(conversationId, "") } }) { Icon(HugeIcons.Cancel01, "关闭查找") }
                 }
             }
-            if (!ready && initializationError == null) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-            } else if (tab == null || tab.url == "about:blank" && !view.hasContent) {
-                BrowserStartPage(state.bookmarks, onOpen = ::go, modifier = Modifier.weight(1f))
-            } else if (view.crashed) {
-                Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { Text("点击刷新重新加载网页") }
-            } else {
-                key(tab.id) { BrowserContent(manager, tab, Modifier.weight(1f)) }
+            Box(Modifier.weight(1f).fillMaxWidth()) {
+                if (!ready && initializationError == null) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                } else if (tab == null || tab.url == "about:blank" && !view.hasContent) {
+                    BrowserHomePage(onSearch = ::go, modifier = Modifier.fillMaxSize())
+                } else if (view.crashed) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("点击刷新重新加载网页") }
+                } else {
+                    key(tab.id) { BrowserContent(manager, tab, Modifier.fillMaxSize()) }
+                }
+                BrowserAgentStatus(
+                    visible = running == conversationId || conversationId in paused,
+                    paused = conversationId in paused,
+                    activity = activity?.takeIf { it.conversationId == conversationId },
+                    onToggle = { manager.pause(conversationId, conversationId !in paused) },
+                    modifier = Modifier.align(Alignment.TopEnd).padding(12.dp),
+                )
             }
         }
     }
@@ -232,6 +223,7 @@ fun BrowserPage(conversationId: String, workspaceId: String? = null, tabId: Stri
                     Text(title, style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
                     if (panel == "tabs") TextButton(onClick = { run { manager.newTab(conversationId, workspaceId = workspaceId); panel = null } }) { Text("新建") }
                     if (panel == "history") TextButton(onClick = manager::clearHistory) { Text("清空") }
+                    IconButton(onClick = { panel = null }) { Icon(HugeIcons.Cancel01, "关闭面板") }
                 }
                 Spacer(Modifier.height(12.dp))
                 when (panel) {
@@ -255,12 +247,18 @@ fun BrowserPage(conversationId: String, workspaceId: String? = null, tabId: Stri
                     }
                     "bookmarks", "history" -> BrowserLibrary(
                         pages = if (panel == "bookmarks") state.bookmarks else state.history,
+                        bookmarks = panel == "bookmarks",
                         onOpen = { go(it); panel = null },
                         onRemove = if (panel == "bookmarks") { page -> manager.bookmark(page) } else null,
                         modifier = Modifier.weight(1f),
                     )
                     "downloads" -> BrowserDownloads(manager, state.downloads, onError = { toaster.show(it) }, modifier = Modifier.weight(1f))
-                    "settings" -> BrowserSettingsPanel(state.settings, onSave = { value -> run { manager.settings(value); panel = null } }, modifier = Modifier.weight(1f))
+                    "settings" -> BrowserSettingsPanel(
+                        settings = state.settings,
+                        onSave = { value -> run { manager.settings(value); panel = null } },
+                        onClearWebsiteData = { panel = null; clearData = true },
+                        modifier = Modifier.weight(1f),
+                    )
                 }
             }
         }
@@ -303,108 +301,21 @@ private fun BrowserContent(manager: BrowserManager, tab: BrowserTab, modifier: M
         catch (failure: Exception) { error = failure.message }
     }
     val native = view
-    if (native != null) AndroidView(
-        factory = { FrameLayout(it) },
-        modifier = modifier.fillMaxWidth(),
-        onRelease = { host ->
-            if (native.parent === host) { host.removeView(native); manager.hide(tab.id) }
-        },
-        update = { host ->
-            if (native.parent !== host) {
-                (native.parent as? ViewGroup)?.removeView(native)
-                host.addView(native, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-            }
-        },
-    ) else Box(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+    if (native != null) Box(modifier.fillMaxWidth().then(browserGestureFeedback(manager, tab.id))) {
+        AndroidView(
+            factory = { FrameLayout(it) },
+            modifier = Modifier.matchParentSize(),
+            onRelease = { host ->
+                if (native.parent === host) { host.removeView(native); manager.hide(tab.id) }
+            },
+            update = { host ->
+                if (native.parent !== host) {
+                    (native.parent as? ViewGroup)?.removeView(native)
+                    host.addView(native, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+                }
+            },
+        )
+    } else Box(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
         if (error != null) Text(error.orEmpty()) else CircularProgressIndicator()
-    }
-}
-
-@Composable
-private fun BrowserStartPage(bookmarks: List<SavedPage>, onOpen: (String) -> Unit, modifier: Modifier) {
-    Column(modifier.fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text("浏览器", style = MaterialTheme.typography.headlineLargeEmphasized)
-        Text("输入网址或搜索内容。登录后，AI 可以使用同一浏览器中的登录状态。", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        BrowserLibrary(bookmarks, onOpen, null, Modifier.weight(1f))
-    }
-}
-
-@Composable
-private fun BrowserLibrary(pages: List<SavedPage>, onOpen: (String) -> Unit, onRemove: ((SavedPage) -> Unit)?, modifier: Modifier) {
-    var query by rememberSaveable { mutableStateOf("") }
-    val filtered = remember(pages, query) { pages.filter { it.title.contains(query, true) || it.url.contains(query, true) } }
-    Column(modifier.fillMaxWidth()) {
-        OutlinedTextField(query, { query = it }, placeholder = { Text("搜索") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        Spacer(Modifier.height(12.dp))
-        LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (filtered.isEmpty()) item(contentType = "empty") { Text("暂无记录", modifier = Modifier.padding(16.dp)) }
-            items(filtered, key = { it.url }, contentType = { "page" }) { item ->
-                BrowserListRow(item.title.ifBlank { item.url }, item.url, onOpen = { onOpen(item.url) },
-                    onRemove = onRemove?.let { { it(item) } })
-            }
-        }
-    }
-}
-
-@Composable
-private fun BrowserListRow(title: String, subtitle: String, selected: Boolean = false, onOpen: () -> Unit, onRemove: (() -> Unit)? = null) {
-    Surface(shape = MaterialTheme.shapes.extraLarge, color = if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerLow) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f).clickable(onClick = onOpen).padding(16.dp)) {
-                Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall)
-                Text(subtitle, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            if (onRemove != null) IconButton(onClick = onRemove) { Icon(HugeIcons.Cancel01, "移除") }
-        }
-    }
-}
-
-@Composable
-private fun BrowserDownloads(manager: BrowserManager, records: List<BrowserDownload>, onError: (String) -> Unit, modifier: Modifier) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val rows by produceState(emptyList<BrowserDownloadView>(), manager, records) {
-        while (true) { value = manager.downloadStatus(); delay(1_000) }
-    }
-    LazyColumn(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        if (rows.isEmpty()) item(contentType = "empty") { Text("暂无下载") }
-        items(rows, key = { it.record.id }, contentType = { "download" }) { item ->
-            val status = when (item.status) {
-                DownloadManager.STATUS_SUCCESSFUL -> "已完成"
-                DownloadManager.STATUS_FAILED -> "下载失败"
-                DownloadManager.STATUS_PAUSED -> "系统已暂停"
-                DownloadManager.STATUS_PENDING -> "等待下载"
-                else -> if (item.total > 0) "${item.received * 100 / item.total}%" else "下载中"
-            }
-            BrowserListRow(item.record.name, status, onOpen = {
-                runCatching {
-                    manager.downloadedUri(item.record.id)?.let { uri ->
-                        context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, context.contentResolver.getType(uri))
-                            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
-                    }
-                }.onFailure { onError(it.message ?: "无法打开文件") }
-            }, onRemove = { scope.launch { manager.removeDownload(item.record.id) } })
-        }
-    }
-}
-
-@Composable
-private fun BrowserSettingsPanel(settings: BrowserSettings, onSave: (BrowserSettings) -> Unit, modifier: Modifier) {
-    var draft by remember(settings) { mutableStateOf(settings) }
-    Column(modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text("搜索引擎", style = MaterialTheme.typography.titleSmall)
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("bing" to "Bing", "google" to "Google", "duckduckgo" to "DuckDuckGo", "baidu" to "百度").forEach { (id, title) ->
-                FilterChip(selected = draft.searchEngine == id, onClick = { draft = draft.copy(searchEngine = id) }, label = { Text(title) })
-            }
-        }
-        CardGroup {
-            switchItem(checked = draft.desktopMode, onCheckedChange = { draft = draft.copy(desktopMode = it) }, headlineContent = { Text("桌面网站") })
-            switchItem(checked = draft.restoreTabs, onCheckedChange = { draft = draft.copy(restoreTabs = it) }, headlineContent = { Text("恢复标签页") })
-            switchItem(checked = draft.saveHistory, onCheckedChange = { draft = draft.copy(saveHistory = it) }, headlineContent = { Text("记录浏览历史") })
-        }
-        OutlinedTextField(draft.customUserAgent, { draft = draft.copy(customUserAgent = it) }, label = { Text("自定义 User-Agent") },
-            placeholder = { Text("留空使用手机或桌面默认值") }, modifier = Modifier.fillMaxWidth())
-        FilledTonalButton(onClick = { onSave(draft) }, modifier = Modifier.align(Alignment.End)) { Text("保存") }
     }
 }
