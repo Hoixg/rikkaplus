@@ -109,12 +109,17 @@ Browser metadata uses `filesDir/browser/state.json` through AtomicFile; do not a
 browser APK or parallel browser framework. Retain Kelivo DOM attribution and the existing workspace previews.
 Browser screenshots use CSS viewport coordinates and do not change Phone Use screenshots or gestures.
 The browser home contains only a centered web-search field. Never place bookmarks, history, introductory text
-or library filters on the home page. Keep its existing top address bar and bottom toolbar layout. Bookmarks,
+or library filters on the home page. Keep the address bar at the top and navigation controls at the bottom.
+Refresh/stop is inside the address field; the bottom groups back/forward, new tab, tab count and the menu.
+Tabs use adaptive title/site cards without extra screenshot captures. Loading progress overlays the address
+field and never adds height above the WebView. Bookmarks,
 history and downloads stay in their own panels. Browser settings use grouped search/browsing/advanced/site-data
 sections with a fixed save button; website data cleanup belongs there and retains its existing confirmation.
 AI status is a compact overlay inside the browser viewport; never resize the page when it appears. Gesture
-feedback stays inside the current WebView's UI container, uses CSS viewport coordinates and exposes only a
-visual callback. Keep it independent of Phone Use and out of browser screenshots. Chat summaries show one
+feedback stays inside the current WebView's UI container and uses CSS viewport coordinates. Keep it independent
+of Phone Use and out of browser screenshots. The page bridge delivers script results and visual coordinates only;
+it exposes no native operations. Follow Kelivo's DOM-ready navigation waits and asynchronous result callbacks;
+do not restore loading-flag polling, result-slot polling or fixed startup delays. Chat summaries show one
 clickable page card for navigation actions; do not repeat raw URLs and open buttons for every browser step.
 
 ## Scheduled tasks

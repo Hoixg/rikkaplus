@@ -2,7 +2,9 @@ package me.rerere.rikkahub.ui.pages.browser
 
 import android.app.DownloadManager
 import android.content.Intent
+import android.net.Uri
 import android.text.format.Formatter
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -31,6 +33,7 @@ import me.rerere.rikkahub.browser.BrowserDownload
 import me.rerere.rikkahub.browser.BrowserDownloadView
 import me.rerere.rikkahub.browser.BrowserManager
 import me.rerere.rikkahub.browser.BrowserSettings
+import me.rerere.rikkahub.browser.BrowserTab
 import me.rerere.rikkahub.browser.BrowserPage as SavedPage
 import me.rerere.rikkahub.ui.components.ui.CardGroup
 import me.rerere.rikkahub.ui.components.ui.CardGroupIcon
@@ -99,7 +102,6 @@ internal fun BrowserLibrary(
 internal fun BrowserListRow(
     title: String,
     subtitle: String,
-    selected: Boolean = false,
     onOpen: () -> Unit,
     onRemove: (() -> Unit)? = null,
     icon: ImageVector = HugeIcons.Earth,
@@ -108,7 +110,7 @@ internal fun BrowserListRow(
     Surface(
         onClick = onOpen,
         shape = MaterialTheme.shapes.extraLarge,
-        color = if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerLow,
+        color = MaterialTheme.colorScheme.surfaceContainerLowest,
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(start = 12.dp, top = 8.dp, bottom = 8.dp),
@@ -126,6 +128,31 @@ internal fun BrowserListRow(
             }
             if (onRemove != null) IconButton(onClick = onRemove) { Icon(HugeIcons.Cancel01, "移除") }
             else Spacer(Modifier.width(12.dp))
+        }
+    }
+}
+
+@Composable
+internal fun BrowserTabCard(tab: BrowserTab, selected: Boolean = false, onOpen: () -> Unit, onClose: (() -> Unit)? = null) {
+    val site = when {
+        tab.url == "about:blank" -> "空白页"
+        tab.url.startsWith("rikkaplus://workspace/") -> "工作区网页"
+        else -> Uri.parse(tab.url).host ?: tab.url
+    }
+    Surface(
+        onClick = onOpen,
+        shape = MaterialTheme.shapes.extraLarge,
+        color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerLowest,
+        border = if (selected) BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary) else null,
+    ) {
+        Column(Modifier.fillMaxWidth().heightIn(min = 148.dp).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fillMaxWidth().height(48.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(HugeIcons.Earth, null, Modifier.size(22.dp), tint = MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.weight(1f))
+                if (onClose != null) IconButton(onClick = onClose) { Icon(HugeIcons.Cancel01, "关闭标签", Modifier.size(18.dp)) }
+            }
+            Text(tab.title.ifBlank { "新标签页" }, minLines = 2, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmallEmphasized)
+            Text(site, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -271,7 +298,7 @@ internal fun BrowserSettingsPanel(
             }
             Spacer(Modifier.height(4.dp))
         }
-        FilledTonalButton(
+        Button(
             onClick = { onSave(draft) },
             modifier = Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 16.dp),
             contentPadding = PaddingValues(16.dp),

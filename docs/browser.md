@@ -3,9 +3,12 @@
 ## 使用入口
 
 - 聊天页点击加号，再点「浏览器」，进入独立全屏页。
-- 主页中央仅保留网页搜索框，点击搜索按钮或键盘搜索即可搜索网页/打开网址；不显示收藏、历史、介绍或空记录提示。顶部地址栏和底部工具栏沿用原布局。
+- 主页中央仅保留圆角填充搜索框，点击搜索按钮或键盘搜索即可搜索网页/打开网址；不显示收藏、历史、介绍或空记录提示。
 - 支持网址或搜索、前进后退、刷新或停止加载、多个标签、书签、历史、页内查找、上传和下载。
-- 右上角菜单打开书签、历史、下载和浏览器设置；设置中可选择搜索引擎、桌面网站、自定义 User-Agent、恢复标签及记录历史。
+- 顶部保留返回和地址栏，刷新/停止合并在地址栏右侧；加载进度叠加在输入框底部，不挤动网页。
+- 底部依次为后退/前进组合、新建标签、带数量的标签入口和菜单。菜单统一提供收藏此页、书签、历史、下载、设置、页内查找和外部浏览器入口。
+- 标签面板采用自适应卡片网格，展示标题和站点，当前标签突出显示；当前聊天与其他聊天分组，原有打开和关闭行为保持。标签卡片不额外截取网页预览。
+- 设置中可选择搜索引擎、桌面网站、自定义 User-Agent、恢复标签及记录历史；管理面板统一标题、关闭按钮和卡片层次，保存按钮固定在底部。
 - 书签与历史只在各自的面板中显示，筛选框标明「搜索书签」或「搜索历史记录」；空列表不显示筛选框。下载显示状态、已下载大小与进度。
 - 浏览器设置按搜索、浏览、高级和网站数据分组，搜索引擎用下拉列表选择，保存按钮固定在面板底部。「清理网站数据」统一放在设置中，沿用原来的确认流程。
 - 在助手的「本地工具」中打开「浏览器」，AI 才会获得 `browser` 工具。手动浏览不依赖这个开关。
@@ -47,12 +50,16 @@
 | `handle_dialog` / `upload` | 处理本标签网页对话框，或向已打开的文件选择控件提供工作区文件。 |
 
 普通导航自动返回页面快照。元素可用快照中的 `ref` 或唯一 CSS 选择器定位，也可使用视口 CSS 坐标。
+点击、输入及目标定位直接沿用 Ke 当前 DOM 实现：`button=left/right`、`click_count=1/2`，输入默认替换，`clear_first=false` 追加并验证实际值。
+导航默认等待 DOMContentLoaded，不等图片等资源全部加载，移除固定 120ms 延迟及加载状态轮询。
+脚本按 Ke 的 `ok/value/error` 格式通过原生回调交付 Promise 的最终结果，不再每 60ms 查询结果槽。两项逻辑都在现有 BrowserEngine 中，
+每个引擎只保存一个待返回结果；不增加等待阶段参数、独立执行层或多请求容器。`wait` 保持原有行为。
 截图按最长边 1568 像素缩放，并同时返回 CSS 视口尺寸；使用截图坐标时必须按返回比例换算。
 这套坐标仅用于网页 DOM，不涉及 Phone Use 的屏幕截图、0–1000 坐标或手势实现。
 
 DOM 支持同源 iframe 和开放 Shadow DOM。跨源 iframe、封闭 Shadow DOM、画布以及拒绝合成事件的网站，
 不能保证用 DOM 操作完成。网页内容按不可信内容传给模型。超时不自动重试点击或提交，应先读取结果，避免重复操作。
-网页仅能向专用的 JavascriptInterface 回调报告操作提示的坐标，不提供设备、文件或无障碍操作。
+网页仅能向专用的 JavascriptInterface 交付脚本结果及操作提示的坐标，不提供设备、文件或无障碍操作。
 提示只接受当前 AI 正在操作的标签，按实际 CSS 视口映射到浏览器本地绘制层；不会接收触摸，也不会进入 WebView 截图。
 动画只在可见浏览器页面播放，不保存到元数据；提示失败不会阻止、重试或改变网页操作。
 
@@ -92,17 +99,32 @@ SSH 工作区继续使用远端环境，网页上传的远端文件仍需先下�
 
 ## 来源
 
-1. [Chevey339/kelivo](https://github.com/Chevey339/kelivo/tree/240226975ef1918f8c7cab109ab2a9227dfe7c21)：
-   DOM 自动化脚本直接改编自该版本的
-   [browser_automation_script.dart](https://github.com/Chevey339/kelivo/blob/240226975ef1918f8c7cab109ab2a9227dfe7c21/lib/core/services/browser/browser_automation_script.dart)，
+1. [Chevey339/kelivo](https://github.com/Chevey339/kelivo/tree/4d69846f6c7efa64f374ad6bc6a842f1dec92a56)：
+   DOM 自动化脚本直接沿用该版本的
+   [browser_automation_script.dart](https://github.com/Chevey339/kelivo/blob/4d69846f6c7efa64f374ad6bc6a842f1dec92a56/lib/core/services/browser/browser_automation_script.dart)，
    在 `app/src/main/assets/browser/automation.js` 保留出处。原脚本的元素引用、输入验证、同源框架和 Shadow DOM 处理沿用，
-   修改全局命名及工作区协议，并用本项目 Kotlin 工具封装。标签按聊天归属、共享网站登录和限制原生页面数量也参考其实现。
+   仅修改全局命名、工作区协议并添加既有手势显示钩子，用本项目 Kotlin 工具绑定；已逐行核对 DOM 核心一致。
+   异步回传沿用其 `evaluate` 的结果格式，原生 WebView 接口通过现有桥接适配。标签按聊天归属、共享网站登录和限制原生页面数量也参考其实现。
 2. [AAswordman/Operit](https://github.com/AAswordman/Operit/tree/16cffb98f52a11dc77bd0a789ffa0b01ed398ee4)：
    参考原生 WebView 宿主与控制器分离、网页上传及系统权限接入方式，没有复制其整个浏览器、悬浮窗、用户脚本或下载框架。
+3. [Kelivo 的执行与加载等待](https://github.com/Chevey339/kelivo/blob/4d69846f6c7efa64f374ad6bc6a842f1dec92a56/lib/core/services/browser/browser_native_engine.dart#L1774)：
+   2026-11-13 按其默认 DOMContentLoaded、事件等待及 `callAsyncJavaScript` 完成回传方式调整执行链路。
+   Android WebView 通过现有页面桥接接收完成回调；复用现有引擎、会话绑定和接管行为，不引入新的框架、数据库、审批开关或依赖。
 
 本仓库继续使用 GNU AGPL v3，见 [LICENSE](../LICENSE)。本功能不修改现有 Phone Use、截图实现、MCP、Termux 或 SSH 工具。
 
 ## 验证
+
+2026-11-13 浏览器布局重排：顶部地址与刷新合并、底部操作分组、标签卡片网格和管理面板样式统一。
+GitHub / Play Debug Kotlin 编译及定向格式检查通过；复用现有 WebView 宿主与手势绘制，没有增加截图任务或执行框架。
+随后完成本地 GitHub Debug 通用 APK 构建，核对包名、3.2.0 / 199、原有 Debug 签名、ARM64 / x86_64、实际脚本与布局类通过，确认已删除的执行层未进入安装包。
+Android 真机的布局、字号和键盘显示效果尚需验证。
+
+2026-11-13 执行链路精简为默认 DOM 等待和单次结果回调，复用 BrowserEngine。
+删除额外执行类、多请求容器、四阶段参数和条件等待扩展；保留会话归属、用户接管及现有内存上限。
+对齐 Ke `4d69846f` 后，已逐行核对 DOM 核心；GitHub / Play Debug Kotlin 编译、定向格式检查、19 项相关 JVM 测试及 49 项 Chromium 检查通过。
+新增检查覆盖 Ke 的右键、双击、追加输入及默认替换输入，既有手势显示保持可用。
+上述 Debug 构建已包含执行链路调整，未进行 Android 真机耗时对比。
 
 2026-11-12 主页与面板布局调整：定向格式检查及 GitHub Debug Kotlin 编译通过。
 本地干净源码不含 Google 服务私有配置，编译检查使用 `-x :app:processGithubDebugGoogleServices` 跳过配置生成；未构建安装包。

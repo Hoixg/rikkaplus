@@ -1,4 +1,5 @@
-// Adapted from Chevey339/kelivo, commit 240226975ef1918f8c7cab109ab2a9227dfe7c21.
+// DOM implementation from Chevey339/kelivo, commit 4d69846f6c7efa64f374ad6bc6a842f1dec92a56.
+// Local adaptations: namespace, workspace URL scheme, and visual-only gesture callbacks.
 // GNU AGPL v3; see LICENSE and docs/browser.md.
 const key = '__rikkaBrowserAutomation';
 let state = window[key];
@@ -10,7 +11,7 @@ const fail = (message) => { throw new Error(message); };
 const clean = (value, limit=200) => String(value || '').replace(/\s+/g, ' ').trim().slice(0, limit);
 // Presentation only: this callback cannot execute device or filesystem operations.
 const showGesture = (kind, fromX, fromY, toX=fromX, toY=fromY) => {
-  try { window.__rikkaBrowserFeedback?.showGesture(JSON.stringify({
+  try { window.__rikkaBrowser?.showGesture(JSON.stringify({
     kind,from_x:fromX,from_y:fromY,to_x:toX,to_y:toY,width:innerWidth,height:innerHeight
   })); } catch (_) {}
 };

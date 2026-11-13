@@ -11,8 +11,10 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
@@ -20,6 +22,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.ImeAction
@@ -34,15 +37,22 @@ import me.rerere.hugeicons.stroke.Add01
 import me.rerere.hugeicons.stroke.ArrowLeft01
 import me.rerere.hugeicons.stroke.ArrowRight01
 import me.rerere.hugeicons.stroke.Cancel01
+import me.rerere.hugeicons.stroke.Bookmark02
+import me.rerere.hugeicons.stroke.Clock01
+import me.rerere.hugeicons.stroke.Copy01
+import me.rerere.hugeicons.stroke.Download01
+import me.rerere.hugeicons.stroke.Earth
+import me.rerere.hugeicons.stroke.ArrowUpRight01
 import me.rerere.hugeicons.stroke.MoreVertical
 import me.rerere.hugeicons.stroke.Refresh01
+import me.rerere.hugeicons.stroke.Search01
+import me.rerere.hugeicons.stroke.Settings02
 import me.rerere.rikkahub.Screen
 import me.rerere.rikkahub.browser.*
 import me.rerere.rikkahub.browser.BrowserPage as SavedPage
 import me.rerere.rikkahub.ui.components.nav.BackButton
 import me.rerere.rikkahub.ui.context.LocalNavController
 import me.rerere.rikkahub.ui.context.LocalToaster
-import me.rerere.rikkahub.ui.theme.CustomColors
 import org.koin.compose.koinInject
 
 @Composable
@@ -74,6 +84,9 @@ fun BrowserPage(conversationId: String, workspaceId: String? = null, tabId: Stri
     var requesting by remember { mutableStateOf<BrowserPermission?>(null) }
     var prompt by remember(dialog) { mutableStateOf(dialog?.defaultValue.orEmpty()) }
     val tab = remember(state.tabs, state.selected, conversationId) { state.selectedTab(conversationId) }
+    val ownedTabs = remember(state.tabs, conversationId) { state.tabsFor(conversationId) }
+    val otherTabs = remember(state.tabs, conversationId) { state.tabs.filterNot { it.conversationId == conversationId } }
+    val bookmarked = remember(state.bookmarks, tab?.url) { state.bookmarks.any { it.url == tab?.url } }
     val view = views[tab?.id] ?: BrowserViewState()
 
     fun run(block: suspend () -> Unit) {
@@ -129,54 +142,74 @@ fun BrowserPage(conversationId: String, workspaceId: String? = null, tabId: Stri
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                navigationIcon = { BackButton() },
-                title = {
-                    OutlinedTextField(
-                        value = address, onValueChange = { address = it }, singleLine = true,
-                        placeholder = { Text("搜索或输入网址") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go),
-                        keyboardActions = KeyboardActions(onGo = { go(address) }),
-                        shape = MaterialTheme.shapes.extraLarge,
-                        textStyle = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                },
-                actions = {
-                    TextButton(onClick = { panel = "tabs" }) { Text(state.tabsFor(conversationId).size.toString()) }
-                    IconButton(onClick = { menu = true }) { Icon(HugeIcons.MoreVertical, "浏览器菜单") }
-                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                        listOf("bookmarks" to "书签", "history" to "历史记录", "downloads" to "下载", "settings" to "浏览器设置").forEach { (key, title) ->
-                            DropdownMenuItem(text = { Text(title) }, onClick = { menu = false; panel = key })
-                        }
-                        DropdownMenuItem(text = { Text("页内查找") }, onClick = { menu = false; showFind = !showFind })
-                        DropdownMenuItem(text = { Text("在外部浏览器打开") }, enabled = tab?.url?.startsWith("http") == true, onClick = {
-                            menu = false
-                            run { context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(tab?.url))) }
-                        })
+            Surface(color = MaterialTheme.colorScheme.surfaceContainerLow) {
+                Row(Modifier.statusBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    BackButton()
+                    Box(Modifier.weight(1f)) {
+                        TextField(
+                            value = address, onValueChange = { address = it }, singleLine = true,
+                            placeholder = { Text("搜索或输入网址") },
+                            leadingIcon = { Icon(HugeIcons.Earth, null, Modifier.size(20.dp)) },
+                            trailingIcon = {
+                                IconButton(enabled = tab != null, onClick = { run { manager.reload(conversationId, view.loading) } }) {
+                                    Icon(if (view.loading) HugeIcons.Cancel01 else HugeIcons.Refresh01, if (view.loading) "停止加载" else "刷新", Modifier.size(20.dp))
+                                }
+                            },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go),
+                            keyboardActions = KeyboardActions(onGo = { go(address) }),
+                            shape = MaterialTheme.shapes.extraLarge,
+                            textStyle = MaterialTheme.typography.bodyMedium,
+                            colors = TextFieldDefaults.colors(
+                                focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent,
+                            ),
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        if (view.loading) LinearProgressIndicator(progress = { view.progress / 100f },
+                            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = 24.dp).height(2.dp))
                     }
-                },
-                colors = CustomColors.topBarColors,
-            )
+                }
+            }
         },
         bottomBar = {
-            BottomAppBar {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(enabled = view.back, onClick = { run { manager.back(conversationId) } }) { Icon(HugeIcons.ArrowLeft01, "后退") }
-                    IconButton(enabled = view.forward, onClick = { run { manager.back(conversationId, true) } }) { Icon(HugeIcons.ArrowRight01, "前进") }
-                    IconButton(enabled = tab != null, onClick = { run { manager.reload(conversationId, view.loading) } }) {
-                        Icon(if (view.loading) HugeIcons.Cancel01 else HugeIcons.Refresh01, if (view.loading) "停止加载" else "刷新")
+            Surface(color = MaterialTheme.colorScheme.surfaceContainerLow) {
+                Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 20.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Surface(shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surfaceContainerHighest) {
+                        Row {
+                            IconButton(enabled = view.back, onClick = { run { manager.back(conversationId) } }) { Icon(HugeIcons.ArrowLeft01, "后退") }
+                            IconButton(enabled = view.forward, onClick = { run { manager.back(conversationId, true) } }) { Icon(HugeIcons.ArrowRight01, "前进") }
+                        }
                     }
-                    IconButton(onClick = { run { manager.newTab(conversationId, workspaceId = workspaceId) } }) { Icon(HugeIcons.Add01, "新建标签") }
-                    TextButton(enabled = tab != null && tab.url != "about:blank", onClick = {
-                        tab?.let { manager.bookmark(SavedPage(it.url, it.title)) }
-                    }) { Text(if (state.bookmarks.any { it.url == tab?.url }) "★" else "☆", style = MaterialTheme.typography.titleLarge) }
+                    FilledTonalIconButton(onClick = { run { manager.newTab(conversationId, workspaceId = workspaceId) } }) { Icon(HugeIcons.Add01, "新建标签") }
+                    IconButton(onClick = { panel = "tabs" }) {
+                        BadgedBox(badge = { Badge { Text(ownedTabs.size.toString()) } }) { Icon(HugeIcons.Copy01, "标签页，${ownedTabs.size} 个") }
+                    }
+                    Box {
+                        IconButton(onClick = { menu = true }) { Icon(HugeIcons.MoreVertical, "浏览器菜单") }
+                        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                            DropdownMenuItem(text = { Text(if (bookmarked) "取消收藏此页" else "收藏此页") },
+                                leadingIcon = { Icon(HugeIcons.Bookmark02, null) }, enabled = tab != null && tab.url != "about:blank",
+                                onClick = { menu = false; tab?.let { manager.bookmark(SavedPage(it.url, it.title)) } })
+                            listOf(Triple("bookmarks", "书签", HugeIcons.Bookmark02), Triple("history", "历史记录", HugeIcons.Clock01),
+                                Triple("downloads", "下载", HugeIcons.Download01), Triple("settings", "浏览器设置", HugeIcons.Settings02)).forEach { (key, title, icon) ->
+                                DropdownMenuItem(text = { Text(title) }, leadingIcon = { Icon(icon, null) }, onClick = { menu = false; panel = key })
+                            }
+                            DropdownMenuItem(text = { Text("页内查找") }, leadingIcon = { Icon(HugeIcons.Search01, null) }, onClick = { menu = false; showFind = !showFind })
+                            DropdownMenuItem(text = { Text("在外部浏览器打开") }, leadingIcon = { Icon(HugeIcons.ArrowUpRight01, null) },
+                                enabled = tab?.url?.startsWith("http") == true, onClick = {
+                                    menu = false
+                                    run { context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(tab?.url))) }
+                                })
+                        }
+                    }
                 }
             }
         },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).imePadding()) {
-            if (view.loading) LinearWavyProgressIndicator(progress = { view.progress / 100f }, modifier = Modifier.fillMaxWidth())
             (initializationError ?: storageError ?: view.error)?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(12.dp)) }
             chooser?.takeIf { it.tabId == tab?.id && it.fromAgent }?.let { request ->
                 TextButton(onClick = {
@@ -215,31 +248,37 @@ fun BrowserPage(conversationId: String, workspaceId: String? = null, tabId: Stri
     }
 
     if (panel != null) {
-        ModalBottomSheet(onDismissRequest = { panel = null },
+        ModalBottomSheet(onDismissRequest = { panel = null }, containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
             sheetState = rememberBottomSheetState(initialValue = SheetValue.Hidden, enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded))) {
             Column(Modifier.fillMaxWidth().fillMaxHeight(.85f).padding(horizontal = 16.dp)) {
                 val title = when (panel) { "tabs" -> "标签页"; "bookmarks" -> "书签"; "history" -> "历史记录"; "downloads" -> "下载"; else -> "浏览器设置" }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(title, style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
+                Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(title, style = MaterialTheme.typography.headlineSmallEmphasized, modifier = Modifier.weight(1f))
                     if (panel == "tabs") TextButton(onClick = { run { manager.newTab(conversationId, workspaceId = workspaceId); panel = null } }) { Text("新建") }
                     if (panel == "history") TextButton(onClick = manager::clearHistory) { Text("清空") }
-                    IconButton(onClick = { panel = null }) { Icon(HugeIcons.Cancel01, "关闭面板") }
+                    FilledTonalIconButton(onClick = { panel = null }) { Icon(HugeIcons.Cancel01, "关闭面板") }
                 }
                 Spacer(Modifier.height(12.dp))
                 when (panel) {
-                    "tabs" -> LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(state.tabsFor(conversationId), key = { it.id }, contentType = { "tab" }) { item ->
-                            BrowserListRow(item.title.ifBlank { "新标签" }, item.url,
-                                selected = item.id == tab?.id,
+                    "tabs" -> LazyVerticalGrid(columns = GridCells.Adaptive(144.dp), modifier = Modifier.weight(1f),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp),
+                        contentPadding = PaddingValues(bottom = 16.dp)) {
+                        if (ownedTabs.isEmpty() && otherTabs.isEmpty()) item(key = "empty", span = { GridItemSpan(maxLineSpan) }, contentType = "empty") {
+                            Box(Modifier.fillMaxWidth().padding(vertical = 48.dp), contentAlignment = Alignment.Center) { Text("暂无标签页", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                        }
+                        if (ownedTabs.isNotEmpty()) item(key = "current_header", span = { GridItemSpan(maxLineSpan) }, contentType = "heading") {
+                            Text("当前聊天 · ${ownedTabs.size}", style = MaterialTheme.typography.titleSmallEmphasized, modifier = Modifier.padding(vertical = 4.dp))
+                        }
+                        items(ownedTabs, key = { it.id }, contentType = { "tab" }) { item ->
+                            BrowserTabCard(item, selected = item.id == tab?.id,
                                 onOpen = { run { manager.select(conversationId, item.id); panel = null } },
-                                onRemove = { run { manager.close(conversationId, item.id) } })
+                                onClose = { run { manager.close(conversationId, item.id) } })
                         }
-                        item(contentType = "all_tabs") {
-                            val others = state.tabs.filterNot { it.conversationId == conversationId }
-                            if (others.isNotEmpty()) Text("其他聊天的标签", modifier = Modifier.padding(vertical = 16.dp))
+                        if (otherTabs.isNotEmpty()) item(key = "other_header", span = { GridItemSpan(maxLineSpan) }, contentType = "heading") {
+                            Text("其他聊天 · ${otherTabs.size}", style = MaterialTheme.typography.titleSmallEmphasized, modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
                         }
-                        items(state.tabs.filterNot { it.conversationId == conversationId }, key = { "other:${it.id}" }, contentType = { "other_tab" }) { item ->
-                            BrowserListRow(item.title.ifBlank { "新标签" }, item.url, onOpen = {
+                        items(otherTabs, key = { "other:${it.id}" }, contentType = { "other_tab" }) { item ->
+                            BrowserTabCard(item, onOpen = {
                                 panel = null
                                 nav.navigate(Screen.Browser(item.conversationId, item.workspaceId, item.id))
                             })

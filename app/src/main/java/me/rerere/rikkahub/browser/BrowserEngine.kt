@@ -21,11 +21,11 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -34,7 +34,6 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import me.rerere.rikkahub.utils.JsonInstant
 import java.io.ByteArrayOutputStream
-import kotlin.coroutines.resume
 import kotlin.math.roundToInt
 import kotlin.uuid.Uuid
 
@@ -69,12 +68,13 @@ internal interface BrowserEngineEvents {
     fun gesture(value: JsonObject)
 }
 
-/** Native Android WebView. The page callback only reports visual pointer positions. */
+/** Native WebView with completion callbacks for page scripts and visual pointer positions. */
 @SuppressLint("SetJavaScriptEnabled")
 internal class BrowserEngine(
     context: Context,
     private val tabId: String,
     settings: BrowserSettings,
+    private val asyncScript: String,
     private val events: BrowserEngineEvents,
 ) {
     val contextWrapper = MutableContextWrapper(context.applicationContext)
@@ -85,9 +85,20 @@ internal class BrowserEngine(
     var disposed = false
         private set
     private val defaultUserAgent = webView.settings.userAgentString
+    private var pendingScript: Pair<String, CompletableDeferred<String>>? = null
+    private var document = CompletableDeferred<Unit>().apply { complete(Unit) }
+    private var loadingUrl: String? = null
+    private var awaitingStart = false
+    val awaitingDocument get() = !document.isCompleted
 
     init {
         webView.addJavascriptInterface(object {
+            @androidx.annotation.Keep
+            @android.webkit.JavascriptInterface
+            fun complete(id: String, encoded: String) {
+                webView.post { pendingScript?.takeIf { it.first == id }?.second?.complete(encoded) }
+            }
+
             @androidx.annotation.Keep
             @android.webkit.JavascriptInterface
             fun showGesture(encoded: String) {
@@ -95,7 +106,7 @@ internal class BrowserEngine(
                 val value = runCatching { JsonInstant.parseToJsonElement(encoded) as? JsonObject }.getOrNull() ?: return
                 webView.post { if (!disposed) events.gesture(value) }
             }
-        }, "__rikkaBrowserFeedback")
+        }, "__rikkaBrowser")
         webView.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
@@ -112,10 +123,17 @@ internal class BrowserEngine(
         }
         webView.webViewClient = object : WebViewClient() {
             override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
+                if (!awaitingStart && document.isCompleted) document = CompletableDeferred()
+                loadingUrl = url
+                awaitingStart = false
+                pendingScript?.second?.completeExceptionally(IllegalStateException("browser_document_changed: 网页已切换，请读取当前页面"))
                 publish(viewState.copy(loading = true, error = null, hasContent = true))
             }
 
+            override fun onPageCommitVisible(view: WebView, url: String?) { completeDocument(url) }
+
             override fun onPageFinished(view: WebView, url: String?) {
+                if (!completeDocument(url)) return
                 publish(viewState.copy(loading = false, progress = 100))
                 CookieManager.getInstance().flush()
             }
@@ -123,11 +141,15 @@ internal class BrowserEngine(
             override fun doUpdateVisitedHistory(view: WebView, url: String?, isReload: Boolean) = publish(viewState)
 
             override fun onReceivedError(view: WebView, request: WebResourceRequest, error: android.webkit.WebResourceError) {
-                if (request.isForMainFrame) publish(viewState.copy(loading = false, error = error.description.toString()))
+                if (request.isForMainFrame) {
+                    failPending(error.description.toString())
+                    publish(viewState.copy(loading = false, error = error.description.toString()))
+                }
             }
 
             override fun onReceivedSslError(view: WebView, handler: android.webkit.SslErrorHandler, error: android.net.http.SslError) {
                 handler.cancel()
+                failPending("网站证书验证失败")
                 publish(viewState.copy(loading = false, error = "网站证书验证失败"))
             }
 
@@ -145,6 +167,7 @@ internal class BrowserEngine(
             override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest) = events.resource(request)
 
             override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
+                failPending("网页进程已退出，请重新加载")
                 publish(viewState.copy(loading = false, crashed = true, error = "网页进程已退出，请重新加载"))
                 disposed = true
                 (webView.parent as? android.view.ViewGroup)?.removeView(webView)
@@ -215,35 +238,86 @@ internal class BrowserEngine(
         }
     }
 
-    private suspend fun evaluateOnce(script: String): kotlinx.serialization.json.JsonElement =
-        suspendCancellableCoroutine { continuation ->
-            webView.evaluateJavascript(script) { raw ->
-                if (continuation.isActive) continuation.resume(runCatching { JsonInstant.parseToJsonElement(raw ?: "null") }.getOrDefault(JsonNull))
-            }
-        }
-
-    /** Await page promises using page-local result slots, without exposing an Android JavascriptInterface. */
-    suspend fun evaluate(script: String): kotlinx.serialization.json.JsonElement {
+    /** BrowserManager serializes actions, so each engine needs only one pending result. */
+    suspend fun evaluate(script: String): JsonElement {
         check(!disposed) { "网页进程已退出，请重新加载" }
-        val token = JsonPrimitive(Uuid.random().toString()).toString()
-        val slot = "window.__rikkaBrowserCalls[$token]"
-        return try {
+        val id = Uuid.random().toString()
+        val result = CompletableDeferred<String>()
+        pendingScript = id to result
+        val encoded = try {
             withTimeoutOrNull(15_000) {
-                evaluateOnce("""(() => { window.__rikkaBrowserCalls ??= {}; $slot = {done:false}; (async () => { $script })().then(value => { $slot = {done:true,value:value ?? null}; }, error => { $slot = {done:true,error:String(error.message || error)}; }); return true; })()""")
-                while (true) {
-                    val value = evaluateOnce("(() => { const value = $slot; return value?.done ? value : null; })()")
-                    if (value is JsonObject) {
-                        value["error"]?.jsonPrimitive?.contentOrNull?.let { error(it) }
-                        return@withTimeoutOrNull value["value"] ?: JsonNull
-                    }
-                    delay(60)
-                }
-                @Suppress("UNREACHABLE_CODE")
-                JsonNull
+                webView.evaluateJavascript(asyncScript.replace("__RIKKA_ID__", JsonPrimitive(id).toString()).replace("__RIKKA_BODY__", script), null)
+                result.await()
             } ?: error("browser_script_timeout: 网页脚本等待超时；操作可能已完成，请先读取页面结果")
-        } finally {
-            if (!disposed) webView.evaluateJavascript("if (window.__rikkaBrowserCalls) delete $slot", null)
+        } finally { pendingScript = null }
+        return withContext(Dispatchers.Default) {
+            val response = JsonInstant.parseToJsonElement(encoded).jsonObject
+            if (response["ok"] == JsonPrimitive(false)) error(response["error"]?.jsonPrimitive?.contentOrNull ?: "browser_script_failed")
+            response["value"] ?: JsonNull
         }
+    }
+
+    fun loadUrl(url: String) {
+        if (!sameDocument(url)) beginNavigation(url)
+        webView.loadUrl(url)
+    }
+
+    fun loadHtml(html: String) { beginNavigation("about:blank"); webView.loadDataWithBaseURL(null, html, "text/html", "UTF-8", null) }
+
+    fun back(forward: Boolean) {
+        if (if (forward) webView.canGoForward() else webView.canGoBack()) {
+            val history = webView.copyBackForwardList()
+            val target = history.getItemAtIndex(history.currentIndex + if (forward) 1 else -1)?.url
+            if (!sameDocument(target)) beginNavigation(target)
+            if (forward) webView.goForward() else webView.goBack()
+        }
+    }
+
+    fun reload(stop: Boolean) {
+        if (stop) {
+            webView.stopLoading()
+            failPending("browser_navigation_stopped")
+            publish(viewState.copy(loading = false))
+        } else { beginNavigation(webView.url); webView.reload() }
+    }
+
+    suspend fun waitForDom() {
+        val page = document
+        withTimeoutOrNull(15_000) {
+            page.await()
+            check(document === page) { "browser_navigation_superseded" }
+            // Kelivo browser_native_engine.dart::waitForLoad, DOMContentLoaded branch.
+            evaluate("""
+                if (document.readyState === 'loading') {
+                    await new Promise(resolve => document.addEventListener('DOMContentLoaded', resolve, {once:true}));
+                }
+                return true;
+            """.trimIndent())
+            check(document === page) { "browser_navigation_superseded" }
+        } ?: error("browser_load_timeout: 网页尚未就绪，请先读取当前页面")
+    }
+
+    private fun sameDocument(url: String?) = webView.url?.let {
+        url != null && it != url && it.substringBefore('#') == url.substringBefore('#')
+    } == true
+
+    private fun beginNavigation(url: String?) {
+        failPending("browser_navigation_superseded")
+        document = CompletableDeferred()
+        loadingUrl = url
+        awaitingStart = true
+    }
+
+    private fun completeDocument(url: String?): Boolean {
+        if (awaitingStart || loadingUrl?.substringBefore('#') != url?.substringBefore('#')) return false
+        document.complete(Unit)
+        return true
+    }
+
+    private fun failPending(reason: String) {
+        val failure = IllegalStateException(reason)
+        pendingScript?.second?.completeExceptionally(failure)
+        document.completeExceptionally(failure)
     }
 
     suspend fun screenshot(): Pair<ByteArray, Pair<Int, Int>> {
@@ -268,9 +342,10 @@ internal class BrowserEngine(
     fun dispose() {
         if (disposed) return
         disposed = true
+        failPending("browser_closed: 浏览器标签已关闭")
         (webView.parent as? android.view.ViewGroup)?.removeView(webView)
         webView.stopLoading()
-        webView.removeJavascriptInterface("__rikkaBrowserFeedback")
+        webView.removeJavascriptInterface("__rikkaBrowser")
         webView.webChromeClient = null
         webView.destroy()
         contextWrapper.baseContext = contextWrapper.applicationContext

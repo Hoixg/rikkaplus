@@ -47,6 +47,8 @@ interface BrowserController {
 
 data class BrowserDownloadView(val record: BrowserDownload, val status: Int, val received: Long, val total: Long)
 
+private val navigationActions = setOf("open", "new_tab", "back", "forward", "reload", "render")
+
 /** Owns native views independently of Compose routes. Tab ownership and live-view budgets follow Kelivo. */
 class BrowserManager(
     private val context: Context,
@@ -58,6 +60,7 @@ class BrowserManager(
     private val initialization = Mutex()
     private val actions = Mutex()
     private var initialized = false
+    private lateinit var asyncScript: String
     private val mutableState = MutableStateFlow(BrowserState())
     val state = mutableState.asStateFlow()
     private val mutableViews = MutableStateFlow<Map<String, BrowserViewState>>(emptyMap())
@@ -90,6 +93,7 @@ class BrowserManager(
     suspend fun initialize() = initialization.withLock {
         if (!initialized) {
             val saved = store.read()
+            asyncScript = withContext(Dispatchers.IO) { context.assets.open("browser/async.js").bufferedReader().use { it.readText() } }
             withContext(Dispatchers.Main.immediate) { mutableState.value = saved }
             initialized = true
         }
@@ -132,7 +136,7 @@ class BrowserManager(
                 ?: newTab(owner, workspaceId = workspaceId)
             val updated = tab.copy(url = url, workspaceId = workspaceId ?: tab.workspaceId)
             update(state.value.copy(tabs = state.value.tabs.map { if (it.id == tab.id) updated else it }))
-            engine(updated, load = false).webView.loadUrl(nativeUrl(updated, url))
+            engine(updated, load = false).loadUrl(nativeUrl(updated, url))
         }
     }
 
@@ -194,7 +198,7 @@ class BrowserManager(
             engines.remove(candidate)?.dispose()
             mutableViews.value = views.value - candidate
         }
-        val result = BrowserEngine(context, tab.id, state.value.settings, object : BrowserEngineEvents {
+        val result = BrowserEngine(context, tab.id, state.value.settings, asyncScript, object : BrowserEngineEvents {
             override fun changed(url: String?, title: String?, view: BrowserViewState) {
                 val before = views.value[tab.id]
                 mutableViews.value = views.value + (tab.id to view)
@@ -248,16 +252,16 @@ class BrowserManager(
         })
         engines[tab.id] = result
         mutableViews.value = views.value + (tab.id to result.viewState)
-        if (load && tab.url != "about:blank") result.webView.loadUrl(nativeUrl(tab, tab.url))
+        if (load) result.loadUrl(nativeUrl(tab, tab.url))
         return result
     }
 
     suspend fun back(owner: String, forward: Boolean = false) = withContext(Dispatchers.Main.immediate) {
-        state.value.selectedTab(owner)?.let { tab -> engine(tab).webView.let { if (forward) it.goForward() else it.goBack() } }
+        state.value.selectedTab(owner)?.let { tab -> engine(tab).back(forward) }
     }
 
     suspend fun reload(owner: String, stop: Boolean = false) = withContext(Dispatchers.Main.immediate) {
-        state.value.selectedTab(owner)?.let { tab -> engine(tab).webView.let { if (stop) it.stopLoading() else it.reload() } }
+        state.value.selectedTab(owner)?.let { tab -> engine(tab).reload(stop) }
     }
 
     suspend fun find(owner: String, text: String, forward: Boolean? = null) = withContext(Dispatchers.Main.immediate) {
@@ -411,8 +415,7 @@ class BrowserManager(
                         browserAddress(url, allowSearch = false)
                         navigate(conversationId, url, workspaceId, current.id)
                     }
-                    "render" -> engine(current).webView.loadDataWithBaseURL(null,
-                        arguments["html"]?.jsonPrimitive?.content ?: error("html is required"), "text/html", "UTF-8", null)
+                    "render" -> engine(current).loadHtml(arguments["html"]?.jsonPrimitive?.content ?: error("html is required"))
                     "back" -> back(conversationId)
                     "forward" -> back(conversationId, true)
                     "reload" -> reload(conversationId)
@@ -426,11 +429,7 @@ class BrowserManager(
                     else -> error("Unsupported browser action: $action")
                 }
                 val native = engine(state.value.requireOwned(conversationId, current.id))
-                if (action in setOf("open", "new_tab", "back", "forward", "reload", "render")) {
-                    val deadline = System.currentTimeMillis() + 10_000
-                    delay(120)
-                    while (native.viewState.loading && System.currentTimeMillis() < deadline) delay(100)
-                }
+                if (action in navigationActions || native.awaitingDocument) native.waitForDom()
                 if (action == "upload") {
                     val pending = chooser.value?.takeIf { it.tabId == current.id } ?: error("请先点击网页的文件上传控件")
                     val bound = workspaceId ?: error("当前聊天未绑定工作区")
@@ -450,7 +449,7 @@ class BrowserManager(
                 check(conversationId !in paused.value) { "browser_paused: 用户已接管；先确认页面结果，等待用户允许继续" }
                 val domActions = setOf("snapshot", "extract", "click", "type", "select_option", "press", "scroll", "wait")
                 var data: JsonElement = buildJsonObject { put("action", action) }
-                if (action in domActions || action in setOf("open", "render", "back", "forward", "reload", "new_tab", "switch_tab", "handle_dialog", "upload")) {
+                if (action in domActions || action in navigationActions || action in setOf("switch_tab", "handle_dialog", "upload")) {
                     if (dialog.value?.tabId == current.id) {
                         data = buildJsonObject { put("dialog", dialog.value?.message); put("next_action", "handle_dialog") }
                     } else {
