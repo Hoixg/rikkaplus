@@ -5,7 +5,7 @@
 - 项目：[rikkahub/rikkahub](https://github.com/rikkahub/rikkahub)。
 - 功能提交：[25b70392adf7abd1c7742d46fd63c22f22a712ce](https://github.com/rikkahub/rikkahub/commit/25b70392adf7abd1c7742d46fd63c22f22a712ce)。
 - 接入时的上游版本：`5b7ca774be05ea788ae59664bcff0f5486c6f39a`。
-- 工具卡片显示更新来自 `ffb1c79e1f551d81a11319fa572207b221f46c95`，最近同步版本为 `8a837b27eda1f24d23b948f33fab6bc93f2ab7d3`；底层服务与截图实现未变。
+- 工具卡片显示更新来自 `ffb1c79e1f551d81a11319fa572207b221f46c95`；最近同步版本为 `64452581dc15ac7f017d6fc1ee67e1861af4bfdf`，包含截图位图使用后立即回收的改进。
 - 许可：GNU AGPL v3，本仓库 [LICENSE](../LICENSE) 继续适用。
 
 ## 直接采用的实现
@@ -28,6 +28,6 @@
 2. 工具通过现有依赖注入注册，截图使用现有 FilesManager 聊天附件；Phone Use 文本沿用原手机工具的输出保留策略。
 3. `LocalToolOption.PhoneUse` 保留已有助手选择的 `phone_control` 序列化标识，避免解码旧助手配置时丢失其他工具、名称或提示词；运行时仅注册上游 `phone_use`，没有旧工具分支。
 4. 删除 ExTV-based 旧框架、旧服务、13 个工具、专用设置字段、设置页、路由、扩展入口、渲染器、17 个文案键和配套测试。助手选择、聊天与附件沿用原存储，不新建数据库或数据表。
-5. 按用户要求，支付宝（`com.eg.android.AlipayGphone`）从上游的应用限制名单移除，并同步工具说明；其他名单条目和执行逻辑保持不变。
+5. 按用户要求，支付宝（`com.eg.android.AlipayGphone`）和微信（`com.tencent.mm`）从上游的应用限制名单移除，并同步工具说明；其他名单条目和执行逻辑保持不变。
 
 底层服务、截图和手势处理直接使用上游实现；没有额外添加快照 TTL、整页一致性校验、第三方辅助 APK、自动唤醒或新的操作限制。

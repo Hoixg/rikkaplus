@@ -150,24 +150,34 @@ class PhoneUseToolTest {
     }
 
     @Test
-    fun `Alipay can be listed opened read and operated while other blocked apps remain unavailable`() = runTest {
+    fun `Alipay and WeChat can be listed opened read and operated while other blocked apps remain unavailable`() = runTest {
         manager.attach(controller)
         val apps = call { put("action", "list_apps") }
         assertTrue(apps.contains("Alipay"))
+        assertTrue(apps.contains("WeChat"))
         assertFalse(apps.contains("UnionPay"))
-        call {
-            put("action", "open_app")
-            put("app", "Alipay")
+        val allowedApps = listOf("Alipay" to "com.eg.android.AlipayGphone", "WeChat" to "com.tencent.mm")
+        allowedApps.forEach { (name, packageName) ->
+            call {
+                put("action", "open_app")
+                put("app", name)
+            }
+            assertEquals(packageName, controller.opened.last())
+            controller.visible = listOf(packageName)
+            assertTrue(call { put("action", "observe") }.contains("Send"))
+            assertTrue(tool.execute(buildJsonObject { put("action", "screenshot") }).any { it is UIMessagePart.Image })
+            call {
+                put("action", "tap")
+                put("element", 0)
+            }
+            call {
+                put("action", "type")
+                put("element", 1)
+                put("text", "hi")
+            }
         }
-        assertEquals(listOf("com.eg.android.AlipayGphone"), controller.opened)
-        controller.visible = listOf("com.eg.android.AlipayGphone")
-        assertTrue(call { put("action", "observe") }.contains("Send"))
-        assertTrue(tool.execute(buildJsonObject { put("action", "screenshot") }).any { it is UIMessagePart.Image })
-        call {
-            put("action", "tap")
-            put("element", 0)
-        }
-        assertEquals(1, controller.gestures.size)
+        assertEquals(2, controller.gestures.size)
+        assertEquals(listOf(1 to "hi", 1 to "hi"), controller.texts)
         val error = runCatching {
             call {
                 put("action", "open_app")
@@ -175,7 +185,7 @@ class PhoneUseToolTest {
             }
         }.exceptionOrNull()
         assertTrue(error!!.message!!.contains("blocked"))
-        assertEquals(listOf("com.eg.android.AlipayGphone"), controller.opened)
+        assertEquals(allowedApps.map { it.second }, controller.opened)
     }
 
     @Test
@@ -305,6 +315,7 @@ class PhoneUseToolTest {
         override fun listApps() = listOf(
             PhoneApp("com.demo", "Demo App"),
             PhoneApp("com.eg.android.AlipayGphone", "Alipay"),
+            PhoneApp("com.tencent.mm", "WeChat"),
             PhoneApp("com.unionpay", "UnionPay"),
         )
 
