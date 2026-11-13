@@ -89,7 +89,8 @@ class ChatToolFactory(
                         settingsStore,
                         assistant.id,
                         conversationId,
-                        cancelAutomation
+                        cancelAutomation,
+                        getMessages,
                     )
                 )
             }

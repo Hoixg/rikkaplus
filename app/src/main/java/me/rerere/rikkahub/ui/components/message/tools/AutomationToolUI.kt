@@ -22,17 +22,16 @@ import androidx.compose.ui.unit.dp
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
-import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.jsonPrimitive
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Calendar03
+import me.rerere.rikkahub.data.ai.tools.resolveAutomationDefinition
 import me.rerere.rikkahub.data.automation.AutomationRepository
 import me.rerere.rikkahub.data.automation.TaskDefinition
 import me.rerere.rikkahub.data.model.getChatModelOf
 import me.rerere.rikkahub.ui.context.LocalSettings
 import me.rerere.rikkahub.ui.pages.extensions.automation.modeLabel
 import me.rerere.rikkahub.ui.pages.extensions.automation.taskModelLabel
-import me.rerere.rikkahub.utils.JsonInstant
 import org.koin.compose.koinInject
 
 object AutomationToolUI : ToolUIRenderer {
@@ -45,10 +44,11 @@ object AutomationToolUI : ToolUIRenderer {
         val includesConversations = (arguments?.get("include_conversations") as? JsonPrimitive)?.booleanOrNull == true
         val includesModels = (arguments?.get("include_models") as? JsonPrimitive)?.booleanOrNull == true
         return when (arguments.getStringContent("action")) {
-            "create" -> "创建定时任务"
-            "update" -> "修改定时任务"
+            "create" -> "新建任务草稿"
+            "update" -> "编辑任务草稿"
+            "save" -> "保存定时任务"
             "delete" -> "删除定时任务"
-            "set_enabled" -> "调整任务排程"
+            "set_enabled" -> "编辑任务启停草稿"
             "run" -> "立即执行任务"
             "cancel" -> "取消任务执行"
             "list" -> "查询任务列表"
@@ -65,7 +65,7 @@ object AutomationToolUI : ToolUIRenderer {
         }
     }
     override fun hasSummary(context: ToolUIContext) = context.arguments.getStringContent("action") in
-        setOf("create", "update", "delete", "run", "cancel", "set_enabled")
+        setOf("save", "delete", "run", "cancel")
 
     @Composable
     override fun Summary(context: ToolUIContext) {
@@ -74,14 +74,16 @@ object AutomationToolUI : ToolUIRenderer {
         val conversations = koinInject<me.rerere.rikkahub.data.repository.ConversationRepository>()
         val settings = LocalSettings.current
         val args = context.arguments as? JsonObject ?: return
-        val saved by produceState<TaskDefinition?>(null, args.getStringContent("id")) {
+        val saved by produceState<TaskDefinition?>(null, args.getStringContent("id"), context.tool.isExecuted) {
             value = args.getStringContent("id")?.let { repository.task(it)?.definition }
         }
-        val definition = remember(args, saved, context.assistant?.id) {
+        val definition = remember(args, saved, context.assistant?.id, context.tool.isExecuted) {
             runCatching {
-                args["definition"]?.let { JsonInstant.decodeFromJsonElement<TaskDefinition>(it) }
-                    ?.copy(assistantId = context.assistant?.id?.toString().orEmpty())
-            }.getOrNull() ?: saved
+                when (args.getStringContent("action")) {
+                    "save" -> resolveAutomationDefinition(args, null, context.assistant?.id?.toString().orEmpty())
+                    else -> saved
+                }
+            }.getOrNull()
         }
         val followingModel by produceState<me.rerere.ai.provider.Model?>(null, definition?.conversationId, settings) {
             value = definition?.conversationId?.let { raw ->
@@ -100,7 +102,8 @@ object AutomationToolUI : ToolUIRenderer {
                         color = MaterialTheme.colorScheme.error
                     )
                 }
-                if (args.getStringContent("action") == "set_enabled") {
+                if (args.getStringContent("action") == "save" &&
+                    args["enabled"]?.jsonPrimitive?.booleanOrNull != null) {
                     Text(if (args["enabled"]?.jsonPrimitive?.booleanOrNull ==
                         true) {
                         "启用后续排程"
@@ -108,7 +111,7 @@ object AutomationToolUI : ToolUIRenderer {
                         "暂停后续排程"
                     }, style = MaterialTheme.typography.bodyMedium)
                 }
-                if (args.getStringContent("action") in setOf("create", "update") && it.prompt.isNotBlank()) {
+                if (args.getStringContent("action") == "save" && it.prompt.isNotBlank()) {
                     Surface(
                         shape = MaterialTheme.shapes.medium,
                         color = MaterialTheme.colorScheme.surfaceContainerLow

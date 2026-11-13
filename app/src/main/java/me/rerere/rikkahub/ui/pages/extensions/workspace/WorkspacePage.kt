@@ -13,7 +13,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.MaterialTheme
@@ -24,6 +23,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -38,7 +38,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Add01
 import me.rerere.hugeicons.stroke.CloudServer
-import me.rerere.hugeicons.stroke.Clean
 import me.rerere.hugeicons.stroke.Delete01
 import me.rerere.hugeicons.stroke.FolderCode
 import me.rerere.hugeicons.stroke.PencilEdit01
@@ -67,9 +66,14 @@ fun WorkspacePage(
     val navController = LocalNavController.current
     val workspaces by vm.workspaces.collectAsStateWithLifecycle()
     val environmentCleanup by environmentCleanupVM.state.collectAsStateWithLifecycle()
+    val sharedEnvironment by vm.sharedEnvironment.collectAsStateWithLifecycle()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     var showTypeSheet by rememberSaveable { mutableStateOf(false) }
     var showAddDialog by rememberSaveable { mutableStateOf(false) }
+    var showSharedEnvironment by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(showSharedEnvironment) {
+        if (showSharedEnvironment) vm.refreshSharedEnvironment()
+    }
     var editTarget by remember { mutableStateOf<WorkspaceEntity?>(null) }
     var deleteTarget by remember { mutableStateOf<WorkspaceEntity?>(null) }
 
@@ -79,8 +83,8 @@ fun WorkspacePage(
                 title = { Text(stringResource(R.string.workspace_page_title)) },
                 navigationIcon = { BackButton() },
                 actions = {
-                    IconButton(onClick = environmentCleanupVM::open) {
-                        Icon(HugeIcons.Clean, contentDescription = stringResource(R.string.workspace_cleanup_title))
+                    TextButton(onClick = { showSharedEnvironment = true }) {
+                        Text("共享环境")
                     }
                 },
                 scrollBehavior = scrollBehavior,
@@ -121,12 +125,21 @@ fun WorkspacePage(
         }
     }
 
+    if (showSharedEnvironment && !environmentCleanup.visible) {
+        SharedEnvironmentSheet(
+            state = sharedEnvironment,
+            onRefresh = vm::refreshSharedEnvironment,
+            onCleanup = environmentCleanupVM::open,
+            onDismiss = { showSharedEnvironment = false },
+        )
+    }
+
     if (environmentCleanup.visible) {
         EnvironmentCleanupSheet(
             state = environmentCleanup,
             onScan = environmentCleanupVM::open,
             onClean = environmentCleanupVM::clean,
-            onDismiss = environmentCleanupVM::close,
+            onDismiss = { environmentCleanupVM.close(); vm.refreshSharedEnvironment() },
         )
     }
 

@@ -13,6 +13,13 @@ import me.rerere.rikkahub.data.db.entity.WorkspaceEntity
 import me.rerere.rikkahub.data.repository.WorkspaceRepository
 import me.rerere.rikkahub.service.BackgroundShellManager
 import me.rerere.workspace.RootfsInstallProgress
+import me.rerere.workspace.SharedEnvironmentInfo
+
+data class SharedEnvironmentState(
+    val loading: Boolean = false,
+    val info: SharedEnvironmentInfo? = null,
+    val error: String? = null,
+)
 
 class WorkspaceVM(
     private val repository: WorkspaceRepository,
@@ -21,6 +28,22 @@ class WorkspaceVM(
 ) : ViewModel() {
     val workspaces = repository.listFlow()
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+
+    private val mutableEnvironment = MutableStateFlow(SharedEnvironmentState())
+    val sharedEnvironment = mutableEnvironment.asStateFlow()
+
+    fun refreshSharedEnvironment() {
+        if (sharedEnvironment.value.loading) return
+        mutableEnvironment.update { it.copy(loading = true, error = null) }
+        viewModelScope.launch {
+            try {
+                mutableEnvironment.value = SharedEnvironmentState(info = repository.sharedEnvironmentInfo())
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
+                mutableEnvironment.update { it.copy(loading = false, error = error.message ?: "读取共享环境失败") }
+            }
+        }
+    }
 
     fun create(name: String, independentEnvironment: Boolean = false) {
         viewModelScope.launch {

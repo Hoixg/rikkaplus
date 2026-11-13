@@ -23,6 +23,7 @@ class WorkspaceManager(
     private val environmentLocks = ConcurrentHashMap<String, ReentrantReadWriteLock>()
     private val unusedEnvironmentLock = ReentrantLock()
     val sharedLinuxDir: File get() = File(environmentDir, LINUX_DIR)
+    fun sharedEnvironmentInfo(): SharedEnvironmentInfo = readEnvironment { inspectSharedEnvironment(environmentDir) }
     internal val environmentTempDir: File get() = File(environmentDir, TEMP_DIR)
     internal val previousLinuxDir: File get() = File(environmentDir, "previous-linux")
 

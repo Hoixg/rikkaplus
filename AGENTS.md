@@ -21,6 +21,7 @@ Material 3 look (cards with dividers, plain forms).
 - Phone Use tool cards display upstream action-specific titles and icons; retain MCP and Termux renderer registrations when merging the shared tool registry.
 - The chat input shows a terminal shortcut immediately before the plus button when its bound workspace supports a terminal; reuse the workspace shortcut style and the existing workspace terminal route.
 - Quick messages follow upstream behavior: a tap appends with a separating newline when needed; a long press replaces the input text. Preserve queued-message draft restoration and attachment protection when merging `ChatInputState`.
+- The workspace list's top-right Shared Environment entry shows usage, Rootfs and installed tools. Keep legacy environment cleanup at the bottom of that panel and reuse its existing confirmation flow.
 
 ## Build, Test, and Development Commands
 
@@ -131,6 +132,11 @@ Worker shims, migration chains, timed approvals, or old-prompt comparison metada
 ConversationSession, existing model/assistant pickers, and the normal agent tool approvals. Scheduled executions
 must keep task management read-only, and model overrides must not change the assistant or conversation default.
 Compression shares the session job slot with generation; queued messages and scheduled executions must wait for it to finish.
+AI task updates accept only changed definition fields, including partial schedule fields, and retain omitted values.
+Prompt passage edits reuse the workspace `replaceText` implementation via `old_text/new_text/replace_all`;
+create/update/set_enabled accumulate a draft in normal chat tool-result metadata without approval or task writes.
+After all edits, save resolves the complete draft into fixed approval arguments and persists only after approval.
+Keep the existing task repository and revision checks; do not add draft databases or files.
 
 ## Module Structure
 

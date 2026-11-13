@@ -27,6 +27,7 @@ import me.rerere.rikkahub.utils.JsonInstant
 import me.rerere.rikkahub.utils.SecretCipher
 import me.rerere.workspace.RootfsInstallProgress
 import me.rerere.workspace.RootfsInstaller
+import me.rerere.workspace.SharedEnvironmentInfo
 import me.rerere.workspace.UnusedEnvironment
 import me.rerere.workspace.WorkspaceBackend
 import me.rerere.workspace.WorkspaceBackgroundCommand
@@ -118,6 +119,11 @@ class WorkspaceRepository(
                 else latest + (workspace.environmentKey() to installedEnvironmentStatus(workspace))
             }
         }
+    }
+
+    suspend fun sharedEnvironmentInfo(): SharedEnvironmentInfo {
+        ensureEnvironment()
+        return runInterruptible(Dispatchers.IO) { manager.sharedEnvironmentInfo() }
     }
 
     suspend fun unusedEnvironments(): UnusedWorkspaceEnvironments = unusedEnvironmentCleanup.withLock {
