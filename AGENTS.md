@@ -140,6 +140,11 @@ Prompt passage edits reuse the workspace `replaceText` implementation via `old_t
 create/update/set_enabled accumulate a draft in normal chat tool-result metadata without approval or task writes.
 After all edits, save resolves the complete draft into fixed approval arguments and persists only after approval.
 Keep the existing task repository and revision checks; do not add draft databases or files.
+Scheduled-task chat cards render persisted operation arguments/results and draft metadata, never fetch mutable tasks
+from the UI. Keep intermediate draft edits compact, show final approval summaries, and put full prompts in the detail
+sheet's single scroll area. List/history results use readable summaries rather than raw JSON. Keep schedule editing,
+task cards and history sheets separate, reuse `ui/components/automation` presentation helpers, and preserve the existing
+final-save approval flow and multi-time scheduling semantics.
 
 ## Module Structure
 

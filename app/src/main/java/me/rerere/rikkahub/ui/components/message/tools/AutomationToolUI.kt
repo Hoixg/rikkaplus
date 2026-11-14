@@ -1,128 +1,77 @@
-@file:Suppress("ktlint:standard:function-naming")
-
 package me.rerere.rikkahub.ui.components.message.tools
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.booleanOrNull
-import kotlinx.serialization.json.jsonPrimitive
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Calendar03
-import me.rerere.rikkahub.data.ai.tools.resolveAutomationDefinition
-import me.rerere.rikkahub.data.automation.AutomationRepository
-import me.rerere.rikkahub.data.automation.TaskDefinition
-import me.rerere.rikkahub.data.model.getChatModelOf
+import me.rerere.hugeicons.stroke.Cancel01
+import me.rerere.hugeicons.stroke.Clock01
+import me.rerere.hugeicons.stroke.Delete01
+import me.rerere.hugeicons.stroke.FileEdit
+import me.rerere.hugeicons.stroke.Play
+import me.rerere.hugeicons.stroke.Search01
+import me.rerere.hugeicons.stroke.Tick01
+import me.rerere.rikkahub.Screen
+import me.rerere.rikkahub.ui.components.automation.AutomationDefinitionDetails
+import me.rerere.rikkahub.ui.components.automation.AutomationRunContent
+import me.rerere.rikkahub.ui.components.automation.formatTaskTime
+import me.rerere.rikkahub.ui.components.automation.modeLabel
+import me.rerere.rikkahub.ui.components.automation.taskModelLabel
+import me.rerere.rikkahub.ui.context.LocalNavController
 import me.rerere.rikkahub.ui.context.LocalSettings
-import me.rerere.rikkahub.ui.pages.extensions.automation.modeLabel
-import me.rerere.rikkahub.ui.pages.extensions.automation.taskModelLabel
-import org.koin.compose.koinInject
 
 object AutomationToolUI : ToolUIRenderer {
     override val toolName = "scheduled_task"
-    override fun icon(context: ToolUIContext) = HugeIcons.Calendar03
+    override fun icon(context: ToolUIContext) = when (context.arguments.getStringContent("action")) {
+        "list", "get", "options" -> HugeIcons.Search01
+        "history" -> HugeIcons.Clock01
+        "update", "set_enabled" -> HugeIcons.FileEdit
+        "save" -> HugeIcons.Tick01
+        "delete" -> HugeIcons.Delete01
+        "run" -> HugeIcons.Play
+        "cancel" -> HugeIcons.Cancel01
+        else -> HugeIcons.Calendar03
+    }
 
     @Composable
     override fun title(context: ToolUIContext): String {
-        val arguments = context.arguments as? JsonObject
-        val includesConversations = (arguments?.get("include_conversations") as? JsonPrimitive)?.booleanOrNull == true
-        val includesModels = (arguments?.get("include_models") as? JsonPrimitive)?.booleanOrNull == true
-        return when (arguments.getStringContent("action")) {
-            "create" -> "新建任务草稿"
-            "update" -> "编辑任务草稿"
-            "save" -> "保存定时任务"
-            "delete" -> "删除定时任务"
-            "set_enabled" -> "编辑任务启停草稿"
-            "run" -> "立即执行任务"
-            "cancel" -> "取消任务执行"
-            "list" -> "查询任务列表"
-            "get" -> "查看任务详情"
-            "history" -> "查看任务运行记录"
-            "options" -> when {
-                arguments.getStringContent("target_conversation_id") != null -> "查询目标会话的用户消息"
-                includesConversations && includesModels -> "查询任务可选配置"
-                includesConversations -> "选择任务目标会话"
-                includesModels -> "查询可选模型"
-                else -> "准备任务操作参数"
-            }
-            else -> "定时任务操作"
-        }
+        val data = remember(context) { AutomationToolPresentation(context) }
+        return listOfNotNull(data.title, data.task?.name?.takeIf { it.isNotBlank() }).joinToString(" · ")
     }
-    override fun hasSummary(context: ToolUIContext) = context.arguments.getStringContent("action") in
-        setOf("save", "delete", "run", "cancel")
+
+    override fun hasSummary(context: ToolUIContext) = AutomationToolPresentation(context).showSummary
 
     @Composable
     override fun Summary(context: ToolUIContext) {
-        if (!hasSummary(context)) return
-        val repository = koinInject<AutomationRepository>()
-        val conversations = koinInject<me.rerere.rikkahub.data.repository.ConversationRepository>()
-        val settings = LocalSettings.current
-        val args = context.arguments as? JsonObject ?: return
-        val saved by produceState<TaskDefinition?>(null, args.getStringContent("id"), context.tool.isExecuted) {
-            value = args.getStringContent("id")?.let { repository.task(it)?.definition }
-        }
-        val definition = remember(args, saved, context.assistant?.id, context.tool.isExecuted) {
-            runCatching {
-                when (args.getStringContent("action")) {
-                    "save" -> resolveAutomationDefinition(args, null, context.assistant?.id?.toString().orEmpty())
-                    else -> saved
-                }
-            }.getOrNull()
-        }
-        val followingModel by produceState<me.rerere.ai.provider.Model?>(null, definition?.conversationId, settings) {
-            value = definition?.conversationId?.let { raw ->
-                runCatching { conversations.getConversationById(kotlin.uuid.Uuid.parse(raw)) }.getOrNull()
-            }?.let { settings.getChatModelOf(it) }
-        }
-        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            definition?.let {
-                Text(it.name, style = MaterialTheme.typography.titleSmall)
-                Text("${modeLabel(it.mode)} · ${it.schedule.describe()}", style = MaterialTheme.typography.bodySmall)
-                Text("执行模型：${taskModelLabel(it, settings, followingModel)}", style = MaterialTheme.typography.bodySmall)
-                if (it.resetContextBeforeRun) {
-                    Text(
-                        "每次执行前删除目标聊天的旧消息、分支和压缩摘要，仅保留本轮记录。",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error
-                    )
-                }
-                if (args.getStringContent("action") == "save" &&
-                    args["enabled"]?.jsonPrimitive?.booleanOrNull != null) {
-                    Text(if (args["enabled"]?.jsonPrimitive?.booleanOrNull ==
-                        true) {
-                        "启用后续排程"
-                    } else {
-                        "暂停后续排程"
-                    }, style = MaterialTheme.typography.bodyMedium)
-                }
-                if (args.getStringContent("action") == "save" && it.prompt.isNotBlank()) {
-                    Surface(
-                        shape = MaterialTheme.shapes.medium,
-                        color = MaterialTheme.colorScheme.surfaceContainerLow
-                    ) {
-                        SelectionContainer {
-                            Text(it.prompt, Modifier.fillMaxWidth().heightIn(max = 220.dp)
-                                .verticalScroll(
-                                    rememberScrollState()
-                                ).padding(12.dp), style = MaterialTheme.typography.bodyMedium)
-                        }
+        val data = remember(context) { AutomationToolPresentation(context) }
+        Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainerLow) {
+            Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                data.status?.let { Text(it, style = MaterialTheme.typography.labelMedium, color = if (data.error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary) }
+                if (data.error != null) {
+                    Text(data.error.lineSequence().first(), maxLines = 3, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
+                } else {
+                    data.task?.let {
+                        TaskPreview(it, showName = false, pendingSave = context.tool.isPending && data.action == "save")
+                        if (it.definition?.resetContextBeforeRun == true) Text("每次执行前清空目标聊天记录", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                     }
+                    data.tasks.take(3).forEach { TaskPreview(it) }
+                    data.runs.firstOrNull()?.let { AutomationRunContent(it.state, it.time, null) }
+                    if (context.tool.isPending) Text("点击步骤查看完整配置", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    else if (data.tasks.size > 3 || data.runs.isNotEmpty()) Text("点击步骤查看全部", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -130,21 +79,61 @@ object AutomationToolUI : ToolUIRenderer {
 
     @Composable
     override fun Preview(context: ToolUIContext, onDismissRequest: () -> Unit) {
-        if (!hasSummary(context)) {
-            DefaultToolPreview(context)
-        } else {
-            Column(
-                Modifier.fillMaxWidth().heightIn(max = 560.dp).verticalScroll(rememberScrollState()).padding(20.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Text(title(context), style = MaterialTheme.typography.headlineSmall)
-                Summary(context)
-                if (context.tool.isExecuted) {
-                    context.tool.output.filterIsInstance<me.rerere.ai.ui.UIMessagePart.Text>().forEach {
-                        Text(it.text, style = MaterialTheme.typography.bodySmall)
+        val data = remember(context) { AutomationToolPresentation(context) }
+        val settings = LocalSettings.current
+        val nav = LocalNavController.current
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth().heightIn(max = 640.dp),
+            contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            item {
+                Text(data.title, style = MaterialTheme.typography.headlineSmall)
+                data.status?.let { Text(it, modifier = Modifier.padding(top = 8.dp), color = if (data.error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary) }
+            }
+            data.task?.let { task ->
+                item { Text(task.name, style = MaterialTheme.typography.titleLarge) }
+                item {
+                    task.definition?.let { AutomationDefinitionDetails(it, settings, task.enabled) } ?: TaskPreview(task, showName = false, compact = false)
+                }
+            }
+            data.error?.let { item { Text(it, style = MaterialTheme.typography.bodySmall) } }
+            items(data.tasks) { task ->
+                Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainerLow) {
+                    Column(Modifier.fillMaxWidth().padding(16.dp)) { TaskPreview(task, compact = false) }
+                }
+            }
+            items(data.runs) { run ->
+                Surface(
+                    onClick = { run.conversationId?.let { onDismissRequest(); nav.navigate(Screen.Chat(it)) } },
+                    enabled = run.conversationId != null,
+                    shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainerLow,
+                ) {
+                    Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        AutomationRunContent(run.state, run.time, run.detail)
+                        if (run.conversationId != null) Text("查看聊天", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                     }
                 }
             }
+            data.choices.forEach { (title, choices) ->
+                item { Text(title, style = MaterialTheme.typography.titleMediumEmphasized) }
+                if (choices.isEmpty()) item { Text("暂无可选内容", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                items(choices) { Text(it, style = MaterialTheme.typography.bodyMedium) }
+            }
         }
+    }
+}
+
+@Composable
+private fun TaskPreview(task: AutomationTaskPreview, showName: Boolean = true, compact: Boolean = true, pendingSave: Boolean = false) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        if (showName) Text(task.name, style = MaterialTheme.typography.titleSmallEmphasized, maxLines = if (compact) 2 else Int.MAX_VALUE, overflow = TextOverflow.Ellipsis)
+        if (task.schedule.isNotBlank()) Text(task.schedule, maxLines = if (compact) 2 else Int.MAX_VALUE, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        task.definition?.let { Text("${modeLabel(it.mode)} · ${taskModelLabel(it, LocalSettings.current)}", style = MaterialTheme.typography.bodySmall,
+            maxLines = 2, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        if (task.enabled != null) Text(
+            if (pendingSave) { if (task.enabled) "保存后启用排程" else "保存后停用排程" }
+            else if (!task.enabled) "已停用" else task.nextRunAt?.let { "下次：${formatTaskTime(it)}" } ?: "排程已启用",
+            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }

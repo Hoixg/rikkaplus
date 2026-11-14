@@ -148,6 +148,12 @@ suspend fun createAutomationTools(
                 val prepared = prepareAutomationSave(getMessages(), id, assistantId.toString())
                 repository.validate(JsonInstant.decodeFromJsonElement(prepared.getValue("definition")))
                 prepared
+            } else if (args["action"]?.jsonPrimitive?.content in setOf("delete", "run", "cancel")) {
+                // Keep approval and historical cards tied to this operation, not a later task edit.
+                val task = args["id"]?.jsonPrimitive?.content?.let { repository.task(it) }
+                JsonObject(args + (task?.takeIf { it.assistantId == assistantId.toString() }?.let {
+                    mapOf("task_preview" to taskSummary(it))
+                } ?: emptyMap()))
             } else {
                 input
             }

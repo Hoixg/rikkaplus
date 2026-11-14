@@ -2,29 +2,21 @@
 
 package me.rerere.rikkahub.ui.pages.extensions.automation
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExtendedFloatingActionButton
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -34,35 +26,25 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Add01
-import me.rerere.hugeicons.stroke.Delete01
 import me.rerere.hugeicons.stroke.Settings03
 import me.rerere.rikkahub.Screen
 import me.rerere.rikkahub.data.automation.AutomationRepository
 import me.rerere.rikkahub.data.automation.AutomationTask
-import me.rerere.rikkahub.data.automation.TaskDefinition
-import me.rerere.rikkahub.data.automation.TaskMode
-import me.rerere.rikkahub.data.datastore.Settings as AppSettings
-import me.rerere.rikkahub.data.datastore.findModelById
-import me.rerere.rikkahub.data.datastore.findProvider
 import me.rerere.rikkahub.service.ChatService
 import me.rerere.rikkahub.ui.components.nav.BackButton
-import me.rerere.rikkahub.ui.components.ui.CardGroup
 import me.rerere.rikkahub.ui.context.LocalNavController
 import me.rerere.rikkahub.ui.context.LocalSettings
 import me.rerere.rikkahub.ui.theme.CustomColors
+import me.rerere.rikkahub.ui.components.automation.taskModelLabel
 import me.rerere.rikkahub.utils.plus
 import org.koin.compose.koinInject
-import kotlin.uuid.Uuid
 
 @Composable
 fun AutomationPage() {
@@ -101,74 +83,24 @@ fun AutomationPage() {
                     Text("按指定日期、每天、每周或固定间隔执行，支持一天多个时间点；结果保存在聊天中。", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 } }
             }
+            if (tasks.isNotEmpty()) item {
+                Text("${tasks.count { it.enabled }} 个已启用 · ${runs.size} 个进行中",
+                    style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
             items(tasks, key = { it.id }) { task ->
                 val run = runs.firstOrNull { it.taskId == task.id }
                 val assistant = settings.assistants.firstOrNull { it.id.toString() == task.assistantId }
-                CardGroup {
-                    formItem {
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .heightIn(min = 48.dp)
-                                        .clip(MaterialTheme.shapes.medium)
-                                        .clickable { nav.navigate(Screen.AutomationEditor(task.id)) }
-                                        .padding(vertical = 4.dp),
-                                    contentAlignment = Alignment.CenterStart,
-                                ) {
-                                    Text(
-                                        text = task.definition.name,
-                                        style = MaterialTheme.typography.titleMediumEmphasized,
-                                        maxLines = 2,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                }
-                                Switch(
-                                    checked = task.enabled,
-                                    enabled = task.id !in busy,
-                                    onCheckedChange = { enabled ->
-                                        action(task.id) { repository.setEnabled(task.id, enabled, task.revision) }
-                                    },
-                                )
-                            }
-                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Text(
-                                    text = task.definition.schedule.describe(),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                val model = run?.executionModelName?.takeIf { it.isNotBlank() } ?: taskModelLabel(task.definition, settings)
-                                Text(
-                                    text = "${assistant?.name?.ifBlank { "默认助手" } ?: "助手已删除"} · $model",
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                Text(
-                                    text = run?.state?.label ?: task.nextRunAt?.let { "下次执行：${formatTaskTime(it)}" } ?: "未启用排程",
-                                    color = if (run == null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary,
-                                    style = MaterialTheme.typography.labelMedium,
-                                )
-                            }
-                            FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                FilledTonalButton(onClick = { nav.navigate(Screen.AutomationEditor(task.id)) }) { Text("编辑") }
-                                TextButton(enabled = task.id !in busy, onClick = { action(task.id) {
-                                    if (run != null) chat.cancelAutomation(run.id) else { repository.queue(task.id, task.revision); repository.kick() }
-                                } }) { Text(if (run == null) "执行" else "取消本次") }
-                                TextButton(onClick = { history = task.id }) { Text("记录") }
-                                IconButton(enabled = run == null && task.id !in busy, onClick = { deleting = task }) {
-                                    Icon(HugeIcons.Delete01, "删除任务")
-                                }
-                            }
-                        }
-                    }
-                }
+                AutomationTaskCard(
+                    task = task, run = run, busy = task.id in busy,
+                    model = run?.executionModelName?.takeIf { it.isNotBlank() } ?: taskModelLabel(task.definition, settings),
+                    assistant = assistant?.name?.ifBlank { "默认助手" } ?: "助手已删除",
+                    onEdit = { nav.navigate(Screen.AutomationEditor(task.id)) },
+                    onEnabledChange = { enabled -> action(task.id) { repository.setEnabled(task.id, enabled, task.revision) } },
+                    onRun = { action(task.id) {
+                        if (run != null) chat.cancelAutomation(run.id) else { repository.queue(task.id, task.revision); repository.kick() }
+                    } },
+                    onHistory = { history = task.id }, onDelete = { deleting = task },
+                )
             }
         }
     }
@@ -176,26 +108,7 @@ fun AutomationPage() {
         text = { Text("删除“${task.definition.name}”及其运行记录，生成的聊天仍保留。") },
         confirmButton = { TextButton(onClick = { deleting = null; action(task.id) { repository.delete(task.id, task.revision) } }) { Text("删除") } },
         dismissButton = { TextButton(onClick = { deleting = null }) { Text("取消") } }) }
-    history?.let { id ->
-        val entries by remember(id) { repository.historyFlow(id) }.collectAsStateWithLifecycle(emptyList())
-        ModalBottomSheet(onDismissRequest = { history = null }) {
-            LazyColumn(Modifier.fillMaxWidth().heightIn(max = 560.dp), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                item { Text("运行记录", style = MaterialTheme.typography.headlineSmall) }
-                if (entries.isEmpty()) item { Text("尚未执行") }
-                items(entries, key = { it.id }) { run ->
-                    Card(onClick = { run.conversationId?.let { history = null; nav.navigate(Screen.Chat(it)) } }) {
-                        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text(run.state.label, style = MaterialTheme.typography.titleMedium)
-                            Text("${formatTaskTime(run.dueAt)} · ${if (run.manual) "手动执行" else "定时执行"}", style = MaterialTheme.typography.labelMedium)
-                            Text(run.executionModelName.ifBlank { taskModelLabel(run.definition, settings) }, style = MaterialTheme.typography.bodySmall)
-                            if (run.detail.isNotBlank()) Text(run.detail, maxLines = 4, overflow = TextOverflow.Ellipsis)
-                            if (run.conversationId != null) Text("查看聊天", color = MaterialTheme.colorScheme.primary)
-                        }
-                    }
-                }
-            }
-        }
-    }
+    history?.let { id -> AutomationHistorySheet(id, repository) { history = null } }
     AutomationError(error) { error = null }
 }
 
@@ -206,21 +119,6 @@ internal fun AutomationBackgroundButton() {
         Icon(HugeIcons.Settings03, "后台运行与权限")
     }
 }
-
-internal fun taskModelLabel(definition: TaskDefinition, settings: AppSettings, followingModel: me.rerere.ai.provider.Model? = null): String {
-    val model = definition.modelId?.let { runCatching { settings.findModelById(Uuid.parse(it)) }.getOrNull() }
-        ?: followingModel?.takeIf { definition.modelId == null }
-        ?: if (definition.modelId == null && definition.mode == TaskMode.NEW_CHAT) {
-            settings.assistants.firstOrNull { it.id.toString() == definition.assistantId }?.let {
-                settings.findModelById(it.chatModelId ?: settings.chatModelId)
-            }
-        } else null
-    return model?.let { listOfNotNull(it.displayName.ifBlank { it.modelId }, it.findProvider(settings.providers)?.name).joinToString(" · ") }
-        ?: if (definition.modelId != null) "指定模型已删除" else if (definition.mode == TaskMode.NEW_CHAT) "跟随助手模型" else "跟随目标聊天模型"
-}
-
-internal fun formatTaskTime(time: Long): String = java.time.Instant.ofEpochMilli(time).atZone(java.time.ZoneId.systemDefault())
-    .format(java.time.format.DateTimeFormatter.ofPattern("MM-dd HH:mm"))
 
 @Composable
 internal fun AutomationError(error: String?, onDismiss: () -> Unit) {
