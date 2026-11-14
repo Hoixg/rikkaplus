@@ -21,7 +21,7 @@ Material 3 look (cards with dividers, plain forms).
 - Phone Use tool cards display upstream action-specific titles and icons; retain MCP and Termux renderer registrations when merging the shared tool registry.
 - The chat input shows a terminal shortcut immediately before the plus button when its bound workspace supports a terminal; reuse the workspace shortcut style and the existing workspace terminal route.
 - Quick messages follow upstream behavior: a tap appends with a separating newline when needed; a long press replaces the input text. Preserve queued-message draft restoration and attachment protection when merging `ChatInputState`.
-- The workspace list's top-right Shared Environment entry shows usage, Rootfs and installed tools. Keep legacy environment cleanup at the bottom of that panel and reuse its existing confirmation flow.
+- The workspace list's top-right Shared Environment entry shows usage and Rootfs, with installed tools behind a compact count row. Open the searchable tool list within the same sheet; keep legacy environment cleanup at the bottom of the overview and reuse its existing confirmation flow.
 
 ## Build, Test, and Development Commands
 

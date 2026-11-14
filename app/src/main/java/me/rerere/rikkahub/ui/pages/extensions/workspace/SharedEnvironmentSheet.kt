@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -24,12 +25,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.ArrowLeft01
+import me.rerere.hugeicons.stroke.ArrowRight01
 import me.rerere.hugeicons.stroke.Clean
 import me.rerere.hugeicons.stroke.Refresh01
 import me.rerere.rikkahub.R
@@ -45,7 +49,10 @@ internal fun SharedEnvironmentSheet(
     onCleanup: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    var query by remember { mutableStateOf("") }
+    var showTools by rememberSaveable { mutableStateOf(false) }
+    var query by rememberSaveable { mutableStateOf("") }
+    val overviewListState = rememberLazyListState()
+    val toolsListState = rememberLazyListState()
     val info = state.info
     val tools = remember(info) {
         info?.let {
@@ -57,13 +64,28 @@ internal fun SharedEnvironmentSheet(
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(Modifier.fillMaxHeight(0.9f).navigationBarsPadding()) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("共享环境", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
+                if (showTools) {
+                    IconButton(onClick = { showTools = false }) {
+                        Icon(HugeIcons.ArrowLeft01, contentDescription = "返回共享环境")
+                    }
+                }
+                Text(if (showTools) "工具与软件包 · ${tools.size}" else "共享环境", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
                 IconButton(onClick = onRefresh, enabled = !state.loading) {
                     Icon(HugeIcons.Refresh01, contentDescription = "刷新环境信息")
                 }
             }
+            if (showTools) {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                    label = { Text("搜索名称、版本或命令路径") },
+                    singleLine = true,
+                )
+            }
             LazyColumn(
                 modifier = Modifier.weight(1f),
+                state = if (showTools) toolsListState else overviewListState,
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
@@ -74,7 +96,20 @@ internal fun SharedEnvironmentSheet(
                     }
                 }
                 state.error?.let { error -> item { Text(error, color = MaterialTheme.colorScheme.error) } }
-                if (info != null) {
+                if (showTools) {
+                    itemsIndexed(matches, key = { _, entry -> "${entry.first}@${entry.second}" }) { index, entry ->
+                        Surface(shape = cardGroupItemShape(index, matches.size), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+                            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)) {
+                                Text(entry.first, style = MaterialTheme.typography.bodyLarge)
+                                Text(entry.second, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+                    if (matches.isEmpty()) item {
+                        Text(if (query.isBlank()) "暂无软件包或自装命令记录" else "没有匹配的工具", style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+                if (!showTools && info != null) {
                     item {
                         CardGroup(Modifier.padding(bottom = 16.dp)) {
                             item(
@@ -96,28 +131,17 @@ internal fun SharedEnvironmentSheet(
                         Text("部分目录无法读取，当前显示已统计的信息。", Modifier.padding(bottom = 12.dp), style = MaterialTheme.typography.bodySmall)
                     }
                     item {
-                        Text("已安装工具与软件包 · ${tools.size}", style = MaterialTheme.typography.titleMedium)
-                        OutlinedTextField(
-                            value = query,
-                            onValueChange = { query = it },
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
-                            label = { Text("搜索名称、版本或命令路径") },
-                            singleLine = true,
-                        )
-                    }
-                    itemsIndexed(matches, key = { _, entry -> "${entry.first}@${entry.second}" }) { index, entry ->
-                        Surface(shape = cardGroupItemShape(index, matches.size), color = MaterialTheme.colorScheme.surfaceContainerLow) {
-                            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)) {
-                                Text(entry.first, style = MaterialTheme.typography.bodyLarge)
-                                Text(entry.second, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
+                        CardGroup {
+                            item(
+                                onClick = { showTools = true },
+                                headlineContent = { Text("工具与软件包 · ${tools.size}") },
+                                supportingContent = { Text("${info.packages.size} 个软件包 · ${info.commands.size} 个命令，点击查看") },
+                                trailingContent = { Icon(HugeIcons.ArrowRight01, contentDescription = null) },
+                            )
                         }
                     }
-                    if (matches.isEmpty()) item {
-                        Text(if (query.isBlank()) "暂无软件包或自装命令记录" else "没有匹配的工具", style = MaterialTheme.typography.bodyMedium)
-                    }
                 }
-                item {
+                if (!showTools) item {
                     CardGroup(Modifier.padding(top = 24.dp)) {
                         item(
                             onClick = onCleanup,
