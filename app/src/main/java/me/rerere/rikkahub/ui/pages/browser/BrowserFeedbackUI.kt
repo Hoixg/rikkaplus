@@ -7,7 +7,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.*
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.foundation.Canvas
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -15,7 +16,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
@@ -27,6 +27,8 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.filter
+import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.Earth
 import me.rerere.rikkahub.browser.BrowserActivity
 import me.rerere.rikkahub.browser.BrowserGesture
 import me.rerere.rikkahub.browser.BrowserGestureKind
@@ -49,7 +51,7 @@ internal fun BrowserAgentStatus(
         ) {
             Row(Modifier.padding(start = 12.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 if (!paused) {
-                    CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                    Icon(HugeIcons.Earth, null, Modifier.size(16.dp))
                     Spacer(Modifier.width(8.dp))
                 }
                 Text(
@@ -83,7 +85,7 @@ internal fun BrowserAgentStatus(
 
 /** A browser-local drawing layer. It never intercepts touch or appears in WebView screenshots. */
 @Composable
-internal fun browserGestureFeedback(manager: BrowserManager, tabId: String, modifier: Modifier = Modifier): Modifier {
+internal fun BrowserGestureFeedback(manager: BrowserManager, tabId: String, modifier: Modifier = Modifier) {
     val lifecycleOwner = LocalLifecycleOwner.current
     var gesture by remember(manager, tabId) { mutableStateOf<BrowserGesture?>(null) }
     val animation = remember(manager, tabId) { Animatable(1f) }
@@ -100,26 +102,23 @@ internal fun browserGestureFeedback(manager: BrowserManager, tabId: String, modi
             } finally { gesture = null }
         }
     }
-    return modifier.drawWithCache {
+    Canvas(modifier) {
         val outline = Stroke(2.dp.toPx())
-        onDrawWithContent {
-            drawContent()
-            val current = gesture ?: return@onDrawWithContent
-            val elapsed = animation.value * (current.motionMillis + 350)
-            val progress = (elapsed / current.motionMillis).coerceIn(0f, 1f)
-            val alpha = (1f - (elapsed - current.motionMillis) / 350f).coerceIn(0f, 1f)
-            val start = Offset(current.normalizedX(0f) * size.width, current.normalizedY(0f) * size.height)
-            val head = Offset(current.normalizedX(progress) * size.width, current.normalizedY(progress) * size.height)
-            if (current.kind == BrowserGestureKind.TAP) {
-                val radius = 28.dp.toPx() * (0.4f + 0.6f * progress)
-                drawCircle(color.copy(alpha = 0.18f * alpha), radius, start)
-                drawCircle(color.copy(alpha = 0.65f * alpha), radius, start, style = outline)
-            } else {
-                drawLine(Color.Black.copy(alpha = 0.15f * alpha), start, head, 20.dp.toPx(), StrokeCap.Round)
-                drawLine(color.copy(alpha = 0.35f * alpha), start, head, 16.dp.toPx(), StrokeCap.Round)
-            }
-            drawCircle(Color.White.copy(alpha = alpha), 10.dp.toPx(), head)
-            drawCircle(color.copy(alpha = alpha), 7.dp.toPx(), head)
+        val current = gesture ?: return@Canvas
+        val elapsed = animation.value * (current.motionMillis + 350)
+        val progress = (elapsed / current.motionMillis).coerceIn(0f, 1f)
+        val alpha = (1f - (elapsed - current.motionMillis) / 350f).coerceIn(0f, 1f)
+        val start = Offset(current.normalizedX(0f) * size.width, current.normalizedY(0f) * size.height)
+        val head = Offset(current.normalizedX(progress) * size.width, current.normalizedY(progress) * size.height)
+        if (current.kind == BrowserGestureKind.TAP) {
+            val radius = 28.dp.toPx() * (0.4f + 0.6f * progress)
+            drawCircle(color.copy(alpha = 0.18f * alpha), radius, start)
+            drawCircle(color.copy(alpha = 0.65f * alpha), radius, start, style = outline)
+        } else {
+            drawLine(Color.Black.copy(alpha = 0.15f * alpha), start, head, 20.dp.toPx(), StrokeCap.Round)
+            drawLine(color.copy(alpha = 0.35f * alpha), start, head, 16.dp.toPx(), StrokeCap.Round)
         }
+        drawCircle(Color.White.copy(alpha = alpha), 10.dp.toPx(), head)
+        drawCircle(color.copy(alpha = alpha), 7.dp.toPx(), head)
     }
 }

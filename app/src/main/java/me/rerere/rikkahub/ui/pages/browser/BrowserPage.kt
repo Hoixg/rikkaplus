@@ -15,22 +15,24 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Add01
@@ -39,18 +41,15 @@ import me.rerere.hugeicons.stroke.ArrowRight01
 import me.rerere.hugeicons.stroke.Cancel01
 import me.rerere.hugeicons.stroke.Bookmark02
 import me.rerere.hugeicons.stroke.Clock01
-import me.rerere.hugeicons.stroke.Copy01
 import me.rerere.hugeicons.stroke.Download01
 import me.rerere.hugeicons.stroke.Earth
 import me.rerere.hugeicons.stroke.ArrowUpRight01
 import me.rerere.hugeicons.stroke.MoreVertical
-import me.rerere.hugeicons.stroke.Refresh01
 import me.rerere.hugeicons.stroke.Search01
 import me.rerere.hugeicons.stroke.Settings02
 import me.rerere.rikkahub.Screen
 import me.rerere.rikkahub.browser.*
 import me.rerere.rikkahub.browser.BrowserPage as SavedPage
-import me.rerere.rikkahub.ui.components.nav.BackButton
 import me.rerere.rikkahub.ui.context.LocalNavController
 import me.rerere.rikkahub.ui.context.LocalToaster
 import org.koin.compose.koinInject
@@ -59,7 +58,6 @@ import org.koin.compose.koinInject
 fun BrowserPage(conversationId: String, workspaceId: String? = null, tabId: String? = null, url: String = "") {
     val manager: BrowserManager = koinInject()
     val state by manager.state.collectAsStateWithLifecycle()
-    val views by manager.views.collectAsStateWithLifecycle()
     val running by manager.running.collectAsStateWithLifecycle()
     val activity by manager.activity.collectAsStateWithLifecycle()
     val paused by manager.paused.collectAsStateWithLifecycle()
@@ -72,10 +70,10 @@ fun BrowserPage(conversationId: String, workspaceId: String? = null, tabId: Stri
     val toaster = LocalToaster.current
     val nav = LocalNavController.current
     val focus = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
     var panel by rememberSaveable(conversationId) { mutableStateOf<String?>(null) }
     var ready by remember(conversationId) { mutableStateOf(false) }
     var initializationError by remember(conversationId) { mutableStateOf<String?>(null) }
-    var address by rememberSaveable(conversationId) { mutableStateOf("") }
     var findText by rememberSaveable(conversationId) { mutableStateOf("") }
     var showFind by rememberSaveable(conversationId) { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
@@ -87,7 +85,9 @@ fun BrowserPage(conversationId: String, workspaceId: String? = null, tabId: Stri
     val ownedTabs = remember(state.tabs, conversationId) { state.tabsFor(conversationId) }
     val otherTabs = remember(state.tabs, conversationId) { state.tabs.filterNot { it.conversationId == conversationId } }
     val bookmarked = remember(state.bookmarks, tab?.url) { state.bookmarks.any { it.url == tab?.url } }
-    val view = views[tab?.id] ?: BrowserViewState()
+    val view by remember(manager, tab?.id) {
+        manager.views.map { it[tab?.id] ?: BrowserViewState() }.distinctUntilChanged()
+    }.collectAsStateWithLifecycle(initialValue = BrowserViewState())
 
     fun run(block: suspend () -> Unit) {
         scope.launch {
@@ -97,7 +97,8 @@ fun BrowserPage(conversationId: String, workspaceId: String? = null, tabId: Stri
         }
     }
     fun go(value: String) {
-        focus.clearFocus()
+        focus.clearFocus(force = true)
+        keyboard?.hide()
         run { manager.navigate(conversationId, value, workspaceId) }
     }
     LaunchedEffect(manager, conversationId, tabId, url) {
@@ -110,7 +111,7 @@ fun BrowserPage(conversationId: String, workspaceId: String? = null, tabId: Stri
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (error: Exception) { initializationError = error.message }
     }
-    LaunchedEffect(tab?.id, tab?.url) { address = tab?.url?.takeUnless { it == "about:blank" }.orEmpty() }
+    LaunchedEffect(storageError) { storageError?.let { toaster.show(it) } }
     BackHandler(view.back) { run { manager.back(conversationId) } }
 
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -142,40 +143,13 @@ fun BrowserPage(conversationId: String, workspaceId: String? = null, tabId: Stri
 
     Scaffold(
         topBar = {
-            Surface(color = MaterialTheme.colorScheme.surfaceContainerLow) {
-                Row(Modifier.statusBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    BackButton()
-                    Box(Modifier.weight(1f)) {
-                        TextField(
-                            value = address, onValueChange = { address = it }, singleLine = true,
-                            placeholder = { Text("搜索或输入网址") },
-                            leadingIcon = { Icon(HugeIcons.Earth, null, Modifier.size(20.dp)) },
-                            trailingIcon = {
-                                IconButton(enabled = tab != null, onClick = { run { manager.reload(conversationId, view.loading) } }) {
-                                    Icon(if (view.loading) HugeIcons.Cancel01 else HugeIcons.Refresh01, if (view.loading) "停止加载" else "刷新", Modifier.size(20.dp))
-                                }
-                            },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go),
-                            keyboardActions = KeyboardActions(onGo = { go(address) }),
-                            shape = MaterialTheme.shapes.extraLarge,
-                            textStyle = MaterialTheme.typography.bodyMedium,
-                            colors = TextFieldDefaults.colors(
-                                focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                                focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent,
-                            ),
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        if (view.loading) LinearProgressIndicator(progress = { view.progress / 100f },
-                            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = 24.dp).height(2.dp))
-                    }
-                }
+            key(tab?.id) {
+                BrowserToolbar(manager, tab, view.loading, onOpen = ::go, onReload = { run { manager.reload(conversationId, view.loading) } })
             }
         },
         bottomBar = {
             Surface(color = MaterialTheme.colorScheme.surfaceContainerLow) {
-                Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 20.dp, vertical = 8.dp),
+                Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 4.dp),
                     horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Surface(shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surfaceContainerHighest) {
                         Row {
@@ -184,8 +158,10 @@ fun BrowserPage(conversationId: String, workspaceId: String? = null, tabId: Stri
                         }
                     }
                     FilledTonalIconButton(onClick = { run { manager.newTab(conversationId, workspaceId = workspaceId) } }) { Icon(HugeIcons.Add01, "新建标签") }
-                    IconButton(onClick = { panel = "tabs" }) {
-                        BadgedBox(badge = { Badge { Text(ownedTabs.size.toString()) } }) { Icon(HugeIcons.Copy01, "标签页，${ownedTabs.size} 个") }
+                    IconButton(onClick = { panel = "tabs" }, modifier = Modifier.semantics { contentDescription = "标签页，${ownedTabs.size} 个" }) {
+                        Box(Modifier.size(26.dp).border(1.5.dp, MaterialTheme.colorScheme.onSurface, RoundedCornerShape(7.dp)), contentAlignment = Alignment.Center) {
+                            Text(ownedTabs.size.toString(), style = MaterialTheme.typography.labelMedium)
+                        }
                     }
                     Box {
                         IconButton(onClick = { menu = true }) { Icon(HugeIcons.MoreVertical, "浏览器菜单") }
@@ -210,7 +186,6 @@ fun BrowserPage(conversationId: String, workspaceId: String? = null, tabId: Stri
         },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).imePadding()) {
-            (initializationError ?: storageError ?: view.error)?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(12.dp)) }
             chooser?.takeIf { it.tabId == tab?.id && it.fromAgent }?.let { request ->
                 TextButton(onClick = {
                     choosing = request
@@ -229,10 +204,16 @@ fun BrowserPage(conversationId: String, workspaceId: String? = null, tabId: Stri
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 if (!ready && initializationError == null) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                } else if (initializationError != null || view.error != null || view.crashed) {
+                    BrowserErrorPage(
+                        message = initializationError ?: view.error ?: "网页进程已退出",
+                        onReload = {
+                            if (initializationError != null) run { manager.initialize(); initializationError = null; ready = true }
+                            else run { manager.reload(conversationId) }
+                        },
+                    )
                 } else if (tab == null || tab.url == "about:blank" && !view.hasContent) {
                     BrowserHomePage(onSearch = ::go, modifier = Modifier.fillMaxSize())
-                } else if (view.crashed) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("点击刷新重新加载网页") }
                 } else {
                     key(tab.id) { BrowserContent(manager, tab, Modifier.fillMaxSize()) }
                 }
@@ -340,7 +321,7 @@ private fun BrowserContent(manager: BrowserManager, tab: BrowserTab, modifier: M
         catch (failure: Exception) { error = failure.message }
     }
     val native = view
-    if (native != null) Box(modifier.fillMaxWidth().then(browserGestureFeedback(manager, tab.id))) {
+    if (native != null) Box(modifier.fillMaxWidth()) {
         AndroidView(
             factory = { FrameLayout(it) },
             modifier = Modifier.matchParentSize(),
@@ -354,7 +335,20 @@ private fun BrowserContent(manager: BrowserManager, tab: BrowserTab, modifier: M
                 }
             },
         )
+        BrowserGestureFeedback(manager, tab.id, Modifier.matchParentSize())
     } else Box(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
         if (error != null) Text(error.orEmpty()) else CircularProgressIndicator()
+    }
+}
+
+@Composable
+private fun BrowserErrorPage(message: String, onReload: () -> Unit) {
+    Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+        Column(Modifier.widthIn(max = 440.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Icon(HugeIcons.Earth, null, Modifier.size(40.dp), tint = MaterialTheme.colorScheme.primary)
+            Text("网页暂时无法打开", style = MaterialTheme.typography.titleLarge)
+            Text(message, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+            FilledTonalButton(onClick = onReload) { Text("重新加载") }
+        }
     }
 }

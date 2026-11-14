@@ -9,6 +9,24 @@ class BrowserStateTest {
     private val first = BrowserTab("a", "chat-one", "https://one.example")
     private val second = BrowserTab("b", "chat-two", "https://two.example")
 
+    @Test fun `progress and unchanged metadata do not produce persistent state snapshots`() {
+        val state = BrowserState(tabs = listOf(first, second))
+        assertSame(state, state.pageChanged("a", null, null, completed = false))
+        assertSame(state, state.pageChanged("a", first.url, first.title, completed = false))
+        assertSame(state, state.pageChanged("closed", "https://late.example", "Late", completed = true))
+    }
+
+    @Test fun `only completed navigation records a visit and other tabs are retained`() {
+        val state = BrowserState(tabs = listOf(first, second))
+        val loading = state.pageChanged("a", "https://one.example/new", "Page", completed = false)
+        assertTrue(loading.history.isEmpty())
+        assertSame(second, loading.tabs[1])
+        val finished = loading.pageChanged("a", null, null, completed = true)
+        assertEquals("https://one.example/new", finished.history.single().url)
+        assertEquals("Page", finished.history.single().title)
+        assertEquals(1, finished.pageChanged("a", null, null, completed = true).history.size)
+    }
+
     @Test fun `tools cannot address a tab belonging to another chat`() {
         val state = BrowserState(tabs = listOf(first, second), selected = mapOf("chat-one" to "b"))
         assertEquals(first, state.selectedTab("chat-one"))

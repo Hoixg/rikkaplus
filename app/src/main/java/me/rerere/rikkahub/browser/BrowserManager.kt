@@ -65,6 +65,8 @@ class BrowserManager(
     val state = mutableState.asStateFlow()
     private val mutableViews = MutableStateFlow<Map<String, BrowserViewState>>(emptyMap())
     val views = mutableViews.asStateFlow()
+    private val mutableProgress = MutableStateFlow<Map<String, Int>>(emptyMap())
+    val progress = mutableProgress.asStateFlow()
     private val mutableChooser = MutableStateFlow<BrowserFileChooser?>(null)
     val chooser = mutableChooser.asStateFlow()
     private val mutableDialog = MutableStateFlow<BrowserDialog?>(null)
@@ -149,6 +151,7 @@ class BrowserManager(
             visible.remove(id)
             engines.remove(id)?.dispose()
             mutableViews.value = views.value - id
+            mutableProgress.value -= id
             update(state.value.removeTab(id))
         }
     }
@@ -172,6 +175,7 @@ class BrowserManager(
             it.contextWrapper.baseContext = context.applicationContext
             if (id != busyTab && !it.disposed) it.webView.onPause()
         }
+        scope.launch(Dispatchers.IO) { CookieManager.getInstance().flush() }
         scheduleIdleRelease()
     }
 
@@ -185,6 +189,7 @@ class BrowserManager(
                 engines.values.forEach { it.dispose() }
                 engines.clear()
                 mutableViews.value = emptyMap()
+                mutableProgress.value = emptyMap()
             }
         }
     }
@@ -197,24 +202,19 @@ class BrowserManager(
             resolveRequests(candidate)
             engines.remove(candidate)?.dispose()
             mutableViews.value = views.value - candidate
+            mutableProgress.value -= candidate
         }
-        val result = BrowserEngine(context, tab.id, state.value.settings, asyncScript, object : BrowserEngineEvents {
-            override fun changed(url: String?, title: String?, view: BrowserViewState) {
-                val before = views.value[tab.id]
+        val result = BrowserEngine(context, tab.id, workspaceHost(tab.id), state.value.settings, asyncScript, object : BrowserEngineEvents {
+            override fun changed(view: BrowserViewState, url: String?, title: String?, completed: Boolean) {
                 mutableViews.value = views.value + (tab.id to view)
                 if (view.crashed) {
                     visible.remove(tab.id)
                     resolveRequests(tab.id)
                     scheduleIdleRelease()
                 }
-                val current = state.value.tabs.find { it.id == tab.id } ?: return
-                val changed = current.copy(url = url?.let { publicUrl(tab.id, it) } ?: current.url, title = title ?: current.title)
-                var next = state.value.copy(tabs = state.value.tabs.map { if (it.id == tab.id) changed else it })
-                if (!view.loading && view.error == null && (before?.loading == true || changed.url != current.url)) {
-                    next = next.recordVisit(BrowserPage(changed.url, changed.title))
-                }
-                update(next)
+                update(state.value.pageChanged(tab.id, url?.let { publicUrl(tab.id, it) }, title, completed && view.error == null))
             }
+            override fun progress(value: Int) { mutableProgress.value += tab.id to value.coerceIn(0, 100) }
             override fun download(url: String, name: String?, mime: String?) {
                 scope.launch(Dispatchers.Main.immediate) { runCatching { download(url, name, mime, tab.id) }.onFailure { mutableError.value = it.message } }
             }
@@ -261,7 +261,11 @@ class BrowserManager(
     }
 
     suspend fun reload(owner: String, stop: Boolean = false) = withContext(Dispatchers.Main.immediate) {
-        state.value.selectedTab(owner)?.let { tab -> engine(tab).reload(stop) }
+        state.value.selectedTab(owner)?.let { tab ->
+            val native = engines[tab.id]?.takeUnless { it.disposed }
+            if (native != null) native.reload(stop)
+            else if (!stop) engine(tab)
+        }
     }
 
     suspend fun find(owner: String, text: String, forward: Boolean? = null) = withContext(Dispatchers.Main.immediate) {
@@ -284,9 +288,9 @@ class BrowserManager(
         require(value.customUserAgent.length <= 2048 && value.customUserAgent.all { it.code in 32..126 }) { "无效的 User-Agent" }
         val old = state.value.settings
         update(state.value.copy(settings = value))
-        engines.values.filterNot { it.disposed }.forEach { it.applySettings(value) }
         if (old.desktopMode != value.desktopMode || old.customUserAgent != value.customUserAgent) {
-            engines.filterKeys { it in visible }.values.forEach { it.webView.reload() }
+            engines.values.filterNot { it.disposed }.forEach { it.applySettings(value) }
+            engines.filterKeys { it in visible }.values.filterNot { it.disposed }.forEach { it.reload(false) }
         }
     }
 
@@ -316,7 +320,7 @@ class BrowserManager(
             suspendCancellableCoroutine { continuation ->
                 CookieManager.getInstance().removeAllCookies { if (continuation.isActive) continuation.resume(Unit) }
             }
-            CookieManager.getInstance().flush()
+            withContext(Dispatchers.IO) { CookieManager.getInstance().flush() }
             WebView(context).apply { clearCache(true); destroy() }
         }
     }

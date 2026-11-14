@@ -1,5 +1,6 @@
 package me.rerere.rikkahub.browser
 
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.serialization.Serializable
 import java.net.URI
 import java.net.URLEncoder
@@ -62,6 +63,13 @@ data class BrowserState(
         this
     }
 
+    internal fun pageChanged(id: String, url: String?, title: String?, completed: Boolean): BrowserState {
+        val old = tabs.find { it.id == id } ?: return this
+        val page = old.copy(url = url ?: old.url, title = title ?: old.title)
+        val next = if (old == page) this else copy(tabs = tabs.map { if (it.id == id) page else it })
+        return if (completed) next.recordVisit(BrowserPage(page.url, page.title)) else next
+    }
+
     fun forPersistence(): BrowserState = if (settings.restoreTabs) {
         this
     } else {
@@ -71,6 +79,45 @@ data class BrowserState(
         )
     }
 }
+
+/** Native commit acknowledges this navigation; DOM readiness is awaited once by BrowserEngine. */
+internal class BrowserNavigation {
+    var document = CompletableDeferred<Unit>().apply { complete(Unit) }
+        private set
+    private var expectingStart = false
+    private var failed = false
+    val pending get() = !document.isCompleted
+
+    fun begin() {
+        fail("browser_navigation_superseded")
+        document = CompletableDeferred()
+        expectingStart = true
+        failed = false
+    }
+
+    fun started() {
+        if (!expectingStart && document.isCompleted) begin()
+        expectingStart = false
+    }
+
+    fun commit(callbackUrl: String?, currentUrl: String?): Boolean {
+        if (expectingStart || failed || callbackUrl == null ||
+            callbackUrl.substringBefore('#') != currentUrl?.substringBefore('#')) {
+            return false
+        }
+        document.complete(Unit)
+        return true
+    }
+
+    fun fail(reason: String) {
+        failed = true
+        document.completeExceptionally(IllegalStateException(reason))
+    }
+}
+
+internal fun browserHandlesNavigation(url: String, mainFrame: Boolean): Boolean =
+    !mainFrame || url.substringBefore(':').lowercase() in setOf("http", "https", "blob", "data") ||
+        url.substringBefore('#') in setOf("about:blank", "about:srcdoc")
 
 /** Address input accepts a search; tool navigation never turns invalid URLs into searches. */
 fun browserAddress(value: String, searchEngine: String = "bing", allowSearch: Boolean = true): String {

@@ -40,7 +40,6 @@ import kotlin.uuid.Uuid
 data class BrowserViewState(
     val hasContent: Boolean = false,
     val loading: Boolean = false,
-    val progress: Int = 0,
     val back: Boolean = false,
     val forward: Boolean = false,
     val error: String? = null,
@@ -57,7 +56,8 @@ data class BrowserDialog(val tabId: String, val message: String, val defaultValu
 data class BrowserPermission(val tabId: String, val origin: String, val request: PermissionRequest)
 
 internal interface BrowserEngineEvents {
-    fun changed(url: String?, title: String?, view: BrowserViewState)
+    fun changed(view: BrowserViewState, url: String? = null, title: String? = null, completed: Boolean = false)
+    fun progress(value: Int)
     fun download(url: String, name: String?, mime: String?)
     fun chooser(request: BrowserFileChooser)
     fun dialog(request: BrowserDialog)
@@ -73,6 +73,7 @@ internal interface BrowserEngineEvents {
 internal class BrowserEngine(
     context: Context,
     private val tabId: String,
+    private val workspaceHost: String,
     settings: BrowserSettings,
     private val asyncScript: String,
     private val events: BrowserEngineEvents,
@@ -86,10 +87,10 @@ internal class BrowserEngine(
         private set
     private val defaultUserAgent = webView.settings.userAgentString
     private var pendingScript: Pair<String, CompletableDeferred<String>>? = null
-    private var document = CompletableDeferred<Unit>().apply { complete(Unit) }
-    private var loadingUrl: String? = null
-    private var awaitingStart = false
-    val awaitingDocument get() = !document.isCompleted
+    private val navigation = BrowserNavigation()
+    private var requestedUrl: String? = null
+    private var renderedHtml = false
+    val awaitingDocument get() = navigation.pending
 
     init {
         webView.addJavascriptInterface(object {
@@ -113,6 +114,8 @@ internal class BrowserEngine(
             setSupportMultipleWindows(true)
             builtInZoomControls = true
             displayZoomControls = false
+            useWideViewPort = true
+            loadWithOverviewMode = true
             allowFileAccess = false
             allowContentAccess = true
         }
@@ -123,22 +126,25 @@ internal class BrowserEngine(
         }
         webView.webViewClient = object : WebViewClient() {
             override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
-                if (!awaitingStart && document.isCompleted) document = CompletableDeferred()
-                loadingUrl = url
-                awaitingStart = false
-                pendingScript?.second?.completeExceptionally(IllegalStateException("browser_document_changed: 网页已切换，请读取当前页面"))
-                publish(viewState.copy(loading = true, error = null, hasContent = true))
+                if (url != null && !url.startsWith("data:") && url != "about:blank") renderedHtml = false
+                navigation.started()
+                requestedUrl = url
+                cancelScript("browser_document_changed: 网页已切换，请读取当前页面")
+                events.progress(0)
+                publish(historyState().copy(loading = true, error = null, hasContent = true), url = pageUrl(url), title = "")
             }
 
-            override fun onPageCommitVisible(view: WebView, url: String?) { completeDocument(url) }
+            override fun onPageCommitVisible(view: WebView, url: String?) {
+                if (navigation.commit(pageUrl(url), pageUrl(view.url))) publish(historyState(), url = pageUrl(url))
+            }
 
             override fun onPageFinished(view: WebView, url: String?) {
-                if (!completeDocument(url)) return
-                publish(viewState.copy(loading = false, progress = 100))
-                CookieManager.getInstance().flush()
+                if (!navigation.commit(pageUrl(url), pageUrl(view.url))) return
+                events.progress(100)
+                publish(historyState().copy(loading = false), url = pageUrl(url), title = view.title, completed = true)
             }
 
-            override fun doUpdateVisitedHistory(view: WebView, url: String?, isReload: Boolean) = publish(viewState)
+            override fun doUpdateVisitedHistory(view: WebView, url: String?, isReload: Boolean) = publish(historyState(), url = pageUrl(url))
 
             override fun onReceivedError(view: WebView, request: WebResourceRequest, error: android.webkit.WebResourceError) {
                 if (request.isForMainFrame) {
@@ -149,13 +155,14 @@ internal class BrowserEngine(
 
             override fun onReceivedSslError(view: WebView, handler: android.webkit.SslErrorHandler, error: android.net.http.SslError) {
                 handler.cancel()
-                failPending("网站证书验证失败")
-                publish(viewState.copy(loading = false, error = "网站证书验证失败"))
+                if (error.url == requestedUrl || error.url == view.url) {
+                    failPending("网站证书验证失败")
+                    publish(viewState.copy(loading = false, error = "网站证书验证失败"))
+                }
             }
 
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
-                val scheme = request.url.scheme
-                if (scheme in setOf("http", "https") || request.url.toString() == "about:blank") return false
+                if (browserHandlesNavigation(request.url.toString(), request.isForMainFrame)) return false
                 if (request.hasGesture()) {
                     runCatching {
                         contextWrapper.startActivity(Intent(Intent.ACTION_VIEW, request.url).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
@@ -164,7 +171,8 @@ internal class BrowserEngine(
                 return true
             }
 
-            override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest) = events.resource(request)
+            override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest) =
+                if (request.url.host == workspaceHost) events.resource(request) else null
 
             override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
                 failPending("网页进程已退出，请重新加载")
@@ -177,8 +185,8 @@ internal class BrowserEngine(
             }
         }
         webView.webChromeClient = object : WebChromeClient() {
-            override fun onProgressChanged(view: WebView, progress: Int) = publish(viewState.copy(progress = progress))
-            override fun onReceivedTitle(view: WebView, title: String?) = publish(viewState)
+            override fun onProgressChanged(view: WebView, progress: Int) = events.progress(progress)
+            override fun onReceivedTitle(view: WebView, title: String?) = publish(viewState, title = title)
             override fun onConsoleMessage(message: ConsoleMessage): Boolean {
                 if (console.size >= 100) console.removeFirst()
                 console.addLast("${message.messageLevel()}: ${message.message()}")
@@ -216,9 +224,12 @@ internal class BrowserEngine(
         webView.onResume()
     }
 
-    private fun publish(value: BrowserViewState) {
-        viewState = value.copy(back = webView.canGoBack(), forward = webView.canGoForward())
-        events.changed(webView.url, webView.title, viewState)
+    private fun historyState() = viewState.copy(back = webView.canGoBack(), forward = webView.canGoForward())
+
+    private fun publish(value: BrowserViewState, url: String? = null, title: String? = null, completed: Boolean = false) {
+        if (value == viewState && url == null && title == null && !completed) return
+        viewState = value
+        events.changed(value, url, title, completed)
     }
 
     fun resize(width: Int, height: Int) {
@@ -230,11 +241,10 @@ internal class BrowserEngine(
 
     fun applySettings(settings: BrowserSettings) {
         webView.settings.apply {
-            useWideViewPort = settings.desktopMode
-            loadWithOverviewMode = settings.desktopMode
-            userAgentString = settings.customUserAgent.takeIf { it.isNotBlank() } ?: if (settings.desktopMode) {
+            val agent = settings.customUserAgent.trim().takeIf { it.isNotEmpty() } ?: if (settings.desktopMode) {
                 defaultUserAgent.replace(Regex("\\(Linux; Android[^)]+\\)"), "(X11; Linux x86_64)").replace(" Mobile", "")
             } else defaultUserAgent
+            if (userAgentString != agent) userAgentString = agent
         }
     }
 
@@ -258,11 +268,19 @@ internal class BrowserEngine(
     }
 
     fun loadUrl(url: String) {
+        renderedHtml = false
         if (!sameDocument(url)) beginNavigation(url)
         webView.loadUrl(url)
     }
 
-    fun loadHtml(html: String) { beginNavigation("about:blank"); webView.loadDataWithBaseURL(null, html, "text/html", "UTF-8", null) }
+    fun loadHtml(html: String) {
+        renderedHtml = true
+        beginNavigation("about:blank")
+        webView.loadDataWithBaseURL("about:blank", html, "text/html", "UTF-8", "about:blank")
+    }
+
+    private fun pageUrl(url: String?): String? =
+        if (renderedHtml && (url == "about:blank" || url?.startsWith("data:") == true)) "about:blank" else url
 
     fun back(forward: Boolean) {
         if (if (forward) webView.canGoForward() else webView.canGoBack()) {
@@ -282,10 +300,10 @@ internal class BrowserEngine(
     }
 
     suspend fun waitForDom() {
-        val page = document
+        val page = navigation.document
         withTimeoutOrNull(15_000) {
             page.await()
-            check(document === page) { "browser_navigation_superseded" }
+            check(navigation.document === page) { "browser_navigation_superseded" }
             // Kelivo browser_native_engine.dart::waitForLoad, DOMContentLoaded branch.
             evaluate("""
                 if (document.readyState === 'loading') {
@@ -293,7 +311,7 @@ internal class BrowserEngine(
                 }
                 return true;
             """.trimIndent())
-            check(document === page) { "browser_navigation_superseded" }
+            check(navigation.document === page) { "browser_navigation_superseded" }
         } ?: error("browser_load_timeout: 网页尚未就绪，请先读取当前页面")
     }
 
@@ -302,23 +320,19 @@ internal class BrowserEngine(
     } == true
 
     private fun beginNavigation(url: String?) {
-        failPending("browser_navigation_superseded")
-        document = CompletableDeferred()
-        loadingUrl = url
-        awaitingStart = true
-    }
-
-    private fun completeDocument(url: String?): Boolean {
-        if (awaitingStart || loadingUrl?.substringBefore('#') != url?.substringBefore('#')) return false
-        document.complete(Unit)
-        return true
+        cancelScript("browser_navigation_superseded")
+        navigation.begin()
+        requestedUrl = url
+        events.progress(0)
+        publish(viewState.copy(loading = true, error = null, hasContent = true))
     }
 
     private fun failPending(reason: String) {
-        val failure = IllegalStateException(reason)
-        pendingScript?.second?.completeExceptionally(failure)
-        document.completeExceptionally(failure)
+        cancelScript(reason)
+        navigation.fail(reason)
     }
+
+    private fun cancelScript(reason: String) = pendingScript?.second?.completeExceptionally(IllegalStateException(reason))
 
     suspend fun screenshot(): Pair<ByteArray, Pair<Int, Int>> {
         val width = webView.width.coerceAtLeast(1)

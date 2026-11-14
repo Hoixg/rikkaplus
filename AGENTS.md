@@ -117,11 +117,14 @@ field and never adds height above the WebView. Bookmarks,
 history and downloads stay in their own panels. Browser settings use grouped search/browsing/advanced/site-data
 sections with a fixed save button; website data cleanup belongs there and retains its existing confirmation.
 AI status is a compact overlay inside the browser viewport; never resize the page when it appears. Gesture
-feedback stays inside the current WebView's UI container and uses CSS viewport coordinates. Keep it independent
+feedback uses a separate Canvas above the native view and uses CSS viewport coordinates. Keep it independent
 of Phone Use and out of browser screenshots. The page bridge delivers script results and visual coordinates only;
 it exposes no native operations. Follow Kelivo's DOM-ready navigation waits and asynchronous result callbacks;
 do not restore loading-flag polling, result-slot polling or fixed startup delays. Chat summaries show one
 clickable page card for navigation actions; do not repeat raw URLs and open buttons for every browser step.
+Keep progress separate from page/metadata state so only the compact address bar observes it. Do not flush cookies
+on the UI thread or reset the user agent when unrelated settings change. Let WebView handle verification subframes
+and normal embedded documents; retain the workspace-only resource interception and the existing login profile.
 
 ## Scheduled tasks
 
