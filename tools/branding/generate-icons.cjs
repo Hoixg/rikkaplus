@@ -13,12 +13,20 @@ async function main() {
   for (const [density, scale] of Object.entries(densities)) {
     const directory = path.join(root, 'app/src/main/res', `mipmap-${density}`);
     await fs.mkdir(directory, { recursive: true });
-    await sharp(source).autoOrient().resize(48 * scale, 48 * scale)
-      .png().toFile(path.join(directory, 'ic_launcher.png'));
-    // Adaptive layers are 108dp; the launcher displays the central 72dp.
-    await sharp(source).autoOrient().resize(72 * scale, 72 * scale).ensureAlpha()
+    const legacySize = 48 * scale;
+    const artworkSize = Math.round(legacySize * 64 / 72);
+    const padding = (legacySize - artworkSize) / 2;
+    await sharp(source).autoOrient().resize(artworkSize, artworkSize)
       .extend({
-        top: 18 * scale, bottom: 18 * scale, left: 18 * scale, right: 18 * scale,
+        top: Math.floor(padding), bottom: Math.ceil(padding),
+        left: Math.floor(padding), right: Math.ceil(padding),
+        background: '#000000',
+      })
+      .png().toFile(path.join(directory, 'ic_launcher.png'));
+    // Keep the complete artwork within the adaptive icon's circular mask.
+    await sharp(source).autoOrient().resize(64 * scale, 64 * scale).ensureAlpha()
+      .extend({
+        top: 22 * scale, bottom: 22 * scale, left: 22 * scale, right: 22 * scale,
         background: { r: 0, g: 0, b: 0, alpha: 0 },
       }).png().toFile(path.join(directory, 'ic_launcher_foreground.png'));
     await sharp({ create: { width: 108 * scale, height: 108 * scale, channels: 3, background: '#000000' } })
