@@ -9,6 +9,8 @@
   旧版图标采用相同比例的黑色留边，使圆形蒙版也能保留图案；不裁剪、重绘原图。
   应用内的 `AppLogo` 沿用同一套图层，聊天图片导出的图标也使用这些资源。
 - `docs/icon.png` 为 512×512，供 README 展示。
+- D 包通过 `app/src/debug/res/mipmap-*` 覆盖图标，主图略微缩小、上移，在独立底部区域放置橙色 `D` 标记，避免遮挡终端等图案；R 包和 README 使用正常黑白图标。
+  标记由 `tools/branding/debug-badge.svg` 定义，与正常图标一起导出，位于圆形蒙版内。应用名称仍为 `RikkaPlus Debug`。
 - 不再声明或保留旧图标的 monochrome 图层，防止主题图标继续显示旧品牌图形。
 
 需要重新导出时，准备 Node.js 和 `sharp`，运行 `node tools/branding/generate-icons.cjs`。
