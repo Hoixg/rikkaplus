@@ -45,7 +45,9 @@ Ordinary commit-and-build requests keep the version unchanged and use workflow_d
 The active development branch is `1.0`. Keep the historical `custom` branch on GitHub; do not recreate a local
 `custom` checkout unless the user requests it. Preserve the removal of the Web server when syncing upstream.
 
-The `1.0` application ID is `io.github.hoixg.rikkaplus` (`.debug` for Debug). Build only the universal APK
+The `1.0` application ID is `io.github.hoixg.rikkaplus` (`.debug` for Debug). The Debug build type sets the installed
+application label to `RikkaPlus Debug` through `appLabel`; Release keeps `@string/app_name` (`RikkaPlus`).
+Build only the universal APK
 containing ARM64 and x86_64. Each build request produces exactly one APK: Release by default, or Debug only when
 explicitly requested. Never build extra variants, per-ABI APKs, or Play AABs alongside it. `buildAll` also builds
 only the GitHub Release universal APK. Cloud uploads must use the exact verified APK path, and release pages
@@ -94,8 +96,9 @@ Run the documented removal checks before committing an upstream merge.
 
 ## Backup and restore
 
-Keep local ZIP, WebDAV and S3 backup/restore. Backup content shows chat records and files in the first row,
-with workspace files on a separate row aligned to the start; allow the full workspace label to wrap.
+Keep local ZIP, WebDAV and S3 backup/restore. Backup content uses the shared full-width checkbox rows for
+chat records, files and workspace files. Allow labels to wrap and put workspace-only help under its own row;
+do not mix connected toggle buttons with a separate workspace button.
 Imports from other apps (ChatBox and Cherry Studio), their dedicated parsers, UI and strings are removed;
 do not restore them during upstream merges.
 

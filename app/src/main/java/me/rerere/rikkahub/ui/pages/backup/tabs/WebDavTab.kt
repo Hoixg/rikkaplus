@@ -164,6 +164,7 @@ fun WebDavTab(
             backupContentItem(
                 options = WebDavConfig.BackupItem.entries,
                 selected = webDavConfig.items,
+                workspaceOption = WebDavConfig.BackupItem.WORKSPACE_FILES,
                 onChange = { updateWebDavConfig(webDavConfig.copy(items = it)) },
             ) { item ->
                 when (item) {

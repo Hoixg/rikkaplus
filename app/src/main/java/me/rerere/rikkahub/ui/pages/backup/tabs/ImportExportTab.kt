@@ -139,6 +139,7 @@ fun ImportExportTab(
             backupContentItem(
                 options = WebDavConfig.BackupItem.entries,
                 selected = selectedBackupItems,
+                workspaceOption = WebDavConfig.BackupItem.WORKSPACE_FILES,
                 onChange = { vm.updateLocalBackupItems(it) },
             ) { item ->
                 when (item) {

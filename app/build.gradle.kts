@@ -28,6 +28,7 @@ android {
         targetSdk = 37
         versionCode = 199
         versionName = "3.2.0"
+        manifestPlaceholders["appLabel"] = "@string/app_name"
 
         val appPackageName = requireNotNull(applicationId)
         resValue("string", "shortcut_target_package", appPackageName)
@@ -77,6 +78,7 @@ android {
         }
         debug {
             applicationIdSuffix = ".debug"
+            manifestPlaceholders["appLabel"] = "RikkaPlus Debug"
             val appPackageName = "${defaultConfig.applicationId}.debug"
             resValue("string", "shortcut_target_package", appPackageName)
             resValue("string", "shortcut_translate_action", "$appPackageName.action.TRANSLATE")

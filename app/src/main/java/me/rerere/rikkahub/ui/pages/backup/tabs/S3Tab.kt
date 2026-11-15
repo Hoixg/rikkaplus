@@ -103,6 +103,7 @@ fun S3Tab(
             backupContentItem(
                 options = S3Config.BackupItem.entries,
                 selected = s3Config.items,
+                workspaceOption = S3Config.BackupItem.WORKSPACE_FILES,
                 onChange = { updateS3Config(s3Config.copy(items = it)) },
             ) { item ->
                 when (item) {

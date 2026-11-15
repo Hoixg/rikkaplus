@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.offset
@@ -30,6 +29,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularWavyProgressIndicator
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FloatingToolbarDefaults.ScreenOffset
 import androidx.compose.material3.FloatingToolbarDefaults.floatingToolbarVerticalNestedScroll
@@ -42,8 +42,6 @@ import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.ToggleButton
-import androidx.compose.material3.ToggleButtonDefaults
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -57,6 +55,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.toggleableState
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import me.rerere.hugeicons.HugeIcons
@@ -66,14 +66,11 @@ import me.rerere.hugeicons.stroke.CloudDownload
 import me.rerere.hugeicons.stroke.CloudUpload
 import me.rerere.hugeicons.stroke.Connect
 import me.rerere.hugeicons.stroke.FileZip
-import me.rerere.hugeicons.stroke.Tick01
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.ui.components.ai.ExtensionEmptyState
 import me.rerere.rikkahub.ui.components.ui.CardGroup
 import me.rerere.rikkahub.ui.components.ui.CardGroupIcon
 import me.rerere.rikkahub.ui.components.ui.CardGroupScope
-import me.rerere.rikkahub.ui.components.ui.ConnectedChoiceLabel
-import me.rerere.rikkahub.ui.components.ui.ConnectedMultiChoiceButtons
 import me.rerere.rikkahub.ui.components.ui.cardGroupItemShape
 import me.rerere.rikkahub.ui.theme.CustomColors
 import me.rerere.rikkahub.utils.UiState
@@ -103,46 +100,27 @@ internal fun BackupActionIcon(
 internal fun <T> CardGroupScope.backupContentItem(
     options: List<T>,
     selected: List<T>,
+    workspaceOption: T,
     onChange: (List<T>) -> Unit,
     label: @Composable (T) -> String,
-) = formItem(
-    headlineContent = { Text(stringResource(R.string.backup_page_backup_items)) },
-    supportingContent = { Text(stringResource(R.string.backup_page_workspace_files_desc)) },
 ) {
-    val toggle = { option: T, checked: Boolean ->
-        onChange(if (checked) selected + option else selected - option)
-    }
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalAlignment = Alignment.Start,
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        ConnectedMultiChoiceButtons(
-            options = options.take(2),
-            selected = selected,
-            onToggle = toggle,
-        ) { option, isSelected ->
-            ConnectedChoiceLabel(
-                text = label(option),
-                selected = isSelected,
-                icon = HugeIcons.Tick01,
-            )
-        }
-        options.drop(2).forEach { option ->
-            val isSelected = option in selected
-            ToggleButton(
-                checked = isSelected,
-                onCheckedChange = { toggle(option, it) },
-                modifier = Modifier.heightIn(min = 48.dp).semantics { role = Role.Checkbox },
-                colors = ToggleButtonDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
-            ) {
-                if (isSelected) {
-                    Icon(HugeIcons.Tick01, contentDescription = null, modifier = Modifier.size(ToggleButtonDefaults.IconSize))
-                    Spacer(Modifier.width(ToggleButtonDefaults.IconSpacing))
-                }
-                Text(text = label(option), textAlign = TextAlign.Center)
-            }
-        }
+    options.forEachIndexed { index, option ->
+        val isSelected = option in selected
+        item(
+            onClick = { onChange(if (isSelected) selected - option else selected + option) },
+            modifier = Modifier.semantics(mergeDescendants = true) {
+                role = Role.Checkbox
+                toggleableState = ToggleableState(isSelected)
+            },
+            overlineContent = if (index == 0) { {
+                Text(stringResource(R.string.backup_page_backup_items))
+            } } else null,
+            headlineContent = { Text(label(option)) },
+            supportingContent = if (option == workspaceOption) { {
+                Text(stringResource(R.string.backup_page_workspace_files_desc))
+            } } else null,
+            trailingContent = { Checkbox(checked = isSelected, onCheckedChange = null) },
+        )
     }
 }
 
