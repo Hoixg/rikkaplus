@@ -47,6 +47,8 @@ The active development branch is `1.0`. Keep the historical `custom` branch on G
 
 The `1.0` application ID is `io.github.hoixg.rikkaplus` (`.debug` for Debug). The Debug build type sets the installed
 application label to `RikkaPlus Debug` through `appLabel`; Release keeps `@string/app_name` (`RikkaPlus`).
+Debug uses the user-supplied goggles-and-wrench rabbit artwork through `app/src/debug/res` overlays; preserve its
+source at `tools/branding/launcher-debug-source.jpg` and the existing Release artwork. Both use the branding generator.
 Build only the universal APK
 containing ARM64 and x86_64. Each build request produces exactly one APK: Release by default, or Debug only when
 explicitly requested. Never build extra variants, per-ABI APKs, or Play AABs alongside it. `buildAll` also builds
