@@ -21,12 +21,14 @@ import kotlinx.coroutines.job
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import me.rerere.rikkahub.data.model.Lorebook
 import okio.FileSystem
 import okio.Path.Companion.toPath
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -79,6 +81,26 @@ class SettingsStoreTest {
     }
 
     @Test
+    fun `resetting an oversized stored field shrinks it on disk and keeps the rest`() = runBlocking {
+        val store = open().store
+        val big = Lorebook(name = "big", description = "x".repeat(200_000))
+        store.update { it.copy(lorebooks = listOf(big), titlePrompt = "kept") }
+        val (key, chars) = store.largeStoredFieldsFlow(minChars = 100_000).first().single()
+        assertEquals(SettingsStore.LOREBOOKS.name, key)
+        assertTrue(chars >= 200_000)
+
+        // 和安全模式一样：重启后的第一次写入就是清理
+        val restarted = open().store
+        restarted.resetStoredField(key)
+
+        assertEquals(emptyList<Lorebook>(), restarted.settingsFlow.value.lorebooks)
+        assertEquals(emptyList<Pair<String, Int>>(), restarted.largeStoredFieldsFlow(minChars = 100_000).first())
+        val reloaded = reopened()
+        assertEquals(emptyList<Lorebook>(), reloaded.lorebooks)
+        assertEquals("kept", reloaded.titlePrompt)
+    }
+
+    @Test
     fun `concurrent updates are all applied`() = runBlocking {
         val store = open().store
         store.update { it.copy(translateThinkingBudget = 0) }
@@ -101,7 +123,8 @@ class SettingsStoreTest {
         val gate = CompletableDeferred<Unit>()
         opened.disk.writeGate = gate
 
-        val first = launch(start = CoroutineStart.UNDISPATCHED) { store.update { it.copy(translateThinkingBudget = 9001) } }
+        val first =
+            launch(start = CoroutineStart.UNDISPATCHED) { store.update { it.copy(translateThinkingBudget = 9001) } }
         while (opened.disk.writes.get() == 0) delay(1)
         val rest = (9002..9050).map { value ->
             launch(start = CoroutineStart.UNDISPATCHED) { store.update { it.copy(translateThinkingBudget = value) } }

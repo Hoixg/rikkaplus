@@ -26,8 +26,8 @@ android {
         applicationId = "io.github.hoixg.rikkaplus"
         minSdk = 26
         targetSdk = 37
-        versionCode = 199
-        versionName = "3.2.0"
+        versionCode = 200
+        versionName = "3.3.0"
         manifestPlaceholders["appLabel"] = "@string/app_name"
 
         val appPackageName = requireNotNull(applicationId)

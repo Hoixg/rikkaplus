@@ -22,6 +22,7 @@ Material 3 look (cards with dividers, plain forms).
 - The chat input shows a terminal shortcut immediately before the plus button when its bound workspace supports a terminal; reuse the workspace shortcut style and the existing workspace terminal route.
 - Quick messages follow upstream behavior: a tap appends with a separating newline when needed; a long press replaces the input text. Preserve queued-message draft restoration and attachment protection when merging `ChatInputState`.
 - The workspace list's top-right Shared Environment entry shows usage and Rootfs, with installed tools behind a compact count row. Open the searchable tool list within the same sheet; keep legacy environment cleanup at the bottom of the overview and reuse its existing confirmation flow.
+- Local workspace storage mounts apply per workspace to file tools, shell commands and new terminals, including shared and independent environments. Preserve the existing shared Rootfs and per-workspace temporary directories; SSH continues using its remote environment. Keep existing database schemas unchanged and append migrations after this branch's current version.
 
 ## Build, Test, and Development Commands
 
@@ -101,7 +102,7 @@ Run the documented removal checks before committing an upstream merge.
 Keep local ZIP, WebDAV and S3 backup/restore. Backup content uses the shared full-width checkbox rows for
 chat records, files and workspace files. Allow labels to wrap and put workspace-only help under its own row;
 do not mix connected toggle buttons with a separate workspace button.
-Imports from other apps (ChatBox and Cherry Studio), their dedicated parsers, UI and strings are removed;
+Imports from other apps (ChatBox, Cherry Studio and DeepSeek), their dedicated parsers, UI and strings are removed;
 do not restore them during upstream merges.
 
 ## In-app browser

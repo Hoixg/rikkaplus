@@ -15,6 +15,7 @@ import me.rerere.ai.provider.BuiltInTools
 import me.rerere.ai.provider.Modality
 import me.rerere.ai.provider.Model
 import me.rerere.ai.provider.ModelAbility
+import me.rerere.ai.provider.ProviderSetting
 import me.rerere.ai.provider.TextGenerationParams
 import me.rerere.ai.provider.stream.SseEvent
 import me.rerere.ai.ui.GoogleInteractionsMetadata
@@ -42,6 +43,24 @@ import kotlin.time.Clock
 
 class InteractionsApiTest {
     private val api = InteractionsAPI(OkHttpClient())
+
+    @Test
+    fun `interactions url follows gemini base url or vertex location`() {
+        assertEquals(
+            "https://generativelanguage.googleapis.com/v1beta/interactions",
+            ProviderSetting.Google().interactionsUrl(),
+        )
+
+        val vertex = ProviderSetting.Google(vertexAI = true, useServiceAccount = true, projectId = "my-project")
+        assertEquals(
+            "https://aiplatform.googleapis.com/v1/projects/my-project/locations/global/interactions",
+            vertex.copy(location = "global").interactionsUrl(),
+        )
+        assertEquals(
+            "https://aiplatform.eu.rep.googleapis.com/v1/projects/my-project/locations/eu/interactions",
+            vertex.copy(location = "eu").interactionsUrl(),
+        )
+    }
 
     @Test
     fun `request body uses stateless interactions schema`() {
@@ -275,7 +294,10 @@ class InteractionsApiTest {
         assertEquals("The GCD is 21.", (message.parts[1] as UIMessagePart.Text).text)
         assertEquals(2, message.parts.size)
         assertEquals(listOf(UIMessageAnnotation.UrlCitation("Example", "https://example.com")), message.annotations)
-        assertEquals(TokenUsage(promptTokens = 11, completionTokens = 335, totalTokens = 346, cachedTokens = 2), message.usage)
+        assertEquals(
+            TokenUsage(promptTokens = 11, completionTokens = 335, totalTokens = 346, cachedTokens = 2),
+            message.usage
+        )
         assertEquals(StreamChunk.Finish("completed", "v1_abc", "gemini-3.8-flash"), chunks.last())
     }
 
@@ -444,7 +466,10 @@ class InteractionsApiTest {
         assertEquals("int_456", result.id)
         assertEquals("requires_action", result.finishReason)
         assertEquals(TokenUsage(promptTokens = 10, completionTokens = 8, totalTokens = 18), result.usage)
-        assertEquals(listOf(UIMessageAnnotation.UrlCitation("NFL.com", "https://www.nfl.com")), result.message.annotations)
+        assertEquals(
+            listOf(UIMessageAnnotation.UrlCitation("NFL.com", "https://www.nfl.com")),
+            result.message.annotations
+        )
 
         val parts = result.message.parts
         assertEquals(5, parts.size)
