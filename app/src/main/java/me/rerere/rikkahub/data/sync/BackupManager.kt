@@ -1,6 +1,7 @@
 package me.rerere.rikkahub.data.sync
 
 import android.content.Context
+import android.util.Log
 import androidx.room.withTransaction
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
@@ -61,7 +62,7 @@ class BackupManager(
                 zip.closeEntry()
                 if (includeDatabase) {
                     val snapshot = File(staging, SQLiteConfiguration.DATABASE_NAME)
-                    DatabaseBackup.createSnapshot(database.openHelper.writableDatabase, snapshot)
+                    createDatabaseSnapshot(snapshot)
                     addFile(zip, snapshot, DatabaseBackup.ARCHIVE_DATABASE)
                 }
                 if (includeFiles) {
@@ -196,6 +197,27 @@ class BackupManager(
             }
         }
 
+    private fun createDatabaseSnapshot(destination: File) {
+        try {
+            DatabaseBackup.createSnapshot(database.openHelper.writableDatabase, destination)
+        } catch (e: Exception) {
+            // 迁移失败、降级安装时 Room 打不开库，应用一碰数据库就崩，只能进安全模式导出。
+            // 迁移在事务里，失败会回滚，盘上还是迁移前的完整数据，直接从文件拍快照
+            Log.w(TAG, "Room snapshot failed, falling back to the database file", e)
+            check(!destination.exists() || destination.delete()) { "Cannot remove partial snapshot" }
+            try {
+                DatabaseBackup.createFileSnapshot(
+                    context,
+                    context.getDatabasePath(SQLiteConfiguration.DATABASE_NAME),
+                    destination
+                )
+            } catch (fallback: Exception) {
+                e.addSuppressed(fallback)
+                throw e
+            }
+        }
+    }
+
     private fun isAttachment(name: String): Boolean {
         val folder = name.substringBefore('/')
         if (folder !in ATTACHMENT_FOLDERS || '/' !in name) return false
@@ -212,6 +234,8 @@ class BackupManager(
     }
 
     companion object {
+        private const val TAG = "BackupManager"
+
         private val ATTACHMENT_FOLDERS =
             listOf(FileFolders.UPLOAD, FileFolders.SKILLS, FileFolders.FONTS, FileFolders.MEDIA_CREATION)
 

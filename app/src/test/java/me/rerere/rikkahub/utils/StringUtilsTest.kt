@@ -8,6 +8,11 @@ import org.junit.Test
 class StringUtilsTest {
 
     @Test
+    fun `guess MIME type for an attachment containing a hash`() {
+        assertEquals("application/pdf", guessMimeTypeFromFileName("C#入门笔记.pdf"))
+    }
+
+    @Test
     fun `extract chinese double quotes`() {
         assertEquals(listOf("你好"), "他说“你好”".extractQuotedContent())
     }
